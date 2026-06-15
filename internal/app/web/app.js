@@ -1,27 +1,47 @@
 const tokenInput = document.querySelector("#adminToken");
 const saveTokenBtn = document.querySelector("#saveTokenBtn");
 const refreshBtn = document.querySelector("#refreshBtn");
+const pageTitle = document.querySelector("#pageTitle");
+const pageBreadcrumb = document.querySelector("#pageBreadcrumb");
 const stats = document.querySelector("#stats");
 const proxyList = document.querySelector("#proxyList");
 const backendList = document.querySelector("#backendList");
 const clientList = document.querySelector("#clientList");
 const policyList = document.querySelector("#policyList");
 const eventList = document.querySelector("#eventList");
+const pages = Array.from(document.querySelectorAll(".page"));
+const pageLinks = Array.from(document.querySelectorAll("[data-page-link]"));
 
 const proxyForm = document.querySelector("#proxyForm");
 const backendForm = document.querySelector("#backendForm");
 const clientForm = document.querySelector("#clientForm");
 const policyForm = document.querySelector("#policyForm");
 
+const addProxyBtn = document.querySelector("#addProxyBtn");
+const addBackendBtn = document.querySelector("#addBackendBtn");
+const addClientBtn = document.querySelector("#addClientBtn");
+const addPolicyBtn = document.querySelector("#addPolicyBtn");
+const proxyModal = document.querySelector("#proxyModal");
+const proxyModalCloseBtn = document.querySelector("#proxyModalCloseBtn");
+const proxyModalTitle = document.querySelector("#proxyModalTitle");
 const proxySubmitBtn = document.querySelector("#proxySubmitBtn");
 const proxyCancelBtn = document.querySelector("#proxyCancelBtn");
 const proxyEditBanner = document.querySelector("#proxyEditBanner");
+const backendModal = document.querySelector("#backendModal");
+const backendModalCloseBtn = document.querySelector("#backendModalCloseBtn");
+const backendModalTitle = document.querySelector("#backendModalTitle");
 const backendSubmitBtn = document.querySelector("#backendSubmitBtn");
 const backendCancelBtn = document.querySelector("#backendCancelBtn");
 const backendEditBanner = document.querySelector("#backendEditBanner");
+const clientModal = document.querySelector("#clientModal");
+const clientModalCloseBtn = document.querySelector("#clientModalCloseBtn");
+const clientModalTitle = document.querySelector("#clientModalTitle");
 const clientSubmitBtn = document.querySelector("#clientSubmitBtn");
 const clientCancelBtn = document.querySelector("#clientCancelBtn");
 const clientEditBanner = document.querySelector("#clientEditBanner");
+const policyModal = document.querySelector("#policyModal");
+const policyModalCloseBtn = document.querySelector("#policyModalCloseBtn");
+const policyModalTitle = document.querySelector("#policyModalTitle");
 const policySubmitBtn = document.querySelector("#policySubmitBtn");
 const policyCancelBtn = document.querySelector("#policyCancelBtn");
 const policyEditBanner = document.querySelector("#policyEditBanner");
@@ -44,6 +64,10 @@ const state = {
 
 tokenInput.value = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
 
+window.addEventListener("hashchange", () => {
+  activatePage(pageIDFromHash());
+});
+
 saveTokenBtn.addEventListener("click", () => {
   localStorage.setItem(ADMIN_TOKEN_KEY, tokenInput.value.trim());
 });
@@ -52,16 +76,72 @@ refreshBtn.addEventListener("click", () => {
   refreshAll().catch(reportError);
 });
 
+addProxyBtn.addEventListener("click", () => {
+  startCreateProxy();
+});
+
+proxyModalCloseBtn.addEventListener("click", () => {
+  resetProxyForm();
+});
+
+proxyModal.addEventListener("click", (event) => {
+  if (event.target === proxyModal) {
+    resetProxyForm();
+  }
+});
+
 proxyCancelBtn.addEventListener("click", () => {
   resetProxyForm();
+});
+
+addBackendBtn.addEventListener("click", () => {
+  startCreateBackend();
+});
+
+backendModalCloseBtn.addEventListener("click", () => {
+  resetBackendForm();
+});
+
+backendModal.addEventListener("click", (event) => {
+  if (event.target === backendModal) {
+    resetBackendForm();
+  }
 });
 
 backendCancelBtn.addEventListener("click", () => {
   resetBackendForm();
 });
 
+addClientBtn.addEventListener("click", () => {
+  startCreateClient();
+});
+
+clientModalCloseBtn.addEventListener("click", () => {
+  resetClientForm();
+});
+
+clientModal.addEventListener("click", (event) => {
+  if (event.target === clientModal) {
+    resetClientForm();
+  }
+});
+
 clientCancelBtn.addEventListener("click", () => {
   resetClientForm();
+});
+
+addPolicyBtn.addEventListener("click", () => {
+  startCreatePolicy();
+});
+
+policyModalCloseBtn.addEventListener("click", () => {
+  resetPolicyForm();
+});
+
+policyModal.addEventListener("click", (event) => {
+  if (event.target === policyModal) {
+    resetPolicyForm();
+  }
 });
 
 policyCancelBtn.addEventListener("click", () => {
@@ -205,6 +285,27 @@ function renderStats(overview) {
       <span class="metric-copy">正在转发中的活动请求数。</span>
     </article>
   `;
+}
+
+function pageIDFromHash() {
+  const id = window.location.hash.slice(1);
+  return pages.some((page) => page.id === id) ? id : "overview";
+}
+
+function activatePage(id) {
+  const nextID = pages.some((page) => page.id === id) ? id : "overview";
+  for (const page of pages) {
+    page.classList.toggle("active", page.id === nextID);
+  }
+  for (const link of pageLinks) {
+    link.classList.toggle("active", link.dataset.pageLink === nextID);
+  }
+
+  const activePage = pages.find((page) => page.id === nextID);
+  if (activePage) {
+    pageTitle.textContent = activePage.dataset.pageTitle || "透明代理控制台";
+    pageBreadcrumb.textContent = activePage.dataset.pageBreadcrumb || "Dashboard";
+  }
 }
 
 function renderProxies(proxies) {
@@ -665,8 +766,36 @@ function startEditProxy(id) {
   proxyCancelBtn.classList.remove("hidden");
   proxyEditBanner.textContent = `正在编辑 SOCKS5 Proxy: ${proxy.name}`;
   proxyEditBanner.classList.remove("hidden");
-  proxyForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  proxyModalTitle.textContent = "编辑 Proxy";
+  showProxyModal();
   renderProxies(state.proxies);
+}
+
+function startCreateProxy() {
+  state.editingProxyID = null;
+  proxyForm.reset();
+  proxyForm.elements.enabled.checked = true;
+  proxySubmitBtn.textContent = "新增 Proxy";
+  proxyCancelBtn.classList.remove("hidden");
+  proxyEditBanner.classList.add("hidden");
+  proxyModalTitle.textContent = "新增 Proxy";
+  showProxyModal();
+  renderProxies(state.proxies);
+}
+
+function startCreateBackend() {
+  state.editingBackendID = null;
+  backendForm.reset();
+  backendForm.elements.api_key.placeholder = "Backend API key";
+  backendForm.elements.proxy_id.value = "0";
+  backendForm.elements.weight.value = 1;
+  backendForm.elements.enabled.checked = true;
+  backendSubmitBtn.textContent = "新增 Backend";
+  backendCancelBtn.classList.remove("hidden");
+  backendEditBanner.classList.add("hidden");
+  backendModalTitle.textContent = "新增 Backend";
+  showBackendModal();
+  renderBackends(state.backends);
 }
 
 function startEditBackend(id) {
@@ -691,8 +820,22 @@ function startEditBackend(id) {
   backendCancelBtn.classList.remove("hidden");
   backendEditBanner.textContent = `正在编辑 Backend: ${backend.name}`;
   backendEditBanner.classList.remove("hidden");
-  backendForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  backendModalTitle.textContent = "编辑 Backend";
+  showBackendModal();
   renderBackends(state.backends);
+}
+
+function startCreateClient() {
+  state.editingClientID = null;
+  clientForm.reset();
+  clientForm.elements.token.placeholder = "Leave blank to auto-generate";
+  clientForm.elements.enabled.checked = true;
+  clientSubmitBtn.textContent = "新增 Client Key";
+  clientCancelBtn.classList.remove("hidden");
+  clientEditBanner.classList.add("hidden");
+  clientModalTitle.textContent = "新增 Client Key";
+  showClientModal();
+  renderClients(state.clients);
 }
 
 function startEditClient(id) {
@@ -713,8 +856,51 @@ function startEditClient(id) {
   clientCancelBtn.classList.remove("hidden");
   clientEditBanner.textContent = `正在编辑 Client Key: ${client.name}`;
   clientEditBanner.classList.remove("hidden");
-  clientForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  clientModalTitle.textContent = "编辑 Client Key";
+  showClientModal();
   renderClients(state.clients);
+}
+
+function showBackendModal() {
+  backendModal.classList.remove("hidden");
+  backendForm.elements.name.focus();
+}
+
+function showProxyModal() {
+  proxyModal.classList.remove("hidden");
+  proxyForm.elements.name.focus();
+}
+
+function hideProxyModal() {
+  proxyModal.classList.add("hidden");
+}
+
+function hideBackendModal() {
+  backendModal.classList.add("hidden");
+}
+
+function showClientModal() {
+  clientModal.classList.remove("hidden");
+  clientForm.elements.name.focus();
+}
+
+function hideClientModal() {
+  clientModal.classList.add("hidden");
+}
+
+function startCreatePolicy() {
+  state.editingPolicyID = null;
+  policyForm.reset();
+  policyForm.elements.endpoint.value = "chat";
+  policyForm.elements.placement_policy.value = "sticky";
+  policyForm.elements.priority.value = 100;
+  policyForm.elements.failover_enabled.checked = true;
+  policySubmitBtn.textContent = "新增 Policy";
+  policyCancelBtn.classList.remove("hidden");
+  policyEditBanner.classList.add("hidden");
+  policyModalTitle.textContent = "新增 Policy";
+  showPolicyModal();
+  renderPolicies(state.policies);
 }
 
 function startEditPolicy(id) {
@@ -735,7 +921,8 @@ function startEditPolicy(id) {
   policyCancelBtn.classList.remove("hidden");
   policyEditBanner.textContent = `正在编辑 Model Policy: ${policy.pattern}`;
   policyEditBanner.classList.remove("hidden");
-  policyForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  policyModalTitle.textContent = "编辑 Policy";
+  showPolicyModal();
   renderPolicies(state.policies);
 }
 
@@ -746,6 +933,8 @@ function resetProxyForm() {
   proxySubmitBtn.textContent = "新增 Proxy";
   proxyCancelBtn.classList.add("hidden");
   proxyEditBanner.classList.add("hidden");
+  proxyModalTitle.textContent = "新增 Proxy";
+  hideProxyModal();
   renderProxies(state.proxies);
 }
 
@@ -759,6 +948,8 @@ function resetBackendForm() {
   backendSubmitBtn.textContent = "新增 Backend";
   backendCancelBtn.classList.add("hidden");
   backendEditBanner.classList.add("hidden");
+  backendModalTitle.textContent = "新增 Backend";
+  hideBackendModal();
   renderBackends(state.backends);
 }
 
@@ -770,6 +961,8 @@ function resetClientForm() {
   clientSubmitBtn.textContent = "新增 Client Key";
   clientCancelBtn.classList.add("hidden");
   clientEditBanner.classList.add("hidden");
+  clientModalTitle.textContent = "新增 Client Key";
+  hideClientModal();
   renderClients(state.clients);
 }
 
@@ -783,7 +976,18 @@ function resetPolicyForm() {
   policySubmitBtn.textContent = "新增 Policy";
   policyCancelBtn.classList.add("hidden");
   policyEditBanner.classList.add("hidden");
+  policyModalTitle.textContent = "新增 Policy";
+  hidePolicyModal();
   renderPolicies(state.policies);
+}
+
+function showPolicyModal() {
+  policyModal.classList.remove("hidden");
+  policyForm.elements.pattern.focus();
+}
+
+function hidePolicyModal() {
+  policyModal.classList.add("hidden");
 }
 
 function readForm(form) {
@@ -961,4 +1165,5 @@ function escapeHTML(value) {
     .replaceAll("'", "&#39;");
 }
 
+activatePage(pageIDFromHash());
 refreshAll().catch(reportError);

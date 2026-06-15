@@ -18,43 +18,38 @@
         </a>
 
         <nav class="nav-list" aria-label="Console sections">
-          <a href="#overview" class="nav-item">
+          <a href="#overview" class="nav-item" data-page-link="overview">
             <span class="nav-dot"></span>
             Overview
           </a>
-          <a href="#socks-proxies" class="nav-item">
+          <a href="#socks-proxies" class="nav-item" data-page-link="socks-proxies">
             <span class="nav-dot"></span>
             SOCKS5 Proxies
           </a>
-          <a href="#backends" class="nav-item">
+          <a href="#backends" class="nav-item" data-page-link="backends">
             <span class="nav-dot"></span>
             Backends
           </a>
-          <a href="#client-keys" class="nav-item">
+          <a href="#client-keys" class="nav-item" data-page-link="client-keys">
             <span class="nav-dot"></span>
             Client Keys
           </a>
-          <a href="#model-policies" class="nav-item">
+          <a href="#model-policies" class="nav-item" data-page-link="model-policies">
             <span class="nav-dot"></span>
             Model Policies
           </a>
+          <a href="#events" class="nav-item" data-page-link="events">
+            <span class="nav-dot"></span>
+            Events
+          </a>
         </nav>
-
-        <section class="sidebar-card event-card">
-          <div class="section-heading compact">
-            <span class="section-label">Activity</span>
-            <h2>最近事件</h2>
-            <p>配置变更、failover 和上游错误会在这里滚动显示。</p>
-          </div>
-          <div id="eventList" class="event-stack"></div>
-        </section>
       </aside>
 
       <div class="main-area">
         <header class="topbar">
           <div class="topbar-title">
-            <span class="breadcrumb">Dashboard / Proxy Control</span>
-            <h1>透明代理控制台</h1>
+            <span class="breadcrumb" id="pageBreadcrumb">Dashboard / Overview</span>
+            <h1 id="pageTitle">透明代理控制台</h1>
           </div>
           <div class="admin-access">
             <label for="adminToken" class="field-label">Admin Token</label>
@@ -65,247 +60,309 @@
         </header>
 
         <main class="workspace">
-          <section class="overview-section" id="overview">
-            <div class="hero-card">
+          <section class="page overview-page" id="overview" data-page-title="运行概览" data-page-breadcrumb="Dashboard / Overview">
+            <div class="page-head">
               <div>
                 <span class="section-label">Transparent LLM Gateway</span>
-                <h2>按模型和客户端身份稳定调度后端 LLM</h2>
+                <h2>运行概览</h2>
                 <p>
                   Token Gate 暴露统一 base_url 和 client key，后端节点、SOCKS5 出口、模型策略都在这里集中管理。
                 </p>
               </div>
-              <div class="hero-actions">
+              <div class="page-actions">
                 <a href="#backends">配置 Backend</a>
+                <a href="#client-keys">管理 Client Key</a>
                 <a href="#model-policies">调整策略</a>
               </div>
             </div>
             <div class="stats-grid" id="stats"></div>
           </section>
 
-          <section class="resource-panel" id="socks-proxies">
+          <section class="page resource-page" id="socks-proxies" data-page-title="SOCKS5 Proxies" data-page-breadcrumb="Dashboard / SOCKS5 Proxies">
             <div class="resource-header">
               <div class="section-heading">
                 <span class="section-label">Network</span>
                 <h3>SOCKS5 Proxies</h3>
                 <p>维护可复用的出口代理，Backend 可选择直连或绑定指定 SOCKS5。</p>
               </div>
+              <button id="addProxyBtn" type="button">新增</button>
             </div>
-            <div class="resource-layout">
-              <form id="proxyForm" class="editor-card">
-                <p class="edit-banner hidden" id="proxyEditBanner">正在编辑 SOCKS5 Proxy</p>
-                <div class="field-grid two-col">
-                  <label class="field">
-                    <span>Name</span>
-                    <input name="name" placeholder="tokyo-socks" required />
-                  </label>
-                  <label class="field">
-                    <span>Address</span>
-                    <input name="address" placeholder="127.0.0.1:1080" required />
-                  </label>
-                </div>
-                <div class="field-grid two-col">
-                  <label class="field">
-                    <span>Username</span>
-                    <input name="username" placeholder="optional" />
-                  </label>
-                  <label class="field">
-                    <span>Password</span>
-                    <input name="password" placeholder="optional" />
-                  </label>
-                </div>
-                <label class="toggle-field">
-                  <span>Enabled</span>
-                  <span class="toggle-wrap">
-                    <input name="enabled" type="checkbox" checked />
-                    <span class="toggle-text">允许绑定的 Backend 使用这个代理</span>
-                  </span>
-                </label>
-                <div class="button-row">
-                  <button id="proxySubmitBtn" type="submit">新增 Proxy</button>
-                  <button class="ghost-button hidden" id="proxyCancelBtn" type="button">取消编辑</button>
-                </div>
-              </form>
+            <div class="resource-layout list-only">
               <div id="proxyList" class="resource-list"></div>
+            </div>
+            <div id="proxyModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="proxyModalTitle">
+              <div class="modal-panel">
+                <div class="modal-header">
+                  <div>
+                    <span class="section-label">SOCKS5 Proxy</span>
+                    <h3 id="proxyModalTitle">新增 Proxy</h3>
+                  </div>
+                  <button class="icon-button" id="proxyModalCloseBtn" type="button" aria-label="关闭 Proxy 弹窗">×</button>
+                </div>
+                <form id="proxyForm" class="editor-card modal-form">
+                  <p class="edit-banner hidden" id="proxyEditBanner">正在编辑 SOCKS5 Proxy</p>
+                  <div class="field-grid two-col">
+                    <label class="field">
+                      <span>Name</span>
+                      <input name="name" placeholder="tokyo-socks" required />
+                    </label>
+                    <label class="field">
+                      <span>Address</span>
+                      <input name="address" placeholder="127.0.0.1:1080" required />
+                    </label>
+                  </div>
+                  <div class="field-grid two-col">
+                    <label class="field">
+                      <span>Username</span>
+                      <input name="username" placeholder="optional" />
+                    </label>
+                    <label class="field">
+                      <span>Password</span>
+                      <input name="password" placeholder="optional" />
+                    </label>
+                  </div>
+                  <label class="toggle-field">
+                    <span>Enabled</span>
+                    <span class="toggle-wrap">
+                      <input name="enabled" type="checkbox" checked />
+                      <span class="toggle-text">允许绑定的 Backend 使用这个代理</span>
+                    </span>
+                  </label>
+                  <div class="button-row">
+                    <button id="proxySubmitBtn" type="submit">新增 Proxy</button>
+                    <button class="ghost-button hidden" id="proxyCancelBtn" type="button">取消</button>
+                  </div>
+                </form>
+              </div>
             </div>
           </section>
 
-          <section class="resource-panel" id="backends">
+          <section class="page resource-page" id="backends" data-page-title="Backends" data-page-breadcrumb="Dashboard / Backends">
             <div class="resource-header">
               <div class="section-heading">
                 <span class="section-label">Upstreams</span>
                 <h3>Backends</h3>
                 <p>登记真实上游、API key、模型能力、端点能力、权重和出口代理。</p>
               </div>
+              <button id="addBackendBtn" type="button">新增</button>
             </div>
-            <div class="resource-layout">
-              <form id="backendForm" class="editor-card">
-                <p class="edit-banner hidden" id="backendEditBanner">正在编辑 Backend</p>
-                <div class="field-grid two-col">
-                  <label class="field">
-                    <span>Name</span>
-                    <input name="name" placeholder="edge-openai-1" required />
-                  </label>
-                  <label class="field">
-                    <span>Pool</span>
-                    <input name="pool" placeholder="image / default / premium" />
-                  </label>
-                </div>
-                <label class="field">
-                  <span>Base URL</span>
-                  <input name="base_url" placeholder="https://upstream.example.com/v1" required />
-                </label>
-                <label class="field">
-                  <span>Backend API Key</span>
-                  <input name="api_key" placeholder="Backend API key" />
-                </label>
-                <label class="field">
-                  <span>SOCKS5 Proxy</span>
-                  <select name="proxy_id">
-                    <option value="0">Direct connection</option>
-                  </select>
-                </label>
-                <div class="field-grid two-col">
-                  <label class="field">
-                    <span>Models</span>
-                    <input name="models" placeholder="gpt-4o, gpt-image-*" required />
-                  </label>
-                  <label class="field">
-                    <span>Endpoints</span>
-                    <input name="endpoints" placeholder="chat,responses,embeddings,images" required />
-                  </label>
-                </div>
-                <div class="field-grid two-col">
-                  <label class="field">
-                    <span>Weight</span>
-                    <input name="weight" type="number" min="1" value="1" />
-                  </label>
-                  <label class="toggle-field">
-                    <span>Enabled</span>
-                    <span class="toggle-wrap">
-                      <input name="enabled" type="checkbox" checked />
-                      <span class="toggle-text">Backend 可参与调度</span>
-                    </span>
-                  </label>
-                </div>
-                <div class="button-row">
-                  <button id="backendSubmitBtn" type="submit">新增 Backend</button>
-                  <button class="ghost-button hidden" id="backendCancelBtn" type="button">取消编辑</button>
-                </div>
-              </form>
+            <div class="resource-layout list-only">
               <div id="backendList" class="resource-list"></div>
+            </div>
+            <div id="backendModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="backendModalTitle">
+              <div class="modal-panel">
+                <div class="modal-header">
+                  <div>
+                    <span class="section-label">Backend</span>
+                    <h3 id="backendModalTitle">新增 Backend</h3>
+                  </div>
+                  <button class="icon-button" id="backendModalCloseBtn" type="button" aria-label="关闭 Backend 弹窗">×</button>
+                </div>
+                <form id="backendForm" class="editor-card modal-form">
+                  <p class="edit-banner hidden" id="backendEditBanner">正在编辑 Backend</p>
+                  <div class="field-grid two-col">
+                    <label class="field">
+                      <span>Name</span>
+                      <input name="name" placeholder="edge-openai-1" required />
+                    </label>
+                    <label class="field">
+                      <span>Pool</span>
+                      <input name="pool" placeholder="image / default / premium" />
+                    </label>
+                  </div>
+                  <label class="field">
+                    <span>Base URL</span>
+                    <input name="base_url" placeholder="https://upstream.example.com/v1" required />
+                  </label>
+                  <label class="field">
+                    <span>Backend API Key</span>
+                    <input name="api_key" placeholder="Backend API key" />
+                  </label>
+                  <label class="field">
+                    <span>SOCKS5 Proxy</span>
+                    <select name="proxy_id">
+                      <option value="0">Direct connection</option>
+                    </select>
+                  </label>
+                  <div class="field-grid two-col">
+                    <label class="field">
+                      <span>Models</span>
+                      <input name="models" placeholder="gpt-4o, gpt-image-*" required />
+                    </label>
+                    <label class="field">
+                      <span>Endpoints</span>
+                      <input name="endpoints" placeholder="chat,responses,embeddings,images" required />
+                    </label>
+                  </div>
+                  <div class="field-grid two-col">
+                    <label class="field">
+                      <span>Weight</span>
+                      <input name="weight" type="number" min="1" value="1" />
+                    </label>
+                    <label class="toggle-field">
+                      <span>Enabled</span>
+                      <span class="toggle-wrap">
+                        <input name="enabled" type="checkbox" checked />
+                        <span class="toggle-text">Backend 可参与调度</span>
+                      </span>
+                    </label>
+                  </div>
+                  <div class="button-row">
+                    <button id="backendSubmitBtn" type="submit">新增 Backend</button>
+                    <button class="ghost-button hidden" id="backendCancelBtn" type="button">取消</button>
+                  </div>
+                </form>
+              </div>
             </div>
           </section>
 
-          <section class="resource-panel" id="client-keys">
+          <section class="page resource-page" id="client-keys" data-page-title="Client Keys" data-page-breadcrumb="Dashboard / Client Keys">
             <div class="resource-header">
               <div class="section-heading">
                 <span class="section-label">Access</span>
                 <h3>Client Keys</h3>
                 <p>管理客户端入口凭据，并按需要覆盖模型策略中的 placement 行为。</p>
               </div>
+              <button id="addClientBtn" type="button">新增</button>
             </div>
-            <div class="resource-layout">
-              <form id="clientForm" class="editor-card">
-                <p class="edit-banner hidden" id="clientEditBanner">正在编辑 Client Key</p>
-                <label class="field">
-                  <span>Client Name</span>
-                  <input name="name" placeholder="production-web" required />
-                </label>
-                <label class="field">
-                  <span>Token</span>
-                  <input name="token" placeholder="留空则自动生成或保留旧 token" />
-                </label>
-                <div class="field-grid two-col">
-                  <label class="field">
-                    <span>Route Mode Override</span>
-                    <select name="route_mode_override">
-                      <option value="">Use policy default</option>
-                      <option value="sticky">sticky</option>
-                      <option value="pack">pack</option>
-                      <option value="spread">spread</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span>Route Group</span>
-                    <input name="route_group" placeholder="frontend-a / shared" />
-                  </label>
-                </div>
-                <label class="toggle-field">
-                  <span>Enabled</span>
-                  <span class="toggle-wrap">
-                    <input name="enabled" type="checkbox" checked />
-                    <span class="toggle-text">Client Key 可访问公网 API</span>
-                  </span>
-                </label>
-                <div class="button-row">
-                  <button id="clientSubmitBtn" type="submit">新增 Client Key</button>
-                  <button class="ghost-button hidden" id="clientCancelBtn" type="button">取消编辑</button>
-                </div>
-              </form>
+            <div class="resource-layout list-only">
               <div id="clientList" class="resource-list"></div>
+            </div>
+            <div id="clientModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="clientModalTitle">
+              <div class="modal-panel">
+                <div class="modal-header">
+                  <div>
+                    <span class="section-label">Client Key</span>
+                    <h3 id="clientModalTitle">新增 Client Key</h3>
+                  </div>
+                  <button class="icon-button" id="clientModalCloseBtn" type="button" aria-label="关闭 Client Key 弹窗">×</button>
+                </div>
+                <form id="clientForm" class="editor-card modal-form">
+                  <p class="edit-banner hidden" id="clientEditBanner">正在编辑 Client Key</p>
+                  <label class="field">
+                    <span>Client Name</span>
+                    <input name="name" placeholder="production-web" required />
+                  </label>
+                  <label class="field">
+                    <span>Token</span>
+                    <input name="token" placeholder="留空则自动生成或保留旧 token" />
+                  </label>
+                  <div class="field-grid two-col">
+                    <label class="field">
+                      <span>Route Mode Override</span>
+                      <select name="route_mode_override">
+                        <option value="">Use policy default</option>
+                        <option value="sticky">sticky</option>
+                        <option value="pack">pack</option>
+                        <option value="spread">spread</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Route Group</span>
+                      <input name="route_group" placeholder="frontend-a / shared" />
+                    </label>
+                  </div>
+                  <label class="toggle-field">
+                    <span>Enabled</span>
+                    <span class="toggle-wrap">
+                      <input name="enabled" type="checkbox" checked />
+                      <span class="toggle-text">Client Key 可访问公网 API</span>
+                    </span>
+                  </label>
+                  <div class="button-row">
+                    <button id="clientSubmitBtn" type="submit">新增 Client Key</button>
+                    <button class="ghost-button hidden" id="clientCancelBtn" type="button">取消</button>
+                  </div>
+                </form>
+              </div>
             </div>
           </section>
 
-          <section class="resource-panel" id="model-policies">
+          <section class="page resource-page" id="model-policies" data-page-title="Model Policies" data-page-breadcrumb="Dashboard / Model Policies">
             <div class="resource-header">
               <div class="section-heading">
                 <span class="section-label">Routing</span>
                 <h3>Model Policies</h3>
                 <p>按模型模式和端点定义 placement policy、backend pool 和 failover 行为。</p>
               </div>
+              <button id="addPolicyBtn" type="button">新增</button>
             </div>
-            <div class="resource-layout">
-              <form id="policyForm" class="editor-card">
-                <p class="edit-banner hidden" id="policyEditBanner">正在编辑 Model Policy</p>
-                <div class="field-grid two-col">
-                  <label class="field">
-                    <span>Model Pattern</span>
-                    <input name="pattern" placeholder="gpt-image-* / gpt-4o" required />
-                  </label>
-                  <label class="field">
-                    <span>Endpoint</span>
-                    <select name="endpoint">
-                      <option value="chat">chat</option>
-                      <option value="responses">responses</option>
-                      <option value="embeddings">embeddings</option>
-                      <option value="images">images</option>
-                      <option value="*">*</option>
-                    </select>
-                  </label>
-                </div>
-                <div class="field-grid two-col">
-                  <label class="field">
-                    <span>Placement Policy</span>
-                    <select name="placement_policy">
-                      <option value="sticky">sticky</option>
-                      <option value="pack">pack</option>
-                      <option value="spread">spread</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span>Backend Pool</span>
-                    <input name="backend_pool" placeholder="default / image / premium" />
-                  </label>
-                </div>
-                <div class="field-grid two-col">
-                  <label class="field">
-                    <span>Priority</span>
-                    <input name="priority" type="number" value="100" />
-                  </label>
-                  <label class="toggle-field">
-                    <span>Failover</span>
-                    <span class="toggle-wrap">
-                      <input name="failover_enabled" type="checkbox" checked />
-                      <span class="toggle-text">失败时自动切换下一个候选</span>
-                    </span>
-                  </label>
-                </div>
-                <div class="button-row">
-                  <button id="policySubmitBtn" type="submit">新增 Policy</button>
-                  <button class="ghost-button hidden" id="policyCancelBtn" type="button">取消编辑</button>
-                </div>
-              </form>
+            <div class="resource-layout list-only">
               <div id="policyList" class="resource-list"></div>
+            </div>
+            <div id="policyModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="policyModalTitle">
+              <div class="modal-panel">
+                <div class="modal-header">
+                  <div>
+                    <span class="section-label">Model Policy</span>
+                    <h3 id="policyModalTitle">新增 Policy</h3>
+                  </div>
+                  <button class="icon-button" id="policyModalCloseBtn" type="button" aria-label="关闭 Policy 弹窗">×</button>
+                </div>
+                <form id="policyForm" class="editor-card modal-form">
+                  <p class="edit-banner hidden" id="policyEditBanner">正在编辑 Model Policy</p>
+                  <div class="field-grid two-col">
+                    <label class="field">
+                      <span>Model Pattern</span>
+                      <input name="pattern" placeholder="gpt-image-* / gpt-4o" required />
+                    </label>
+                    <label class="field">
+                      <span>Endpoint</span>
+                      <select name="endpoint">
+                        <option value="chat">chat</option>
+                        <option value="responses">responses</option>
+                        <option value="embeddings">embeddings</option>
+                        <option value="images">images</option>
+                        <option value="*">*</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="field-grid two-col">
+                    <label class="field">
+                      <span>Placement Policy</span>
+                      <select name="placement_policy">
+                        <option value="sticky">sticky</option>
+                        <option value="pack">pack</option>
+                        <option value="spread">spread</option>
+                      </select>
+                    </label>
+                    <label class="field">
+                      <span>Backend Pool</span>
+                      <input name="backend_pool" placeholder="default / image / premium" />
+                    </label>
+                  </div>
+                  <div class="field-grid two-col">
+                    <label class="field">
+                      <span>Priority</span>
+                      <input name="priority" type="number" value="100" />
+                    </label>
+                    <label class="toggle-field">
+                      <span>Failover</span>
+                      <span class="toggle-wrap">
+                        <input name="failover_enabled" type="checkbox" checked />
+                        <span class="toggle-text">失败时自动切换下一个候选</span>
+                      </span>
+                    </label>
+                  </div>
+                  <div class="button-row">
+                    <button id="policySubmitBtn" type="submit">新增 Policy</button>
+                    <button class="ghost-button hidden" id="policyCancelBtn" type="button">取消</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </section>
+
+          <section class="page resource-page" id="events" data-page-title="Recent Events" data-page-breadcrumb="Dashboard / Events">
+            <div class="resource-header">
+              <div class="section-heading">
+                <span class="section-label">Activity</span>
+                <h3>Recent Events</h3>
+                <p>展示最近的配置变更、failover 记录和上游异常事件。</p>
+              </div>
+            </div>
+            <div class="resource-layout list-only">
+              <div id="eventList" class="resource-list"></div>
             </div>
           </section>
         </main>
