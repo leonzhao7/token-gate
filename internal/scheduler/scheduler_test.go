@@ -50,7 +50,7 @@ func TestSelectBackendMatchesModelPatternEndpointAndPool(t *testing.T) {
 		Priority:        100,
 	})
 
-	service := New(st, time.Second)
+	service := New(st, time.Second, 1)
 	selection, err := service.SelectBackend(ctx, domain.ClientKey{TokenHash: "client-a"}, domain.EndpointImages, "gpt-image-2")
 	if err != nil {
 		t.Fatalf("SelectBackend returned error: %v", err)
@@ -110,7 +110,7 @@ func TestFailedBackendIsSkippedWhileAvailableCandidateExists(t *testing.T) {
 		Endpoints: []string{domain.EndpointChat},
 	})
 
-	service := New(st, time.Minute)
+	service := New(st, time.Minute, 2)
 	client := domain.ClientKey{TokenHash: "client-a"}
 	initial, err := service.SelectBackend(ctx, client, domain.EndpointChat, "gpt-4o")
 	if err != nil {
@@ -121,6 +121,16 @@ func TestFailedBackendIsSkippedWhileAvailableCandidateExists(t *testing.T) {
 	}
 
 	service.MarkFailure(initial.Candidates[0].ID, assertErr("upstream failed"))
+
+	stillAvailable, err := service.SelectBackend(ctx, client, domain.EndpointChat, "gpt-4o")
+	if err != nil {
+		t.Fatalf("SelectBackend below cooling threshold returned error: %v", err)
+	}
+	if len(stillAvailable.Candidates) != 2 {
+		t.Fatalf("expected both candidates before cooling threshold, got %d", len(stillAvailable.Candidates))
+	}
+
+	service.MarkFailure(initial.Candidates[0].ID, assertErr("upstream failed again"))
 
 	afterFailure, err := service.SelectBackend(ctx, client, domain.EndpointChat, "gpt-4o")
 	if err != nil {
@@ -134,13 +144,11 @@ func TestFailedBackendIsSkippedWhileAvailableCandidateExists(t *testing.T) {
 	}
 
 	service.MarkFailure(afterFailure.Candidates[0].ID, assertErr("second upstream failed"))
+	service.MarkFailure(afterFailure.Candidates[0].ID, assertErr("second upstream failed again"))
 
 	allCooling, err := service.SelectBackend(ctx, client, domain.EndpointChat, "gpt-4o")
-	if err != nil {
-		t.Fatalf("SelectBackend with all candidates cooling returned error: %v", err)
-	}
-	if len(allCooling.Candidates) != 2 {
-		t.Fatalf("expected cooling candidates as last resort, got %d", len(allCooling.Candidates))
+	if err != ErrNoBackendAvailable {
+		t.Fatalf("expected ErrNoBackendAvailable when all candidates are cooling, got selection=%#v err=%v", allCooling, err)
 	}
 }
 

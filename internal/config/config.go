@@ -12,6 +12,7 @@ type Config struct {
 	AdminToken      string
 	LogLevel        string
 	BackendCooldown time.Duration
+	BackendFails    int
 	RequestTimeout  time.Duration
 	ShutdownTimeout time.Duration
 }
@@ -23,6 +24,7 @@ func Load() Config {
 		AdminToken:      getenv("TG_ADMIN_TOKEN", "dev-admin-token"),
 		LogLevel:        getenv("TG_LOG_LEVEL", "info"),
 		BackendCooldown: getDuration("TG_BACKEND_COOLDOWN", 20*time.Second),
+		BackendFails:    getInt("TG_BACKEND_FAILS", 3),
 		RequestTimeout:  getDuration("TG_REQUEST_TIMEOUT", 30*time.Second),
 		ShutdownTimeout: getDuration("TG_SHUTDOWN_TIMEOUT", 10*time.Second),
 	}
@@ -42,6 +44,15 @@ func getDuration(key string, fallback time.Duration) time.Duration {
 		}
 		if seconds, err := strconv.Atoi(value); err == nil {
 			return time.Duration(seconds) * time.Second
+		}
+	}
+	return fallback
+}
+
+func getInt(key string, fallback int) int {
+	if value := os.Getenv(key); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil {
+			return parsed
 		}
 	}
 	return fallback

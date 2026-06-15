@@ -64,7 +64,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	app := &App{
 		cfg:       cfg,
 		store:     st,
-		scheduler: scheduler.New(st, cfg.BackendCooldown),
+		scheduler: scheduler.New(st, cfg.BackendCooldown, cfg.BackendFails),
 		proxy:     proxy.New(cfg.RequestTimeout),
 		mux:       http.NewServeMux(),
 		logger:    slog.Default().With("component", "app"),

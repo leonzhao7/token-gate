@@ -133,7 +133,7 @@ Eligibility 条件：
 - backend 支持请求 endpoint。
 - backend 支持请求 model。
 - 如果 model policy 指定了 backend pool，则 backend 必须属于该 pool。
-- backend 未处于冷却期；如果全部候选都处于冷却期，会把冷却中的候选作为最后兜底。
+- backend 未处于冷却期；如果全部候选都处于冷却期，则直接返回失败。
 
 模型匹配支持：
 
@@ -234,7 +234,7 @@ Token Gate 不自动探测 backend health，不会后台周期性请求上游。
 被动失败：
 
 - 代理请求失败或返回可重试状态时，调用 `MarkFailure`。
-- backend 进入冷却期。
+- backend 连续失败达到阈值后进入冷却期。
 - 连续失败越多，冷却时间越长，当前上限为 5 倍基础冷却时间。
 
 恢复：
@@ -431,7 +431,8 @@ Token Gate 使用 Go `slog` 输出结构化文本日志，默认写到 stdout。
 - `TG_DB_PATH`: SQLite 数据库路径。
 - `TG_ADMIN_TOKEN`: 管理 API token。
 - `TG_LOG_LEVEL`: 日志级别，支持 `debug`、`info`、`warn`、`error`，默认 `info`。
-- `TG_BACKEND_COOLDOWN`: backend 失败后的基础冷却时间。
+- `TG_BACKEND_COOLDOWN`: backend 达到失败阈值后的基础冷却时间。
+- `TG_BACKEND_FAILS`: backend 连续失败多少次后进入冷却，默认 `3`。
 - `TG_REQUEST_TIMEOUT`: 上游响应头超时时间。
 - `TG_SHUTDOWN_TIMEOUT`: 优雅关闭超时。
 
@@ -454,7 +455,7 @@ Token Gate 使用 Go `slog` 输出结构化文本日志，默认写到 stdout。
 
 - 调度器模型通配、endpoint、pool 和 placement policy。
 - `pack` 模式 route group 行为。
-- backend 失败后冷却和健康候选优先。
+- backend 连续失败阈值、冷却和全候选 cooling 直接失败。
 - 代理层请求 body/path/query/header 透明转发。
 - backend `Authorization` 替换。
 - backend SOCKS5 代理转发。

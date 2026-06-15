@@ -11,6 +11,11 @@
 - `/v1/models`
 - 管理端 `/admin/`
 
+文档：
+
+- 设计总览：`docs/DESIGN.md`
+- 调度说明：`docs/SCHEDULING.md`
+
 ## 设计约束
 
 - 代理层只做认证、调度、故障切换和 header 必要改写，不改写请求体或响应体。
@@ -45,6 +50,7 @@ SQLite 使用 `WAL` 模式，适合当前“小规模、单表不超过 5 万行
 export TG_ADMIN_TOKEN='replace-me'
 export TG_DB_PATH='./token-gate.db'
 export TG_LOG_LEVEL='info'
+export TG_BACKEND_FAILS='3'
 go run ./cmd/token-gate
 ```
 

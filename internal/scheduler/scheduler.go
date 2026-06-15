@@ -41,14 +41,19 @@ type runtimeState struct {
 type Service struct {
 	store           *store.Store
 	backendCooldown time.Duration
+	backendFails    int
 	mu              sync.RWMutex
 	states          map[int64]*runtimeState
 }
 
-func New(store *store.Store, backendCooldown time.Duration) *Service {
+func New(store *store.Store, backendCooldown time.Duration, backendFails int) *Service {
+	if backendFails < 1 {
+		backendFails = 1
+	}
 	return &Service{
 		store:           store,
 		backendCooldown: backendCooldown,
+		backendFails:    backendFails,
 		states:          make(map[int64]*runtimeState),
 	}
 }
@@ -68,7 +73,6 @@ func (s *Service) SelectBackend(ctx context.Context, client domain.ClientKey, en
 	routeKey := buildRouteKey(client, model, placement)
 
 	var available []scoredBackend
-	var cooling []scoredBackend
 	now := time.Now().UTC()
 
 	for _, backend := range backends {
@@ -89,20 +93,15 @@ func (s *Service) SelectBackend(ctx context.Context, client domain.ClientKey, en
 		score := rendezvousScore(routeKey, backend, placement, state.activeRequests.Load())
 
 		if !state.cooldownUntil.IsZero() && state.cooldownUntil.After(now) {
-			cooling = append(cooling, scoredBackend{backend: backend, score: score})
 			continue
 		}
 		available = append(available, scoredBackend{backend: backend, score: score})
 	}
 
 	sortBackends(available)
-	sortBackends(cooling)
 
 	if len(available) > 0 {
 		return Selection{Policy: policy, Candidates: unwrapBackends(available)}, nil
-	}
-	if len(cooling) > 0 {
-		return Selection{Policy: policy, Candidates: unwrapBackends(cooling)}, nil
 	}
 	return Selection{}, ErrNoBackendAvailable
 }
@@ -134,6 +133,9 @@ func (s *Service) MarkFailure(backendID int64, err error) {
 
 	state.consecutiveFailures++
 	state.lastError = errorString(err)
+	if state.consecutiveFailures < s.backendFails {
+		return
+	}
 	backoff := s.backendCooldown
 	if backoff <= 0 {
 		backoff = 20 * time.Second
