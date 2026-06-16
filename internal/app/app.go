@@ -50,6 +50,13 @@ type overviewResponse struct {
 	Events        []domain.AuditEvent `json:"events"`
 }
 
+type pagedListResponse struct {
+	Items []any `json:"items"`
+	Total int   `json:"total"`
+	Page  int   `json:"page"`
+	Limit int   `json:"limit"`
+}
+
 type backendView struct {
 	domain.Backend
 	Runtime scheduler.BackendRuntime `json:"runtime"`
@@ -410,12 +417,18 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleListSocksProxies(w http.ResponseWriter, r *http.Request) {
-	proxies, err := a.store.ListSocksProxies(r.Context())
+	page, limit := parsePageQuery(r)
+	total, err := a.store.CountSocksProxies(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, ensureSocksProxies(proxies))
+	proxies, err := a.store.ListSocksProxiesPage(r.Context(), limit, pageOffset(page, limit))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, pagedResponse(ensureSocksProxies(proxies), total, page, limit))
 }
 
 func (a *App) handleCreateSocksProxy(w http.ResponseWriter, r *http.Request) {
@@ -514,7 +527,13 @@ func (a *App) handleDeleteSocksProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleListBackends(w http.ResponseWriter, r *http.Request) {
-	backends, err := a.store.ListBackends(r.Context())
+	page, limit := parsePageQuery(r)
+	total, err := a.store.CountBackends(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	backends, err := a.store.ListBackendsPage(r.Context(), limit, pageOffset(page, limit))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -528,7 +547,7 @@ func (a *App) handleListBackends(w http.ResponseWriter, r *http.Request) {
 			Runtime: snapshot[backend.ID],
 		})
 	}
-	writeJSON(w, http.StatusOK, ensureBackendViews(response))
+	writeJSON(w, http.StatusOK, pagedResponse(ensureBackendViews(response), total, page, limit))
 }
 
 func (a *App) handleCreateBackend(w http.ResponseWriter, r *http.Request) {
@@ -661,12 +680,18 @@ func (a *App) handleDeleteBackend(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleListClientKeys(w http.ResponseWriter, r *http.Request) {
-	clients, err := a.store.ListClientKeys(r.Context())
+	page, limit := parsePageQuery(r)
+	total, err := a.store.CountClientKeys(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, ensureClientKeys(clients))
+	clients, err := a.store.ListClientKeysPage(r.Context(), limit, pageOffset(page, limit))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, pagedResponse(ensureClientKeys(clients), total, page, limit))
 }
 
 func (a *App) handleCreateClientKey(w http.ResponseWriter, r *http.Request) {
@@ -779,12 +804,18 @@ func (a *App) handleDeleteClientKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleListPolicies(w http.ResponseWriter, r *http.Request) {
-	policies, err := a.store.ListModelPolicies(r.Context())
+	page, limit := parsePageQuery(r)
+	total, err := a.store.CountModelPolicies(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, ensureModelPolicies(policies))
+	policies, err := a.store.ListModelPoliciesPage(r.Context(), limit, pageOffset(page, limit))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, pagedResponse(ensureModelPolicies(policies), total, page, limit))
 }
 
 func (a *App) handleCreatePolicy(w http.ResponseWriter, r *http.Request) {
@@ -871,13 +902,18 @@ func (a *App) handleDeletePolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleListEvents(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	events, err := a.store.ListAuditEvents(r.Context(), limit)
+	page, limit := parsePageQuery(r)
+	total, err := a.store.CountAuditEvents(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, ensureAuditEvents(events))
+	events, err := a.store.ListAuditEventsPage(r.Context(), limit, pageOffset(page, limit))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, pagedResponse(ensureAuditEvents(events), total, page, limit))
 }
 
 func (a *App) adminAuth(next http.Handler) http.Handler {
@@ -1093,4 +1129,37 @@ func ensureAuditEvents(values []domain.AuditEvent) []domain.AuditEvent {
 		return []domain.AuditEvent{}
 	}
 	return values
+}
+
+func parsePageQuery(r *http.Request) (int, int) {
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if page < 1 {
+		page = 1
+	}
+	switch limit {
+	case 10, 20, 50:
+	default:
+		limit = 10
+	}
+	return page, limit
+}
+
+func pageOffset(page, limit int) int {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10
+	}
+	return (page - 1) * limit
+}
+
+func pagedResponse(items any, total, page, limit int) map[string]any {
+	return map[string]any{
+		"items": items,
+		"total": total,
+		"page":  page,
+		"limit": limit,
+	}
 }

@@ -201,6 +201,33 @@ func (s *Store) ListClientKeys(ctx context.Context) ([]domain.ClientKey, error) 
 	return clients, rows.Err()
 }
 
+func (s *Store) CountClientKeys(ctx context.Context) (int, error) {
+	return countRows(ctx, s.db, "client_keys")
+}
+
+func (s *Store) ListClientKeysPage(ctx context.Context, limit, offset int) ([]domain.ClientKey, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, name, token_hash, token, token_prefix, enabled, route_mode_override, route_group, created_at, updated_at
+		FROM client_keys
+		ORDER BY id DESC
+		LIMIT ? OFFSET ?
+	`, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clients []domain.ClientKey
+	for rows.Next() {
+		client, err := scanClientKey(rows)
+		if err != nil {
+			return nil, err
+		}
+		clients = append(clients, client)
+	}
+	return clients, rows.Err()
+}
+
 func (s *Store) CreateClientKey(ctx context.Context, client domain.ClientKey) (domain.ClientKey, error) {
 	now := time.Now().UTC()
 	client.CreatedAt = now
@@ -273,6 +300,33 @@ func (s *Store) ListSocksProxies(ctx context.Context) ([]domain.SocksProxy, erro
 		FROM socks_proxies
 		ORDER BY id DESC
 	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var proxies []domain.SocksProxy
+	for rows.Next() {
+		proxy, err := scanSocksProxy(rows)
+		if err != nil {
+			return nil, err
+		}
+		proxies = append(proxies, proxy)
+	}
+	return proxies, rows.Err()
+}
+
+func (s *Store) CountSocksProxies(ctx context.Context) (int, error) {
+	return countRows(ctx, s.db, "socks_proxies")
+}
+
+func (s *Store) ListSocksProxiesPage(ctx context.Context, limit, offset int) ([]domain.SocksProxy, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, name, address, username, password, enabled, created_at, updated_at
+		FROM socks_proxies
+		ORDER BY id DESC
+		LIMIT ? OFFSET ?
+	`, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -371,6 +425,36 @@ func (s *Store) ListBackends(ctx context.Context) ([]domain.Backend, error) {
 		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
 		ORDER BY b.id DESC
 	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var backends []domain.Backend
+	for rows.Next() {
+		backend, err := scanBackendWithProxy(rows)
+		if err != nil {
+			return nil, err
+		}
+		backends = append(backends, backend)
+	}
+	return backends, rows.Err()
+}
+
+func (s *Store) CountBackends(ctx context.Context) (int, error) {
+	return countRows(ctx, s.db, "backends")
+}
+
+func (s *Store) ListBackendsPage(ctx context.Context, limit, offset int) ([]domain.Backend, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.weight, b.model_list, b.endpoint_list, b.created_at, b.updated_at,
+			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
+		FROM backends b
+		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
+		ORDER BY b.id DESC
+		LIMIT ? OFFSET ?
+	`, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -487,6 +571,33 @@ func (s *Store) ListModelPolicies(ctx context.Context) ([]domain.ModelPolicy, er
 	return policies, rows.Err()
 }
 
+func (s *Store) CountModelPolicies(ctx context.Context) (int, error) {
+	return countRows(ctx, s.db, "model_policies")
+}
+
+func (s *Store) ListModelPoliciesPage(ctx context.Context, limit, offset int) ([]domain.ModelPolicy, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, pattern, endpoint, placement_policy, backend_pool, failover_enabled, priority, created_at, updated_at
+		FROM model_policies
+		ORDER BY priority ASC, id DESC
+		LIMIT ? OFFSET ?
+	`, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var policies []domain.ModelPolicy
+	for rows.Next() {
+		policy, err := scanModelPolicy(rows)
+		if err != nil {
+			return nil, err
+		}
+		policies = append(policies, policy)
+	}
+	return policies, rows.Err()
+}
+
 func (s *Store) CreateModelPolicy(ctx context.Context, policy domain.ModelPolicy) (domain.ModelPolicy, error) {
 	now := time.Now().UTC()
 	policy.CreatedAt = now
@@ -583,6 +694,33 @@ func (s *Store) ListAuditEvents(ctx context.Context, limit int) ([]domain.AuditE
 		ORDER BY id DESC
 		LIMIT ?
 	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []domain.AuditEvent
+	for rows.Next() {
+		event, err := scanAuditEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, rows.Err()
+}
+
+func (s *Store) CountAuditEvents(ctx context.Context) (int, error) {
+	return countRows(ctx, s.db, "audit_events")
+}
+
+func (s *Store) ListAuditEventsPage(ctx context.Context, limit, offset int) ([]domain.AuditEvent, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, level, type, message, client_name, model, endpoint, backend_name, created_at
+		FROM audit_events
+		ORDER BY id DESC
+		LIMIT ? OFFSET ?
+	`, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -807,6 +945,15 @@ func parseTime(value string) time.Time {
 		return time.Time{}
 	}
 	return parsed
+}
+
+func countRows(ctx context.Context, db *sql.DB, table string) (int, error) {
+	row := db.QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", table))
+	var total int
+	if err := row.Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 func formatTime(value time.Time) string {

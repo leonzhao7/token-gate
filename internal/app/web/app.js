@@ -47,11 +47,20 @@ const policyCancelBtn = document.querySelector("#policyCancelBtn");
 const policyEditBanner = document.querySelector("#policyEditBanner");
 
 const ADMIN_TOKEN_KEY = "token-gate-admin-token";
+const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const state = {
   proxies: [],
   backends: [],
   clients: [],
   policies: [],
+  events: [],
+  paginationMeta: {
+    proxies: { total: 0, page: 1, limit: 10 },
+    backends: { total: 0, page: 1, limit: 10 },
+    clients: { total: 0, page: 1, limit: 10 },
+    policies: { total: 0, page: 1, limit: 10 },
+    events: { total: 0, page: 1, limit: 10 },
+  },
   editingProxyID: null,
   editingBackendID: null,
   editingClientID: null,
@@ -60,6 +69,13 @@ const state = {
   expandedBackends: new Set(),
   expandedClients: new Set(),
   expandedPolicies: new Set(),
+  pagination: {
+    proxies: { page: 1, size: 10 },
+    backends: { page: 1, size: 10 },
+    clients: { page: 1, size: 10 },
+    policies: { page: 1, size: 10 },
+    events: { page: 1, size: 10 },
+  },
 };
 
 tokenInput.value = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
@@ -230,29 +246,35 @@ policyForm.addEventListener("submit", async (event) => {
 });
 
 async function refreshAll() {
+  const proxyPage = state.pagination.proxies;
+  const backendPage = state.pagination.backends;
+  const clientPage = state.pagination.clients;
+  const policyPage = state.pagination.policies;
+  const eventPage = state.pagination.events;
   const [overview, proxies, backends, clients, policies, events] = await Promise.all([
     api("/admin/api/overview"),
-    api("/admin/api/socks-proxies"),
-    api("/admin/api/backends"),
-    api("/admin/api/client-keys"),
-    api("/admin/api/model-policies"),
-    api("/admin/api/events?limit=20"),
+    api(`/admin/api/socks-proxies?page=${proxyPage.page}&limit=${proxyPage.size}`),
+    api(`/admin/api/backends?page=${backendPage.page}&limit=${backendPage.size}`),
+    api(`/admin/api/client-keys?page=${clientPage.page}&limit=${clientPage.size}`),
+    api(`/admin/api/model-policies?page=${policyPage.page}&limit=${policyPage.size}`),
+    api(`/admin/api/events?page=${eventPage.page}&limit=${eventPage.size}`),
   ]);
 
   overview.backends = ensureArray(overview.backends);
   overview.events = ensureArray(overview.events);
-  state.proxies = ensureArray(proxies);
-  state.backends = ensureArray(backends);
-  state.clients = ensureArray(clients);
-  state.policies = ensureArray(policies);
+  applyPagedResponse("proxies", proxies);
+  applyPagedResponse("backends", backends);
+  applyPagedResponse("clients", clients);
+  applyPagedResponse("policies", policies);
+  applyPagedResponse("events", events);
 
   renderStats(overview);
   renderProxyOptions();
-  renderProxies(state.proxies);
-  renderBackends(state.backends);
-  renderClients(state.clients);
-  renderPolicies(state.policies);
-  renderEvents(ensureArray(events));
+  renderProxies();
+  renderBackends();
+  renderClients();
+  renderPolicies();
+  renderEvents();
 }
 
 function renderStats(overview) {
@@ -308,7 +330,8 @@ function activatePage(id) {
   }
 }
 
-function renderProxies(proxies) {
+function renderProxies() {
+  const proxies = state.proxies;
   if (proxies.length === 0) {
     proxyList.innerHTML = emptyState(
       "还没有 SOCKS5 Proxy",
@@ -316,6 +339,7 @@ function renderProxies(proxies) {
     );
     return;
   }
+  const pageData = currentPageData("proxies", proxies);
 
   proxyList.innerHTML = `
     <div class="table-shell">
@@ -331,16 +355,17 @@ function renderProxies(proxies) {
           </tr>
         </thead>
         <tbody>
-          ${proxies.map(renderProxyRow).join("")}
+          ${pageData.items.map(renderProxyRow).join("")}
         </tbody>
       </table>
     </div>
+    ${renderPagination("proxies", pageData)}
   `;
 
   proxyList.querySelectorAll("[data-toggle-proxy]").forEach((button) => {
     button.addEventListener("click", () => {
       toggleExpanded(state.expandedProxies, button.dataset.toggleProxy);
-      renderProxies(state.proxies);
+      renderProxies();
     });
   });
 
@@ -367,9 +392,12 @@ function renderProxies(proxies) {
       }
     });
   });
+
+  bindPagination(proxyList, "proxies", refreshAll);
 }
 
-function renderBackends(backends) {
+function renderBackends() {
+  const backends = state.backends;
   if (backends.length === 0) {
     backendList.innerHTML = emptyState(
       "还没有 Backend",
@@ -377,6 +405,7 @@ function renderBackends(backends) {
     );
     return;
   }
+  const pageData = currentPageData("backends", backends);
 
   backendList.innerHTML = `
     <div class="table-shell">
@@ -395,16 +424,17 @@ function renderBackends(backends) {
           </tr>
         </thead>
         <tbody>
-          ${backends.map(renderBackendRow).join("")}
+          ${pageData.items.map(renderBackendRow).join("")}
         </tbody>
       </table>
     </div>
+    ${renderPagination("backends", pageData)}
   `;
 
   backendList.querySelectorAll("[data-toggle-backend]").forEach((button) => {
     button.addEventListener("click", () => {
       toggleExpanded(state.expandedBackends, button.dataset.toggleBackend);
-      renderBackends(state.backends);
+      renderBackends();
     });
   });
 
@@ -431,9 +461,12 @@ function renderBackends(backends) {
       }
     });
   });
+
+  bindPagination(backendList, "backends", refreshAll);
 }
 
-function renderClients(clients) {
+function renderClients() {
+  const clients = state.clients;
   if (clients.length === 0) {
     clientList.innerHTML = emptyState(
       "还没有 Client Key",
@@ -441,6 +474,7 @@ function renderClients(clients) {
     );
     return;
   }
+  const pageData = currentPageData("clients", clients);
 
   clientList.innerHTML = `
     <div class="table-shell">
@@ -457,16 +491,17 @@ function renderClients(clients) {
           </tr>
         </thead>
         <tbody>
-          ${clients.map(renderClientRow).join("")}
+          ${pageData.items.map(renderClientRow).join("")}
         </tbody>
       </table>
     </div>
+    ${renderPagination("clients", pageData)}
   `;
 
   clientList.querySelectorAll("[data-toggle-client]").forEach((button) => {
     button.addEventListener("click", () => {
       toggleExpanded(state.expandedClients, button.dataset.toggleClient);
-      renderClients(state.clients);
+      renderClients();
     });
   });
 
@@ -493,9 +528,12 @@ function renderClients(clients) {
       }
     });
   });
+
+  bindPagination(clientList, "clients", refreshAll);
 }
 
-function renderPolicies(policies) {
+function renderPolicies() {
+  const policies = state.policies;
   if (policies.length === 0) {
     policyList.innerHTML = emptyState(
       "还没有 Model Policy",
@@ -503,6 +541,7 @@ function renderPolicies(policies) {
     );
     return;
   }
+  const pageData = currentPageData("policies", policies);
 
   policyList.innerHTML = `
     <div class="table-shell">
@@ -519,16 +558,17 @@ function renderPolicies(policies) {
           </tr>
         </thead>
         <tbody>
-          ${policies.map(renderPolicyRow).join("")}
+          ${pageData.items.map(renderPolicyRow).join("")}
         </tbody>
       </table>
     </div>
+    ${renderPagination("policies", pageData)}
   `;
 
   policyList.querySelectorAll("[data-toggle-policy]").forEach((button) => {
     button.addEventListener("click", () => {
       toggleExpanded(state.expandedPolicies, button.dataset.togglePolicy);
-      renderPolicies(state.policies);
+      renderPolicies();
     });
   });
 
@@ -555,6 +595,8 @@ function renderPolicies(policies) {
       }
     });
   });
+
+  bindPagination(policyList, "policies", refreshAll);
 }
 
 function renderProxyRow(proxy) {
@@ -572,7 +614,7 @@ function renderProxyRow(proxy) {
       <td>${statusPill(proxy.enabled, "enabled", "disabled")}</td>
       <td><span class="secret-text">${escapeHTML(proxy.address)}</span></td>
       <td>${escapeHTML(proxy.username ? `user: ${proxy.username}` : "none")}</td>
-      <td>${escapeHTML(proxy.updated_at || "-")}</td>
+      <td>${escapeHTML(formatDateTime(proxy.updated_at))}</td>
       <td>${tableActions("proxy", proxy.id)}</td>
     </tr>
     ${expanded ? `
@@ -584,8 +626,8 @@ function renderProxyRow(proxy) {
               <div><strong>Address</strong><span>${escapeHTML(proxy.address)}</span></div>
               <div><strong>Username</strong><span>${escapeHTML(proxy.username || "-")}</span></div>
               <div><strong>Password</strong><span>${escapeHTML(proxy.password || "-")}</span></div>
-              <div><strong>Created</strong><span>${escapeHTML(proxy.created_at || "-")}</span></div>
-              <div><strong>Updated</strong><span>${escapeHTML(proxy.updated_at || "-")}</span></div>
+              <div><strong>Created</strong><span>${escapeHTML(formatDateTime(proxy.created_at))}</span></div>
+              <div><strong>Updated</strong><span>${escapeHTML(formatDateTime(proxy.updated_at))}</span></div>
             </div>
           </div>
         </td>
@@ -630,10 +672,10 @@ function renderBackendRow(backend) {
               <div><strong>Proxy Address</strong><span>${escapeHTML(backend.proxy?.address || "-")}</span></div>
               <div><strong>Pool</strong><span>${escapeHTML(backend.pool || "-")}</span></div>
               <div><strong>Weight</strong><span>${backend.weight}</span></div>
-              <div><strong>Cooldown Until</strong><span>${escapeHTML(runtime.cooldown_until || "-")}</span></div>
+              <div><strong>Cooldown Until</strong><span>${escapeHTML(formatDateTime(runtime.cooldown_until))}</span></div>
               <div><strong>Last Error</strong><span>${escapeHTML(runtime.last_error || "-")}</span></div>
-              <div><strong>Created</strong><span>${escapeHTML(backend.created_at || "-")}</span></div>
-              <div><strong>Updated</strong><span>${escapeHTML(backend.updated_at || "-")}</span></div>
+              <div><strong>Created</strong><span>${escapeHTML(formatDateTime(backend.created_at))}</span></div>
+              <div><strong>Updated</strong><span>${escapeHTML(formatDateTime(backend.updated_at))}</span></div>
             </div>
             <div class="detail-section">
               <strong>Models</strong>
@@ -666,7 +708,7 @@ function renderClientRow(client) {
       <td><span class="secret-text">${escapeHTML(clientTokenDisplay(client))}</span></td>
       <td>${escapeHTML(client.route_mode_override || "default")}</td>
       <td>${escapeHTML(client.route_group || "-")}</td>
-      <td>${escapeHTML(client.updated_at || "-")}</td>
+      <td>${escapeHTML(formatDateTime(client.updated_at))}</td>
       <td>${tableActions("client", client.id)}</td>
     </tr>
     ${expanded ? `
@@ -679,8 +721,8 @@ function renderClientRow(client) {
               <div><strong>Token Prefix</strong><span>${escapeHTML(client.token_prefix || "-")}</span></div>
               <div><strong>Route Override</strong><span>${escapeHTML(client.route_mode_override || "policy default")}</span></div>
               <div><strong>Route Group</strong><span>${escapeHTML(client.route_group || "-")}</span></div>
-              <div><strong>Created</strong><span>${escapeHTML(client.created_at || "-")}</span></div>
-              <div><strong>Updated</strong><span>${escapeHTML(client.updated_at || "-")}</span></div>
+              <div><strong>Created</strong><span>${escapeHTML(formatDateTime(client.created_at))}</span></div>
+              <div><strong>Updated</strong><span>${escapeHTML(formatDateTime(client.updated_at))}</span></div>
             </div>
           </div>
         </td>
@@ -719,8 +761,8 @@ function renderPolicyRow(policy) {
               <div><strong>Backend Pool</strong><span>${escapeHTML(policy.backend_pool || "-")}</span></div>
               <div><strong>Priority</strong><span>${policy.priority}</span></div>
               <div><strong>Failover</strong><span>${policy.failover_enabled ? "enabled" : "disabled"}</span></div>
-              <div><strong>Created</strong><span>${escapeHTML(policy.created_at || "-")}</span></div>
-              <div><strong>Updated</strong><span>${escapeHTML(policy.updated_at || "-")}</span></div>
+              <div><strong>Created</strong><span>${escapeHTML(formatDateTime(policy.created_at))}</span></div>
+              <div><strong>Updated</strong><span>${escapeHTML(formatDateTime(policy.updated_at))}</span></div>
             </div>
           </div>
         </td>
@@ -729,7 +771,8 @@ function renderPolicyRow(policy) {
   `;
 }
 
-function renderEvents(events) {
+function renderEvents() {
+  const events = state.events;
   if (events.length === 0) {
     eventList.innerHTML = emptyState(
       "还没有事件",
@@ -737,19 +780,149 @@ function renderEvents(events) {
     );
     return;
   }
+  const pageData = currentPageData("events", events);
 
-  eventList.innerHTML = events.map((event) => `
-    <article class="event-item">
-      <h4>${escapeHTML(event.type)}</h4>
-      <div>${escapeHTML(event.message)}</div>
-      <div class="event-line">
-        ${escapeHTML(event.created_at)}
+  eventList.innerHTML = `
+    <div class="event-table-shell">
+      <div class="event-table">
+        <div class="event-table-head">
+          <span>Time</span>
+          <span>Type</span>
+          <span>Client</span>
+          <span>Backend</span>
+          <span>Endpoint</span>
+          <span>Model</span>
+          <span>Message</span>
+        </div>
+        <div class="event-table-body">
+          ${pageData.items.map((event) => `
+            <div class="event-row">
+              <span>${escapeHTML(formatDateTime(event.created_at))}</span>
+              <span>${escapeHTML(event.type)}</span>
+              <span>${escapeHTML(event.client_name || "-")}</span>
+              <span>${escapeHTML(event.backend_name || "-")}</span>
+              <span>${escapeHTML(event.endpoint || "-")}</span>
+              <span>${escapeHTML(event.model || "-")}</span>
+              <span>${escapeHTML(event.message)}</span>
+            </div>
+          `).join("")}
+        </div>
       </div>
-      <div class="event-line">
-        client=${escapeHTML(event.client_name || "-")} | backend=${escapeHTML(event.backend_name || "-")} | model=${escapeHTML(event.model || "-")}
+    </div>
+    ${renderPagination("events", pageData)}
+  `;
+
+  bindPagination(eventList, "events", refreshAll);
+}
+
+function bindPagination(container, key, rerender) {
+  container.querySelector(`[data-page-size="${key}"]`)?.addEventListener("change", async (event) => {
+    state.pagination[key].size = Number(event.currentTarget.value || 10);
+    state.pagination[key].page = 1;
+    await rerender().catch(reportError);
+  });
+
+  container.querySelector(`[data-page-prev="${key}"]`)?.addEventListener("click", async () => {
+    state.pagination[key].page = Math.max(1, state.pagination[key].page - 1);
+    await rerender().catch(reportError);
+  });
+
+  container.querySelector(`[data-page-next="${key}"]`)?.addEventListener("click", async () => {
+    state.pagination[key].page += 1;
+    await rerender().catch(reportError);
+  });
+
+  container.querySelectorAll(`[data-page-number="${key}"]`).forEach((button) => {
+    button.addEventListener("click", async () => {
+      state.pagination[key].page = Number(button.dataset.pageValue || 1);
+      await rerender().catch(reportError);
+    });
+  });
+}
+
+function currentPageData(key, items) {
+  const normalized = ensureArray(items);
+  const pageState = state.pagination[key];
+  const meta = state.paginationMeta[key];
+  const size = PAGE_SIZE_OPTIONS.includes(Number(pageState?.size)) ? Number(pageState.size) : 10;
+  const total = Number(meta?.total) || 0;
+  const page = Math.max(1, Number(meta?.page) || 1);
+  const totalPages = Math.max(1, Math.ceil(total / size));
+  return {
+    items: normalized,
+    page,
+    size,
+    total,
+    totalPages,
+  };
+}
+
+function applyPagedResponse(key, payload) {
+  const pageState = state.pagination[key];
+  const metaState = state.paginationMeta[key];
+  const items = ensureArray(payload?.items);
+  const total = Number(payload?.total) || 0;
+  const limit = PAGE_SIZE_OPTIONS.includes(Number(payload?.limit)) ? Number(payload.limit) : pageState.size;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const page = Math.min(Math.max(1, Number(payload?.page) || 1), totalPages);
+
+  pageState.page = page;
+  pageState.size = limit;
+  metaState.total = total;
+  metaState.page = page;
+  metaState.limit = limit;
+
+  state[key] = items;
+}
+
+function renderPagination(key, pageData) {
+  const pageState = state.pagination[key];
+  if (!pageState || pageData.total <= 0) {
+    return "";
+  }
+
+  return `
+    <div class="pagination-bar" data-pagination="${key}">
+      <div class="pagination-meta">
+        <span>共 ${pageData.total} 条</span>
+        <span>第 ${pageData.page} / ${pageData.totalPages} 页</span>
       </div>
-    </article>
-  `).join("");
+      <div class="pagination-controls">
+        <label class="pagination-size">
+          <span>每页</span>
+          <select data-page-size="${key}">
+            ${PAGE_SIZE_OPTIONS.map((size) => `<option value="${size}" ${pageData.size === size ? "selected" : ""}>${size}</option>`).join("")}
+          </select>
+        </label>
+        <div class="pagination-pages">
+          <button class="small-button ghost-button pagination-arrow" data-page-prev="${key}" type="button" aria-label="上一页" ${pageData.page <= 1 ? "disabled" : ""}>&lsaquo;</button>
+          ${paginationPageNumbers(pageData).map((page) => {
+            if (page === "...") {
+              return `<span class="pagination-ellipsis">...</span>`;
+            }
+            return `<button class="small-button ${page === pageData.page ? "pagination-number active" : "ghost-button pagination-number"}" data-page-number="${key}" data-page-value="${page}" type="button">${page}</button>`;
+          }).join("")}
+          <button class="small-button ghost-button pagination-arrow" data-page-next="${key}" type="button" aria-label="下一页" ${pageData.page >= pageData.totalPages ? "disabled" : ""}>&rsaquo;</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function paginationPageNumbers(pageData) {
+  const totalPages = Math.max(1, Number(pageData.totalPages) || 1);
+  const current = Math.max(1, Number(pageData.page) || 1);
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  if (current <= 4) {
+    return [1, 2, 3, 4, 5, "...", totalPages];
+  }
+  if (current >= totalPages - 3) {
+    return [1, "...", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+  }
+  return [1, "...", current - 1, current, current + 1, "...", totalPages];
 }
 
 function startEditProxy(id) {
@@ -771,7 +944,7 @@ function startEditProxy(id) {
   proxyEditBanner.classList.remove("hidden");
   proxyModalTitle.textContent = "编辑 Proxy";
   showProxyModal();
-  renderProxies(state.proxies);
+  renderProxies();
 }
 
 function startCreateProxy() {
@@ -783,7 +956,7 @@ function startCreateProxy() {
   proxyEditBanner.classList.add("hidden");
   proxyModalTitle.textContent = "新增 Proxy";
   showProxyModal();
-  renderProxies(state.proxies);
+  renderProxies();
 }
 
 function startCreateBackend() {
@@ -799,7 +972,7 @@ function startCreateBackend() {
   backendEditBanner.classList.add("hidden");
   backendModalTitle.textContent = "新增 Backend";
   showBackendModal();
-  renderBackends(state.backends);
+  renderBackends();
 }
 
 function startEditBackend(id) {
@@ -827,7 +1000,7 @@ function startEditBackend(id) {
   backendEditBanner.classList.remove("hidden");
   backendModalTitle.textContent = "编辑 Backend";
   showBackendModal();
-  renderBackends(state.backends);
+  renderBackends();
 }
 
 function startCreateClient() {
@@ -840,7 +1013,7 @@ function startCreateClient() {
   clientEditBanner.classList.add("hidden");
   clientModalTitle.textContent = "新增 Client Key";
   showClientModal();
-  renderClients(state.clients);
+  renderClients();
 }
 
 function startEditClient(id) {
@@ -863,7 +1036,7 @@ function startEditClient(id) {
   clientEditBanner.classList.remove("hidden");
   clientModalTitle.textContent = "编辑 Client Key";
   showClientModal();
-  renderClients(state.clients);
+  renderClients();
 }
 
 function showBackendModal() {
@@ -905,7 +1078,7 @@ function startCreatePolicy() {
   policyEditBanner.classList.add("hidden");
   policyModalTitle.textContent = "新增 Policy";
   showPolicyModal();
-  renderPolicies(state.policies);
+  renderPolicies();
 }
 
 function startEditPolicy(id) {
@@ -928,7 +1101,7 @@ function startEditPolicy(id) {
   policyEditBanner.classList.remove("hidden");
   policyModalTitle.textContent = "编辑 Policy";
   showPolicyModal();
-  renderPolicies(state.policies);
+  renderPolicies();
 }
 
 function resetProxyForm() {
@@ -940,7 +1113,7 @@ function resetProxyForm() {
   proxyEditBanner.classList.add("hidden");
   proxyModalTitle.textContent = "新增 Proxy";
   hideProxyModal();
-  renderProxies(state.proxies);
+  renderProxies();
 }
 
 function resetBackendForm() {
@@ -956,7 +1129,7 @@ function resetBackendForm() {
   backendEditBanner.classList.add("hidden");
   backendModalTitle.textContent = "新增 Backend";
   hideBackendModal();
-  renderBackends(state.backends);
+  renderBackends();
 }
 
 function resetClientForm() {
@@ -969,7 +1142,7 @@ function resetClientForm() {
   clientEditBanner.classList.add("hidden");
   clientModalTitle.textContent = "新增 Client Key";
   hideClientModal();
-  renderClients(state.clients);
+  renderClients();
 }
 
 function resetPolicyForm() {
@@ -984,7 +1157,7 @@ function resetPolicyForm() {
   policyEditBanner.classList.add("hidden");
   policyModalTitle.textContent = "新增 Policy";
   hidePolicyModal();
-  renderPolicies(state.policies);
+  renderPolicies();
 }
 
 function showPolicyModal() {
@@ -1040,12 +1213,33 @@ function isCoolingDown(runtime = {}) {
 
 function backendRuntimeLabel(runtime = {}) {
   if (isCoolingDown(runtime)) {
-    return `cooldown until ${runtime.cooldown_until}`;
+    return `cooldown until ${formatDateTime(runtime.cooldown_until)}`;
   }
   if (runtime.last_error) {
     return runtime.last_error;
   }
   return "ready";
+}
+
+function formatDateTime(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "-";
+  }
+
+  const date = new Date(raw);
+  if (!Number.isFinite(date.getTime())) {
+    return raw;
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  const milliseconds = String(date.getMilliseconds()).padStart(3, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
 }
 
 function clientTokenDisplay(client) {

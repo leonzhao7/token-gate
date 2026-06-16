@@ -294,12 +294,20 @@ func TestAdminClientKeyStoresAndReturnsToken(t *testing.T) {
 	if listRecorder.Code != http.StatusOK {
 		t.Fatalf("expected list status 200, got %d body=%s", listRecorder.Code, listRecorder.Body.String())
 	}
-	var clients []domain.ClientKey
-	if err := json.Unmarshal(listRecorder.Body.Bytes(), &clients); err != nil {
+	var listPayload struct {
+		Items []domain.ClientKey `json:"items"`
+		Total int                `json:"total"`
+		Page  int                `json:"page"`
+		Limit int                `json:"limit"`
+	}
+	if err := json.Unmarshal(listRecorder.Body.Bytes(), &listPayload); err != nil {
 		t.Fatalf("unmarshal client list: %v", err)
 	}
-	if len(clients) != 1 || clients[0].Token != clientToken {
-		t.Fatalf("expected client list to include token %q, got %#v", clientToken, clients)
+	if listPayload.Total != 1 || listPayload.Page != 1 || listPayload.Limit != 10 {
+		t.Fatalf("unexpected pagination payload: %#v", listPayload)
+	}
+	if len(listPayload.Items) != 1 || listPayload.Items[0].Token != clientToken {
+		t.Fatalf("expected client list to include token %q, got %#v", clientToken, listPayload.Items)
 	}
 
 	updateBody := `{
@@ -445,11 +453,63 @@ func TestAdminOverviewAndListsReturnEmptyArrays(t *testing.T) {
 				if _, ok := value["events"].([]any); !ok {
 					t.Fatalf("%s expected events to be [] not %T", tc.path, value["events"])
 				}
+			} else {
+				if _, ok := value["items"].([]any); !ok {
+					t.Fatalf("%s expected items to be [] not %T", tc.path, value["items"])
+				}
+				if value["total"] != float64(0) {
+					t.Fatalf("%s expected total=0, got %#v", tc.path, value["total"])
+				}
+				if value["page"] != float64(1) {
+					t.Fatalf("%s expected page=1, got %#v", tc.path, value["page"])
+				}
+				if value["limit"] != float64(10) {
+					t.Fatalf("%s expected limit=10, got %#v", tc.path, value["limit"])
+				}
 			}
-		case []any:
 		default:
-			t.Fatalf("%s expected array or object response, got %T", tc.path, payload)
+			t.Fatalf("%s expected object response, got %T", tc.path, payload)
 		}
+	}
+}
+
+func TestAdminListPagination(t *testing.T) {
+	application := newTestApp(t)
+
+	for i := 0; i < 12; i++ {
+		createTestClient(t, application, fmt.Sprintf("client-token-%02d", i))
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/client-keys?page=2&limit=10", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []domain.ClientKey `json:"items"`
+		Total int                `json:"total"`
+		Page  int                `json:"page"`
+		Limit int                `json:"limit"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal paged response: %v", err)
+	}
+	if payload.Total != 12 {
+		t.Fatalf("expected total 12, got %d", payload.Total)
+	}
+	if payload.Page != 2 {
+		t.Fatalf("expected page 2, got %d", payload.Page)
+	}
+	if payload.Limit != 10 {
+		t.Fatalf("expected limit 10, got %d", payload.Limit)
+	}
+	if len(payload.Items) != 2 {
+		t.Fatalf("expected 2 items on page 2, got %d", len(payload.Items))
 	}
 }
 
