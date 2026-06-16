@@ -97,6 +97,31 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			created_at TEXT NOT NULL
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);`,
+		`CREATE TABLE IF NOT EXISTS usage_logs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			request_id TEXT NOT NULL,
+			client_id INTEGER NOT NULL DEFAULT 0,
+			client_name TEXT NOT NULL DEFAULT '',
+			client_token_prefix TEXT NOT NULL DEFAULT '',
+			route_mode_override TEXT NOT NULL DEFAULT '',
+			route_group TEXT NOT NULL DEFAULT '',
+			method TEXT NOT NULL DEFAULT '',
+			path TEXT NOT NULL DEFAULT '',
+			query TEXT NOT NULL DEFAULT '',
+			endpoint TEXT NOT NULL DEFAULT '',
+			model TEXT NOT NULL DEFAULT '',
+			backend_id INTEGER NOT NULL DEFAULT 0,
+			backend_name TEXT NOT NULL DEFAULT '',
+			attempts INTEGER NOT NULL DEFAULT 0,
+			status_code INTEGER NOT NULL DEFAULT 0,
+			duration_ms INTEGER NOT NULL DEFAULT 0,
+			error_message TEXT NOT NULL DEFAULT '',
+			client_ip TEXT NOT NULL DEFAULT '',
+			user_agent TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_usage_logs_created_at ON usage_logs(created_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_usage_logs_client_id_created_at ON usage_logs(client_id, created_at DESC);`,
 	}
 
 	for _, stmt := range stmts {
@@ -737,6 +762,68 @@ func (s *Store) ListAuditEventsPage(ctx context.Context, limit, offset int) ([]d
 	return events, rows.Err()
 }
 
+func (s *Store) AppendUsageLog(ctx context.Context, log domain.UsageLog) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO usage_logs(
+			request_id, client_id, client_name, client_token_prefix, route_mode_override, route_group,
+			method, path, query, endpoint, model, backend_id, backend_name, attempts, status_code,
+			duration_ms, error_message, client_ip, user_agent, created_at
+		)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		strings.TrimSpace(log.RequestID),
+		log.ClientID,
+		log.ClientName,
+		log.ClientTokenPrefix,
+		log.RouteModeOverride,
+		log.RouteGroup,
+		strings.TrimSpace(log.Method),
+		strings.TrimSpace(log.Path),
+		strings.TrimSpace(log.Query),
+		strings.TrimSpace(log.Endpoint),
+		strings.TrimSpace(log.Model),
+		log.BackendID,
+		log.BackendName,
+		log.Attempts,
+		log.StatusCode,
+		log.DurationMS,
+		strings.TrimSpace(log.ErrorMessage),
+		strings.TrimSpace(log.ClientIP),
+		strings.TrimSpace(log.UserAgent),
+		formatTime(time.Now().UTC()),
+	)
+	return err
+}
+
+func (s *Store) CountUsageLogs(ctx context.Context) (int, error) {
+	return countRows(ctx, s.db, "usage_logs")
+}
+
+func (s *Store) ListUsageLogsPage(ctx context.Context, limit, offset int) ([]domain.UsageLog, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, request_id, client_id, client_name, client_token_prefix, route_mode_override, route_group,
+			method, path, query, endpoint, model, backend_id, backend_name, attempts, status_code,
+			duration_ms, error_message, client_ip, user_agent, created_at
+		FROM usage_logs
+		ORDER BY id DESC
+		LIMIT ? OFFSET ?
+	`, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []domain.UsageLog
+	for rows.Next() {
+		entry, err := scanUsageLog(rows)
+		if err != nil {
+			return nil, err
+		}
+		logs = append(logs, entry)
+	}
+	return logs, rows.Err()
+}
+
 type scanner interface {
 	Scan(dest ...any) error
 }
@@ -937,6 +1024,41 @@ func scanAuditEvent(s scanner) (domain.AuditEvent, error) {
 	}
 	event.CreatedAt = parseTime(createdAt)
 	return event, nil
+}
+
+func scanUsageLog(s scanner) (domain.UsageLog, error) {
+	var (
+		entry     domain.UsageLog
+		createdAt string
+	)
+	err := s.Scan(
+		&entry.ID,
+		&entry.RequestID,
+		&entry.ClientID,
+		&entry.ClientName,
+		&entry.ClientTokenPrefix,
+		&entry.RouteModeOverride,
+		&entry.RouteGroup,
+		&entry.Method,
+		&entry.Path,
+		&entry.Query,
+		&entry.Endpoint,
+		&entry.Model,
+		&entry.BackendID,
+		&entry.BackendName,
+		&entry.Attempts,
+		&entry.StatusCode,
+		&entry.DurationMS,
+		&entry.ErrorMessage,
+		&entry.ClientIP,
+		&entry.UserAgent,
+		&createdAt,
+	)
+	if err != nil {
+		return domain.UsageLog{}, err
+	}
+	entry.CreatedAt = parseTime(createdAt)
+	return entry, nil
 }
 
 func parseTime(value string) time.Time {

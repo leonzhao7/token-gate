@@ -197,6 +197,30 @@ func TestProxySupportsAnthropicMessagesClientAndBackend(t *testing.T) {
 	if record.trace != "keep-me" {
 		t.Fatalf("custom header missing: %q", record.trace)
 	}
+
+	logs, err := application.store.ListUsageLogsPage(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatalf("list usage logs: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected one usage log, got %d", len(logs))
+	}
+	log := logs[0]
+	if log.ClientName != "client" {
+		t.Fatalf("unexpected client name in usage log: %q", log.ClientName)
+	}
+	if log.BackendName != "claude" {
+		t.Fatalf("unexpected backend name in usage log: %q", log.BackendName)
+	}
+	if log.Endpoint != domain.EndpointMessages {
+		t.Fatalf("unexpected endpoint in usage log: %q", log.Endpoint)
+	}
+	if log.Model != "claude-3-5-sonnet-latest" {
+		t.Fatalf("unexpected model in usage log: %q", log.Model)
+	}
+	if log.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status in usage log: %d", log.StatusCode)
+	}
 }
 
 func TestUpdateBackendPreservesAPIKeyWhenPayloadIsBlank(t *testing.T) {
@@ -510,6 +534,109 @@ func TestAdminListPagination(t *testing.T) {
 	}
 	if len(payload.Items) != 2 {
 		t.Fatalf("expected 2 items on page 2, got %d", len(payload.Items))
+	}
+}
+
+func TestUsageLogsEmptyList(t *testing.T) {
+	application := newTestApp(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/usage-logs", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []domain.UsageLog `json:"items"`
+		Total int               `json:"total"`
+		Page  int               `json:"page"`
+		Limit int               `json:"limit"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal usage logs list: %v", err)
+	}
+	if payload.Total != 0 || payload.Page != 1 || payload.Limit != 10 {
+		t.Fatalf("unexpected empty pagination payload: %#v", payload)
+	}
+	if len(payload.Items) != 0 {
+		t.Fatalf("expected empty usage log list, got %d items", len(payload.Items))
+	}
+}
+
+func TestUsageLogListAndPagination(t *testing.T) {
+	application := newTestApp(t)
+	client := createTestClient(t, application, "client-secret")
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "alpha",
+		BaseURL:   "https://alpha.local/v1",
+		APIKey:    "alpha-key",
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+	createTestPolicy(t, application, domain.ModelPolicy{
+		Pattern:         "gpt-*",
+		Endpoint:        domain.EndpointChat,
+		PlacementPolicy: domain.PlacementSticky,
+		FailoverEnabled: true,
+		Priority:        10,
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions?trace=1", strings.NewReader(`{"model":"gpt-4o","messages":[{"role":"user","content":"hello"}]}`))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected proxy request to succeed, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/api/usage-logs", nil)
+	listReq.Header.Set("Authorization", "Bearer test-admin")
+	listRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(listRecorder, listReq)
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("expected usage log list status 200, got %d body=%s", listRecorder.Code, listRecorder.Body.String())
+	}
+
+	var payload struct {
+		Items []domain.UsageLog `json:"items"`
+		Total int               `json:"total"`
+		Page  int               `json:"page"`
+		Limit int               `json:"limit"`
+	}
+	if err := json.Unmarshal(listRecorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal usage log list: %v", err)
+	}
+	if payload.Total != 1 || payload.Page != 1 || payload.Limit != 10 {
+		t.Fatalf("unexpected pagination payload: %#v", payload)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one usage log, got %d", len(payload.Items))
+	}
+	if payload.Items[0].ClientID != client.ID {
+		t.Fatalf("unexpected client id in usage log: %#v", payload.Items[0])
+	}
+	if payload.Items[0].BackendID != backend.ID {
+		t.Fatalf("unexpected backend id in usage log: %#v", payload.Items[0])
+	}
+	if payload.Items[0].RequestID == "" {
+		t.Fatalf("expected request id to be recorded")
+	}
+
+	pageReq := httptest.NewRequest(http.MethodGet, "/admin/api/usage-logs?page=1&limit=10", nil)
+	pageReq.Header.Set("Authorization", "Bearer test-admin")
+	pageRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(pageRecorder, pageReq)
+	if pageRecorder.Code != http.StatusOK {
+		t.Fatalf("expected paged usage log status 200, got %d body=%s", pageRecorder.Code, pageRecorder.Body.String())
 	}
 }
 

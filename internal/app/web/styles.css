@@ -1057,6 +1057,15 @@ button:hover {
   color: var(--ink);
 }
 
+.usage-log-table {
+  min-width: 1380px;
+}
+
+.usage-log-head,
+.usage-log-row {
+  grid-template-columns: 180px 150px 280px 110px 180px 140px 160px minmax(280px, 1fr);
+}
+
 .hidden {
   display: none !important;
 }

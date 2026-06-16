@@ -86,6 +86,30 @@ type AuditEvent struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+type UsageLog struct {
+	ID                int64     `json:"id"`
+	RequestID         string    `json:"request_id"`
+	ClientID          int64     `json:"client_id"`
+	ClientName        string    `json:"client_name"`
+	ClientTokenPrefix string    `json:"client_token_prefix"`
+	RouteModeOverride string    `json:"route_mode_override"`
+	RouteGroup        string    `json:"route_group"`
+	Method            string    `json:"method"`
+	Path              string    `json:"path"`
+	Query             string    `json:"query"`
+	Endpoint          string    `json:"endpoint"`
+	Model             string    `json:"model"`
+	BackendID         int64     `json:"backend_id"`
+	BackendName       string    `json:"backend_name"`
+	Attempts          int       `json:"attempts"`
+	StatusCode        int       `json:"status_code"`
+	DurationMS        int64     `json:"duration_ms"`
+	ErrorMessage      string    `json:"error_message"`
+	ClientIP          string    `json:"client_ip"`
+	UserAgent         string    `json:"user_agent"`
+	CreatedAt         time.Time `json:"created_at"`
+}
+
 func NormalizeBackendProtocol(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case BackendProtocolAnthropic, "claude":

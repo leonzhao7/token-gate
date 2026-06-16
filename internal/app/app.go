@@ -132,6 +132,7 @@ func (a *App) routes() {
 	a.mux.Handle("PUT /admin/api/model-policies/{id}", a.adminAuth(http.HandlerFunc(a.handleUpdatePolicy)))
 	a.mux.Handle("DELETE /admin/api/model-policies/{id}", a.adminAuth(http.HandlerFunc(a.handleDeletePolicy)))
 	a.mux.Handle("GET /admin/api/events", a.adminAuth(http.HandlerFunc(a.handleListEvents)))
+	a.mux.Handle("GET /admin/api/usage-logs", a.adminAuth(http.HandlerFunc(a.handleListUsageLogs)))
 }
 
 func (a *App) handlePublicModels(w http.ResponseWriter, r *http.Request) {
@@ -182,8 +183,30 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	startedAt := time.Now()
+	usageLog := domain.UsageLog{
+		RequestID:         requestIDFromContext(r.Context()),
+		ClientID:          client.ID,
+		ClientName:        client.Name,
+		ClientTokenPrefix: client.TokenPrefix,
+		RouteModeOverride: client.RouteModeOverride,
+		RouteGroup:        client.RouteGroup,
+		Method:            r.Method,
+		Path:              r.URL.Path,
+		Query:             r.URL.RawQuery,
+		ClientIP:          clientIP(r),
+		UserAgent:         r.UserAgent(),
+	}
+	defer func() {
+		usageLog.DurationMS = time.Since(startedAt).Milliseconds()
+		_ = a.store.AppendUsageLog(r.Context(), usageLog)
+	}()
+
 	endpoint := proxy.EndpointForPath(r.URL.Path)
+	usageLog.Endpoint = endpoint
 	if endpoint == "" || endpoint == domain.EndpointModels {
+		usageLog.StatusCode = http.StatusNotFound
+		usageLog.ErrorMessage = "unsupported endpoint"
 		a.logEvent(r.Context(), slog.LevelWarn, "proxy_request_rejected", append(clientAttrs(client),
 			slog.String("reason", "unsupported_endpoint"),
 			slog.String("path", r.URL.Path),
@@ -194,6 +217,8 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		usageLog.StatusCode = http.StatusBadRequest
+		usageLog.ErrorMessage = err.Error()
 		a.logEvent(r.Context(), slog.LevelWarn, "proxy_request_rejected", append(clientAttrs(client),
 			slog.String("reason", "read_body_failed"),
 			slog.String("error", err.Error()),
@@ -205,6 +230,8 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 	model, err := proxy.ExtractModel(body)
 	if err != nil {
+		usageLog.StatusCode = http.StatusBadRequest
+		usageLog.ErrorMessage = err.Error()
 		a.logEvent(r.Context(), slog.LevelWarn, "proxy_request_rejected", append(clientAttrs(client),
 			slog.String("reason", "invalid_request_body"),
 			slog.String("endpoint", endpoint),
@@ -220,9 +247,12 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		slog.String("model", model),
 		slog.Int("body_bytes", len(body)),
 	)...)
+	usageLog.Model = model
 
 	selection, err := a.scheduler.SelectBackend(r.Context(), client, endpoint, model)
 	if err != nil {
+		usageLog.StatusCode = http.StatusBadGateway
+		usageLog.ErrorMessage = err.Error()
 		a.logEvent(r.Context(), slog.LevelWarn, "backend_selection_failed", append(clientAttrs(client),
 			slog.String("endpoint", endpoint),
 			slog.String("model", model),
@@ -250,6 +280,9 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 	for index, backend := range selection.Candidates {
 		attempt := index + 1
+		usageLog.Attempts = attempt
+		usageLog.BackendID = backend.ID
+		usageLog.BackendName = backend.Name
 		attemptStartedAt := time.Now()
 		a.logEvent(r.Context(), slog.LevelInfo, "backend_request_started", append(append(clientAttrs(client),
 			backendAttemptAttrs(backend, attempt)...),
@@ -266,6 +299,7 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 			release()
 			a.scheduler.MarkFailure(backend.ID, err)
 			lastErr = err
+			usageLog.ErrorMessage = err.Error()
 			a.logEvent(r.Context(), slog.LevelWarn, "backend_request_failed", append(append(clientAttrs(client),
 				backendAttemptAttrs(backend, attempt)...),
 				slog.String("endpoint", endpoint),
@@ -291,6 +325,8 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 		if proxy.RetryableStatus(resp.StatusCode) && selection.Policy.FailoverEnabled && index < len(selection.Candidates)-1 {
 			lastStatus = resp.StatusCode
+			usageLog.StatusCode = resp.StatusCode
+			usageLog.ErrorMessage = resp.Status
 			a.scheduler.MarkFailure(backend.ID, errors.New(resp.Status))
 			_, _ = io.Copy(io.Discard, resp.Body)
 			_ = resp.Body.Close()
@@ -321,6 +357,8 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		} else {
 			a.scheduler.MarkSuccess(backend.ID)
 		}
+		usageLog.StatusCode = resp.StatusCode
+		usageLog.ErrorMessage = ""
 
 		a.logEvent(r.Context(), slog.LevelInfo, "backend_response_selected", append(append(clientAttrs(client),
 			backendAttemptAttrs(backend, attempt)...),
@@ -334,6 +372,8 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		err = proxy.WriteResponse(w, resp)
 		release()
 		if err != nil {
+			usageLog.StatusCode = http.StatusBadGateway
+			usageLog.ErrorMessage = err.Error()
 			a.logEvent(r.Context(), slog.LevelWarn, "client_response_write_failed", append(append(clientAttrs(client),
 				backendAttemptAttrs(backend, attempt)...),
 				slog.String("endpoint", endpoint),
@@ -346,6 +386,8 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if lastErr != nil {
+		usageLog.StatusCode = http.StatusBadGateway
+		usageLog.ErrorMessage = lastErr.Error()
 		a.logEvent(r.Context(), slog.LevelWarn, "proxy_request_failed", append(clientAttrs(client),
 			slog.String("endpoint", endpoint),
 			slog.String("model", model),
@@ -355,6 +397,8 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if lastStatus != 0 {
+		usageLog.StatusCode = lastStatus
+		usageLog.ErrorMessage = fmt.Sprintf("all candidate backends failed with retryable status, last status=%d", lastStatus)
 		a.logEvent(r.Context(), slog.LevelWarn, "proxy_request_failed", append(clientAttrs(client),
 			slog.String("endpoint", endpoint),
 			slog.String("model", model),
@@ -363,6 +407,8 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, fmt.Sprintf("all candidate backends failed with retryable status, last status=%d", lastStatus))
 		return
 	}
+	usageLog.ErrorMessage = "all candidate backends failed"
+	usageLog.StatusCode = http.StatusBadGateway
 	a.logEvent(r.Context(), slog.LevelWarn, "proxy_request_failed", append(clientAttrs(client),
 		slog.String("endpoint", endpoint),
 		slog.String("model", model),
@@ -916,6 +962,21 @@ func (a *App) handleListEvents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, pagedResponse(ensureAuditEvents(events), total, page, limit))
 }
 
+func (a *App) handleListUsageLogs(w http.ResponseWriter, r *http.Request) {
+	page, limit := parsePageQuery(r)
+	total, err := a.store.CountUsageLogs(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	logs, err := a.store.ListUsageLogsPage(r.Context(), limit, pageOffset(page, limit))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, pagedResponse(ensureUsageLogs(logs), total, page, limit))
+}
+
 func (a *App) adminAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := strings.TrimSpace(extractBearer(r.Header.Get("Authorization")))
@@ -1127,6 +1188,13 @@ func ensureModelPolicies(values []domain.ModelPolicy) []domain.ModelPolicy {
 func ensureAuditEvents(values []domain.AuditEvent) []domain.AuditEvent {
 	if values == nil {
 		return []domain.AuditEvent{}
+	}
+	return values
+}
+
+func ensureUsageLogs(values []domain.UsageLog) []domain.UsageLog {
+	if values == nil {
+		return []domain.UsageLog{}
 	}
 	return values
 }

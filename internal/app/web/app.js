@@ -9,6 +9,7 @@ const backendList = document.querySelector("#backendList");
 const clientList = document.querySelector("#clientList");
 const policyList = document.querySelector("#policyList");
 const eventList = document.querySelector("#eventList");
+const usageLogList = document.querySelector("#usageLogList");
 const pages = Array.from(document.querySelectorAll(".page"));
 const pageLinks = Array.from(document.querySelectorAll("[data-page-link]"));
 
@@ -54,12 +55,14 @@ const state = {
   clients: [],
   policies: [],
   events: [],
+  usageLogs: [],
   paginationMeta: {
     proxies: { total: 0, page: 1, limit: 10 },
     backends: { total: 0, page: 1, limit: 10 },
     clients: { total: 0, page: 1, limit: 10 },
     policies: { total: 0, page: 1, limit: 10 },
     events: { total: 0, page: 1, limit: 10 },
+    usageLogs: { total: 0, page: 1, limit: 10 },
   },
   editingProxyID: null,
   editingBackendID: null,
@@ -75,6 +78,7 @@ const state = {
     clients: { page: 1, size: 10 },
     policies: { page: 1, size: 10 },
     events: { page: 1, size: 10 },
+    usageLogs: { page: 1, size: 10 },
   },
 };
 
@@ -251,13 +255,15 @@ async function refreshAll() {
   const clientPage = state.pagination.clients;
   const policyPage = state.pagination.policies;
   const eventPage = state.pagination.events;
-  const [overview, proxies, backends, clients, policies, events] = await Promise.all([
+  const usageLogPage = state.pagination.usageLogs;
+  const [overview, proxies, backends, clients, policies, events, usageLogs] = await Promise.all([
     api("/admin/api/overview"),
     api(`/admin/api/socks-proxies?page=${proxyPage.page}&limit=${proxyPage.size}`),
     api(`/admin/api/backends?page=${backendPage.page}&limit=${backendPage.size}`),
     api(`/admin/api/client-keys?page=${clientPage.page}&limit=${clientPage.size}`),
     api(`/admin/api/model-policies?page=${policyPage.page}&limit=${policyPage.size}`),
     api(`/admin/api/events?page=${eventPage.page}&limit=${eventPage.size}`),
+    api(`/admin/api/usage-logs?page=${usageLogPage.page}&limit=${usageLogPage.size}`),
   ]);
 
   overview.backends = ensureArray(overview.backends);
@@ -267,6 +273,7 @@ async function refreshAll() {
   applyPagedResponse("clients", clients);
   applyPagedResponse("policies", policies);
   applyPagedResponse("events", events);
+  applyPagedResponse("usageLogs", usageLogs);
 
   renderStats(overview);
   renderProxyOptions();
@@ -275,6 +282,7 @@ async function refreshAll() {
   renderClients();
   renderPolicies();
   renderEvents();
+  renderUsageLogs();
 }
 
 function renderStats(overview) {
@@ -815,6 +823,52 @@ function renderEvents() {
   bindPagination(eventList, "events", refreshAll);
 }
 
+function renderUsageLogs() {
+  const logs = state.usageLogs;
+  if (logs.length === 0) {
+    usageLogList.innerHTML = emptyState(
+      "还没有使用日志",
+      "有客户端通过 Token Gate 发起请求后，这里会按请求维度记录一条 usage log。",
+    );
+    return;
+  }
+  const pageData = currentPageData("usageLogs", logs);
+
+  usageLogList.innerHTML = `
+    <div class="event-table-shell">
+      <div class="event-table usage-log-table">
+        <div class="event-table-head usage-log-head">
+          <span>Time</span>
+          <span>Client</span>
+          <span>Request</span>
+          <span>Endpoint</span>
+          <span>Model</span>
+          <span>Backend</span>
+          <span>Status</span>
+          <span>Detail</span>
+        </div>
+        <div class="event-table-body">
+          ${pageData.items.map((log) => `
+            <div class="event-row usage-log-row">
+              <span>${escapeHTML(formatDateTime(log.created_at))}</span>
+              <span>${escapeHTML(log.client_name || "-")}</span>
+              <span>${escapeHTML(formatUsageRequest(log))}</span>
+              <span>${escapeHTML(log.endpoint || "-")}</span>
+              <span>${escapeHTML(log.model || "-")}</span>
+              <span>${escapeHTML(log.backend_name || "-")}</span>
+              <span>${escapeHTML(formatUsageStatus(log))}</span>
+              <span>${escapeHTML(formatUsageDetail(log))}</span>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    </div>
+    ${renderPagination("usageLogs", pageData)}
+  `;
+
+  bindPagination(usageLogList, "usageLogs", refreshAll);
+}
+
 function bindPagination(container, key, rerender) {
   container.querySelector(`[data-page-size="${key}"]`)?.addEventListener("change", async (event) => {
     state.pagination[key].size = Number(event.currentTarget.value || 10);
@@ -923,6 +977,35 @@ function paginationPageNumbers(pageData) {
     return [1, "...", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
   }
   return [1, "...", current - 1, current, current + 1, "...", totalPages];
+}
+
+function formatUsageRequest(log) {
+  const method = String(log.method || "").toUpperCase();
+  const path = log.path || "-";
+  const requestID = log.request_id || "-";
+  return `${method} ${path} · ${requestID}`;
+}
+
+function formatUsageStatus(log) {
+  const status = Number(log.status_code) || 0;
+  const attempts = Number(log.attempts) || 0;
+  const duration = Number(log.duration_ms) || 0;
+  const statusText = status > 0 ? String(status) : "failed";
+  return `${statusText} · ${attempts} try · ${duration} ms`;
+}
+
+function formatUsageDetail(log) {
+  const parts = [];
+  if (log.client_token_prefix) {
+    parts.push(`key ${log.client_token_prefix}`);
+  }
+  if (log.client_ip) {
+    parts.push(`ip ${log.client_ip}`);
+  }
+  if (log.error_message) {
+    parts.push(`err ${log.error_message}`);
+  }
+  return parts.join(" · ") || "-";
 }
 
 function startEditProxy(id) {

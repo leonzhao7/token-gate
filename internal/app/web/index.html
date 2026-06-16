@@ -42,6 +42,10 @@
             <span class="nav-dot"></span>
             Events
           </a>
+          <a href="#usage-logs" class="nav-item" data-page-link="usage-logs">
+            <span class="nav-dot"></span>
+            Usage Logs
+          </a>
         </nav>
       </aside>
 
@@ -371,6 +375,19 @@
             </div>
             <div class="resource-layout list-only">
               <div id="eventList" class="resource-list"></div>
+            </div>
+          </section>
+
+          <section class="page resource-page" id="usage-logs" data-page-title="Usage Logs" data-page-breadcrumb="Dashboard / Usage Logs">
+            <div class="resource-header">
+              <div class="section-heading">
+                <span class="section-label">Requests</span>
+                <h3>Usage Logs</h3>
+                <p>每个 Client Key 的每次代理请求都会记录一条日志，便于追踪模型、后端、状态和耗时。</p>
+              </div>
+            </div>
+            <div class="resource-layout list-only">
+              <div id="usageLogList" class="resource-list"></div>
             </div>
           </section>
         </main>
