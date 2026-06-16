@@ -171,6 +171,13 @@
                     </label>
                   </div>
                   <label class="field">
+                    <span>Protocol</span>
+                    <select name="protocol">
+                      <option value="openai">OpenAI compatible</option>
+                      <option value="anthropic">Claude / Anthropic</option>
+                    </select>
+                  </label>
+                  <label class="field">
                     <span>Base URL</span>
                     <input name="base_url" placeholder="https://upstream.example.com/v1" required />
                   </label>
@@ -191,7 +198,7 @@
                     </label>
                     <label class="field">
                       <span>Endpoints</span>
-                      <input name="endpoints" placeholder="chat,responses,embeddings,images" required />
+                      <input name="endpoints" placeholder="chat,responses,embeddings,images,messages" required />
                     </label>
                   </div>
                   <div class="field-grid two-col">
@@ -313,6 +320,7 @@
                         <option value="responses">responses</option>
                         <option value="embeddings">embeddings</option>
                         <option value="images">images</option>
+                        <option value="messages">messages</option>
                         <option value="*">*</option>
                       </select>
                     </label>

@@ -49,6 +49,8 @@ func EndpointForPath(path string) string {
 		return domain.EndpointEmbeddings
 	case "/v1/images/generations":
 		return domain.EndpointImages
+	case "/v1/messages", "/v1/messages/count_tokens":
+		return domain.EndpointMessages
 	case "/v1/models":
 		return domain.EndpointModels
 	default:
@@ -83,9 +85,10 @@ func (s *Service) Do(ctx context.Context, incoming *http.Request, backend domain
 	copyHeaders(request.Header, incoming.Header)
 	removeHopByHopHeaders(request.Header)
 	request.Header.Del("Authorization")
+	request.Header.Del("X-Api-Key")
 	request.Header.Del("Host")
 	request.Header.Del("Content-Length")
-	request.Header.Set("Authorization", bearerValue(backend.APIKey))
+	applyBackendAuth(request.Header, backend)
 
 	client, err := s.clientForBackend(backend)
 	if err != nil {
@@ -245,4 +248,13 @@ func bearerValue(raw string) string {
 		return value
 	}
 	return "Bearer " + value
+}
+
+func applyBackendAuth(header http.Header, backend domain.Backend) {
+	switch domain.NormalizeBackendProtocol(backend.Protocol) {
+	case domain.BackendProtocolAnthropic:
+		header.Set("X-Api-Key", strings.TrimSpace(backend.APIKey))
+	default:
+		header.Set("Authorization", bearerValue(backend.APIKey))
+	}
 }

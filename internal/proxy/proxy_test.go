@@ -86,6 +86,87 @@ func TestDoPreservesRequestBodyPathQueryAndHeaders(t *testing.T) {
 	}
 }
 
+func TestEndpointForPathIncludesAnthropicMessages(t *testing.T) {
+	cases := map[string]string{
+		"/v1/chat/completions":      domain.EndpointChat,
+		"/v1/responses":             domain.EndpointResponses,
+		"/v1/embeddings":            domain.EndpointEmbeddings,
+		"/v1/images/generations":    domain.EndpointImages,
+		"/v1/messages":              domain.EndpointMessages,
+		"/v1/messages/count_tokens": domain.EndpointMessages,
+		"/v1/models":                domain.EndpointModels,
+		"/v1/unknown":               "",
+	}
+
+	for path, want := range cases {
+		if got := EndpointForPath(path); got != want {
+			t.Fatalf("EndpointForPath(%q) = %q, want %q", path, got, want)
+		}
+	}
+}
+
+func TestDoUsesAnthropicBackendAuthHeader(t *testing.T) {
+	const body = `{"model":"claude-3-5-sonnet-latest","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}`
+
+	var captured struct {
+		path             string
+		authorization    string
+		xAPIKey          string
+		anthropicVersion string
+		body             string
+	}
+
+	service := &Service{client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		captured.path = req.URL.Path
+		captured.authorization = req.Header.Get("Authorization")
+		captured.xAPIKey = req.Header.Get("X-Api-Key")
+		captured.anthropicVersion = req.Header.Get("Anthropic-Version")
+		data, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatalf("read upstream body: %v", err)
+		}
+		captured.body = string(data)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"ok":true}`)),
+			Request:    req,
+		}, nil
+	})}}
+
+	incoming := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+	incoming.Header.Set("Authorization", "Bearer client-openai-key")
+	incoming.Header.Set("X-Api-Key", "client-anthropic-key")
+	incoming.Header.Set("Anthropic-Version", "2023-06-01")
+
+	resp, err := service.Do(context.Background(), incoming, domain.Backend{
+		Protocol: domain.BackendProtocolAnthropic,
+		BaseURL:  "https://backend.local/root/v1",
+		APIKey:   "backend-key",
+	}, []byte(body))
+	if err != nil {
+		t.Fatalf("Do returned error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if captured.path != "/root/v1/messages" {
+		t.Fatalf("path mismatch: %q", captured.path)
+	}
+	if captured.authorization != "" {
+		t.Fatalf("anthropic backend should not receive Authorization, got %q", captured.authorization)
+	}
+	if captured.xAPIKey != "backend-key" {
+		t.Fatalf("anthropic backend x-api-key mismatch: %q", captured.xAPIKey)
+	}
+	if captured.anthropicVersion != "2023-06-01" {
+		t.Fatalf("anthropic-version header was not preserved: %q", captured.anthropicVersion)
+	}
+	if captured.body != body {
+		t.Fatalf("body changed: got %q want %q", captured.body, body)
+	}
+}
+
 func TestWriteResponsePreservesSSEBodyAndStripsHopByHopHeaders(t *testing.T) {
 	const streamBody = "data: one\n\ndata: [DONE]\n\n"
 

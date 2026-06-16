@@ -373,7 +373,7 @@ function renderBackends(backends) {
   if (backends.length === 0) {
     backendList.innerHTML = emptyState(
       "还没有 Backend",
-      "先配置至少一个兼容 OpenAI API 的上游节点，之后模型路由和故障切换才会生效。",
+      "先配置至少一个 OpenAI 或 Claude/Anthropic 上游节点，之后模型路由和故障切换才会生效。",
     );
     return;
   }
@@ -385,6 +385,7 @@ function renderBackends(backends) {
           <tr>
             <th>Backend</th>
             <th>Status</th>
+            <th>Protocol</th>
             <th>Pool</th>
             <th>Proxy</th>
             <th>Models</th>
@@ -609,6 +610,7 @@ function renderBackendRow(backend) {
         <div class="cell-subtitle">${escapeHTML(backend.base_url)}</div>
       </td>
       <td>${statusPill(backend.enabled, "enabled", "disabled")}</td>
+      <td>${escapeHTML(backendProtocolLabel(backend.protocol))}</td>
       <td>${escapeHTML(backend.pool || "-")}</td>
       <td>${escapeHTML(proxyLabel(backend.proxy_id, backend.proxy))}</td>
       <td>${compactList(backend.models)}</td>
@@ -618,9 +620,10 @@ function renderBackendRow(backend) {
     </tr>
     ${expanded ? `
       <tr class="detail-row">
-        <td colspan="8">
+        <td colspan="9">
           <div class="detail-panel">
             <div class="detail-grid">
+              <div><strong>Protocol</strong><span>${escapeHTML(backendProtocolLabel(backend.protocol))}</span></div>
               <div><strong>Base URL</strong><span>${escapeHTML(backend.base_url)}</span></div>
               <div><strong>API Key</strong><span>${escapeHTML(backend.api_key || "-")}</span></div>
               <div><strong>SOCKS5 Proxy</strong><span>${escapeHTML(proxyLabel(backend.proxy_id, backend.proxy))}</span></div>
@@ -786,6 +789,7 @@ function startCreateProxy() {
 function startCreateBackend() {
   state.editingBackendID = null;
   backendForm.reset();
+  backendForm.elements.protocol.value = "openai";
   backendForm.elements.api_key.placeholder = "Backend API key";
   backendForm.elements.proxy_id.value = "0";
   backendForm.elements.weight.value = 1;
@@ -807,6 +811,7 @@ function startEditBackend(id) {
   state.editingBackendID = backend.id;
   backendForm.elements.name.value = backend.name || "";
   backendForm.elements.pool.value = backend.pool || "";
+  backendForm.elements.protocol.value = backend.protocol || "openai";
   backendForm.elements.base_url.value = backend.base_url || "";
   backendForm.elements.api_key.value = backend.api_key || "";
   backendForm.elements.api_key.placeholder = "Backend API key";
@@ -941,6 +946,7 @@ function resetProxyForm() {
 function resetBackendForm() {
   state.editingBackendID = null;
   backendForm.reset();
+  backendForm.elements.protocol.value = "openai";
   backendForm.elements.api_key.placeholder = "Backend API key";
   backendForm.elements.proxy_id.value = "0";
   backendForm.elements.weight.value = 1;
@@ -1060,6 +1066,10 @@ function proxyLabel(proxyID, proxy) {
     return `missing proxy #${proxyID}`;
   }
   return `${proxy.name}${proxy.enabled ? "" : " (disabled)"}`;
+}
+
+function backendProtocolLabel(protocol) {
+  return protocol === "anthropic" ? "Claude / Anthropic" : "OpenAI";
 }
 
 function toggleExpanded(set, id) {

@@ -2,7 +2,7 @@
 
 ## 目标
 
-Token Gate 是一个 OpenAI-compatible 透明代理。它对外提供统一的 `base_url` 和客户端 `api_key`，对内连接多个兼容 OpenAI API 的后端 LLM 服务，并根据请求模型自动选择合适后端。
+Token Gate 是一个 AI 透明代理。它对外提供统一的 `base_url` 和客户端 `api_key`，对内连接多个 OpenAI-compatible 或 Claude/Anthropic 后端 LLM 服务，并根据请求模型自动选择合适后端。
 
 核心目标：
 
@@ -15,7 +15,7 @@ Token Gate 是一个 OpenAI-compatible 透明代理。它对外提供统一的 `
 
 非目标：
 
-- 不做跨厂商协议适配，只支持 OpenAI-compatible 后端。
+- 不做跨厂商请求体适配；OpenAI Chat/Responses 和 Claude Messages 必须由客户端按对应协议发起，后端也必须支持对应协议。
 - 不伪造官方客户端专有身份、签名或设备指纹。
 - 不在流式响应已经开始输出后做无损切换。
 - 不保存完整请求体或响应体日志。
@@ -23,7 +23,7 @@ Token Gate 是一个 OpenAI-compatible 透明代理。它对外提供统一的 `
 ## 总体架构
 
 ```text
-OpenAI SDK / AI Client
+OpenAI SDK / Claude SDK / AI Client
         |
         | base_url + client api_key
         v
@@ -39,10 +39,10 @@ Scheduler
         v
 Transparent Proxy
         |
-        | rewrite Authorization only
+        | rewrite auth header by backend protocol
         | preserve method / path / query / body
         v
-OpenAI-compatible Backend LLM Servers
+OpenAI-compatible / Claude-compatible Backend LLM Servers
 ```
 
 主要模块：
@@ -57,15 +57,19 @@ OpenAI-compatible Backend LLM Servers
 
 ## 公开 API
 
-当前支持的 OpenAI-compatible 端点：
+当前支持的公开端点：
 
 - `GET /v1/models`
 - `POST /v1/chat/completions`
 - `POST /v1/responses`
 - `POST /v1/embeddings`
 - `POST /v1/images/generations`
+- `POST /v1/messages`
+- `POST /v1/messages/count_tokens`
 
 `/v1/images/generations` 用于兼容 `gpt-image-2` 等图像生成模型。代理层不解释图像参数，也不转换 URL/base64 响应格式，后端必须本身兼容 OpenAI images API。
+
+`/v1/messages` 和 `/v1/messages/count_tokens` 用于兼容 Claude/Anthropic Messages API。代理层不解释 `messages`、`max_tokens`、`system`、`tools` 等字段，也不转换 OpenAI Chat 格式和 Claude Messages 格式。
 
 ## 透明转发规则
 
@@ -81,7 +85,9 @@ OpenAI-compatible Backend LLM Servers
 
 必要改写：
 
-- 出站 `Authorization` 替换为 backend 的 API key。
+- 入站客户端 key 可来自 `Authorization: Bearer <token>` 或 `X-Api-Key: <token>`。
+- 出站到 `openai` backend 时，删除客户端鉴权头并写入 `Authorization: Bearer <backend_api_key>`。
+- 出站到 `anthropic` backend 时，删除客户端鉴权头并写入 `X-Api-Key: <backend_api_key>`。
 - 删除 hop-by-hop headers，例如 `Connection`、`Transfer-Encoding`、`Upgrade`。
 - 不转发客户端原始 `Host` 和 `Content-Length`。
 
@@ -95,7 +101,7 @@ OpenAI-compatible Backend LLM Servers
 
 ```text
 1. 客户端请求 /v1/...
-2. 从 Authorization: Bearer <token> 提取客户端 key
+2. 从 `Authorization: Bearer <token>` 或 `X-Api-Key: <token>` 提取客户端 key
 3. 查询 client_keys，验证 key 是否启用
 4. 根据请求 path 判断 endpoint
 5. 从 JSON body 读取 model
@@ -147,6 +153,7 @@ endpoint 匹配支持：
 - `responses`
 - `embeddings`
 - `images`
+- `messages`
 - `models`
 - `*`
 
@@ -279,7 +286,8 @@ Token Gate 不自动探测 backend health，不会后台周期性请求上游。
 
 - `name`: backend 名称。
 - `pool`: backend 池，用于模型策略限制候选范围。
-- `base_url`: 后端 OpenAI-compatible base URL。
+- `protocol`: 后端协议，`openai` 或 `anthropic`，默认 `openai`。
+- `base_url`: 后端 base URL，例如 OpenAI-compatible `/v1` 或 Anthropic `/v1`。
 - `api_key`: 后端 API key。
 - `proxy_id`: 可选 SOCKS5 代理 ID，`0` 表示直连。
 - `enabled`: 是否启用。
@@ -457,7 +465,7 @@ Token Gate 使用 Go `slog` 输出结构化文本日志，默认写到 stdout。
 - `pack` 模式 route group 行为。
 - backend 连续失败阈值、冷却和全候选 cooling 直接失败。
 - 代理层请求 body/path/query/header 透明转发。
-- backend `Authorization` 替换。
+- backend 按协议替换鉴权头，`openai` 使用 `Authorization`，`anthropic` 使用 `X-Api-Key`。
 - backend SOCKS5 代理转发。
 - app 层 SOCKS5 proxy CRUD 和 backend 绑定。
 - hop-by-hop header 清理。

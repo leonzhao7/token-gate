@@ -171,6 +171,7 @@ func backendAttemptAttrs(backend domain.Backend, attempt int) []slog.Attr {
 		slog.Int64("backend_id", backend.ID),
 		slog.String("backend_name", backend.Name),
 		slog.String("backend_pool", backend.Pool),
+		slog.String("backend_protocol", domain.NormalizeBackendProtocol(backend.Protocol)),
 		slog.String("backend_base_url", backend.BaseURL),
 		slog.Int64("backend_proxy_id", backend.ProxyID),
 	}

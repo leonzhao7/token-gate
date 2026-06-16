@@ -1,17 +1,24 @@
 package domain
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 const (
 	EndpointChat       = "chat"
 	EndpointResponses  = "responses"
 	EndpointEmbeddings = "embeddings"
 	EndpointImages     = "images"
+	EndpointMessages   = "messages"
 	EndpointModels     = "models"
 
 	PlacementSticky = "sticky"
 	PlacementPack   = "pack"
 	PlacementSpread = "spread"
+
+	BackendProtocolOpenAI    = "openai"
+	BackendProtocolAnthropic = "anthropic"
 )
 
 type ClientKey struct {
@@ -31,6 +38,7 @@ type Backend struct {
 	ID        int64       `json:"id"`
 	Name      string      `json:"name"`
 	Pool      string      `json:"pool"`
+	Protocol  string      `json:"protocol"`
 	BaseURL   string      `json:"base_url"`
 	APIKey    string      `json:"api_key,omitempty"`
 	ProxyID   int64       `json:"proxy_id"`
@@ -76,4 +84,13 @@ type AuditEvent struct {
 	Endpoint    string    `json:"endpoint"`
 	BackendName string    `json:"backend_name"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+func NormalizeBackendProtocol(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case BackendProtocolAnthropic, "claude":
+		return BackendProtocolAnthropic
+	default:
+		return BackendProtocolOpenAI
+	}
 }

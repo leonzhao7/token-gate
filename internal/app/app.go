@@ -535,6 +535,7 @@ func (a *App) handleCreateBackend(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Name      string   `json:"name"`
 		Pool      string   `json:"pool"`
+		Protocol  string   `json:"protocol"`
 		BaseURL   string   `json:"base_url"`
 		APIKey    string   `json:"api_key"`
 		ProxyID   int64    `json:"proxy_id"`
@@ -559,6 +560,7 @@ func (a *App) handleCreateBackend(w http.ResponseWriter, r *http.Request) {
 	backend, err := a.store.CreateBackend(r.Context(), domain.Backend{
 		Name:      payload.Name,
 		Pool:      payload.Pool,
+		Protocol:  domain.NormalizeBackendProtocol(payload.Protocol),
 		BaseURL:   payload.BaseURL,
 		APIKey:    payload.APIKey,
 		ProxyID:   payload.ProxyID,
@@ -595,6 +597,7 @@ func (a *App) handleUpdateBackend(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Name      string   `json:"name"`
 		Pool      string   `json:"pool"`
+		Protocol  string   `json:"protocol"`
 		BaseURL   string   `json:"base_url"`
 		APIKey    string   `json:"api_key"`
 		ProxyID   int64    `json:"proxy_id"`
@@ -618,6 +621,9 @@ func (a *App) handleUpdateBackend(w http.ResponseWriter, r *http.Request) {
 
 	current.Name = payload.Name
 	current.Pool = payload.Pool
+	if strings.TrimSpace(payload.Protocol) != "" {
+		current.Protocol = domain.NormalizeBackendProtocol(payload.Protocol)
+	}
 	current.BaseURL = payload.BaseURL
 	if strings.TrimSpace(payload.APIKey) != "" {
 		current.APIKey = payload.APIKey
@@ -900,14 +906,14 @@ func (a *App) adminAuth(next http.Handler) http.Handler {
 
 func (a *App) clientAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := strings.TrimSpace(extractBearer(r.Header.Get("Authorization")))
+		token := extractClientToken(r.Header)
 		if token == "" {
 			a.logEvent(r.Context(), slog.LevelWarn, "client_auth_failed",
 				slog.String("path", r.URL.Path),
 				slog.String("method", r.Method),
-				slog.String("reason", "missing_bearer_token"),
+				slog.String("reason", "missing_api_key"),
 			)
-			writeError(w, http.StatusUnauthorized, "missing bearer token")
+			writeError(w, http.StatusUnauthorized, "missing api key")
 			return
 		}
 
@@ -983,6 +989,13 @@ func extractBearer(value string) string {
 		return strings.TrimSpace(value[7:])
 	}
 	return strings.TrimSpace(value)
+}
+
+func extractClientToken(header http.Header) string {
+	if token := strings.TrimSpace(extractBearer(header.Get("Authorization"))); token != "" {
+		return token
+	}
+	return strings.TrimSpace(header.Get("X-Api-Key"))
 }
 
 func generateToken() (string, error) {

@@ -61,6 +61,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL UNIQUE,
 			pool TEXT NOT NULL DEFAULT '',
+			protocol TEXT NOT NULL DEFAULT 'openai',
 			base_url TEXT NOT NULL,
 			api_key TEXT NOT NULL,
 			proxy_id INTEGER NOT NULL DEFAULT 0,
@@ -112,6 +113,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err := ensureColumn(ctx, db, "backends", "proxy_id", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate backends proxy_id: %w", err)
+	}
+	if err := ensureColumn(ctx, db, "backends", "protocol", "TEXT NOT NULL DEFAULT 'openai'"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate backends protocol: %w", err)
 	}
 
 	return &Store{db: db}, nil
@@ -360,7 +365,7 @@ func (s *Store) DeleteSocksProxy(ctx context.Context, id int64) error {
 func (s *Store) ListBackends(ctx context.Context) ([]domain.Backend, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			b.id, b.name, b.pool, b.base_url, b.api_key, b.proxy_id, b.enabled, b.weight, b.model_list, b.endpoint_list, b.created_at, b.updated_at,
+			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.weight, b.model_list, b.endpoint_list, b.created_at, b.updated_at,
 			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
 		FROM backends b
 		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
@@ -388,11 +393,12 @@ func (s *Store) CreateBackend(ctx context.Context, backend domain.Backend) (doma
 	backend.UpdatedAt = now
 
 	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO backends(name, pool, base_url, api_key, proxy_id, enabled, weight, model_list, endpoint_list, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO backends(name, pool, protocol, base_url, api_key, proxy_id, enabled, weight, model_list, endpoint_list, created_at, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		strings.TrimSpace(backend.Name),
 		strings.TrimSpace(backend.Pool),
+		domain.NormalizeBackendProtocol(backend.Protocol),
 		strings.TrimSpace(backend.BaseURL),
 		strings.TrimSpace(backend.APIKey),
 		backend.ProxyID,
@@ -420,11 +426,12 @@ func (s *Store) UpdateBackend(ctx context.Context, backend domain.Backend) (doma
 
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE backends
-		SET name = ?, pool = ?, base_url = ?, api_key = ?, proxy_id = ?, enabled = ?, weight = ?, model_list = ?, endpoint_list = ?, updated_at = ?
+		SET name = ?, pool = ?, protocol = ?, base_url = ?, api_key = ?, proxy_id = ?, enabled = ?, weight = ?, model_list = ?, endpoint_list = ?, updated_at = ?
 		WHERE id = ?
 	`,
 		strings.TrimSpace(backend.Name),
 		strings.TrimSpace(backend.Pool),
+		domain.NormalizeBackendProtocol(backend.Protocol),
 		strings.TrimSpace(backend.BaseURL),
 		strings.TrimSpace(backend.APIKey),
 		backend.ProxyID,
@@ -444,7 +451,7 @@ func (s *Store) UpdateBackend(ctx context.Context, backend domain.Backend) (doma
 func (s *Store) GetBackend(ctx context.Context, id int64) (domain.Backend, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT
-			b.id, b.name, b.pool, b.base_url, b.api_key, b.proxy_id, b.enabled, b.weight, b.model_list, b.endpoint_list, b.created_at, b.updated_at,
+			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.weight, b.model_list, b.endpoint_list, b.created_at, b.updated_at,
 			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
 		FROM backends b
 		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
@@ -659,6 +666,7 @@ func scanBackend(s scanner) (domain.Backend, error) {
 		&backend.ID,
 		&backend.Name,
 		&backend.Pool,
+		&backend.Protocol,
 		&backend.BaseURL,
 		&backend.APIKey,
 		&backend.ProxyID,
@@ -673,6 +681,7 @@ func scanBackend(s scanner) (domain.Backend, error) {
 		return domain.Backend{}, err
 	}
 	backend.Enabled = enabled == 1
+	backend.Protocol = domain.NormalizeBackendProtocol(backend.Protocol)
 	backend.Models = decodeList(modelList)
 	backend.Endpoints = decodeList(endpointList)
 	backend.CreatedAt = parseTime(createdAt)
@@ -699,6 +708,7 @@ func scanBackendWithProxy(s scanner) (domain.Backend, error) {
 		&backend.ID,
 		&backend.Name,
 		&backend.Pool,
+		&backend.Protocol,
 		&backend.BaseURL,
 		&backend.APIKey,
 		&backend.ProxyID,
@@ -722,6 +732,7 @@ func scanBackendWithProxy(s scanner) (domain.Backend, error) {
 	}
 
 	backend.Enabled = enabled == 1
+	backend.Protocol = domain.NormalizeBackendProtocol(backend.Protocol)
 	backend.Models = decodeList(modelList)
 	backend.Endpoints = decodeList(endpointList)
 	backend.CreatedAt = parseTime(createdAt)

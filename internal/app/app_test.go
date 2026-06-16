@@ -127,10 +127,83 @@ func TestProxyFailsOverAndKeepsTransparentRequest(t *testing.T) {
 	}
 }
 
+func TestProxySupportsAnthropicMessagesClientAndBackend(t *testing.T) {
+	const (
+		clientToken = "anthropic-client-secret"
+		requestBody = `{"model":"claude-3-5-sonnet-latest","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}`
+	)
+
+	application := newTestApp(t)
+	createTestClient(t, application, clientToken)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "claude",
+		Protocol:  domain.BackendProtocolAnthropic,
+		BaseURL:   "https://claude.local/root/v1",
+		APIKey:    "backend-anthropic-key",
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"claude-*"},
+		Endpoints: []string{domain.EndpointMessages},
+	})
+	createTestPolicy(t, application, domain.ModelPolicy{
+		Pattern:         "claude-*",
+		Endpoint:        domain.EndpointMessages,
+		PlacementPolicy: domain.PlacementSticky,
+		FailoverEnabled: true,
+		Priority:        10,
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages?beta=1", strings.NewReader(requestBody))
+	req.Header.Set("X-Api-Key", clientToken)
+	req.Header.Set("Anthropic-Version", "2023-06-01")
+	req.Header.Set("X-Trace", "keep-me")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	records := fixture.recordsSnapshot()
+	if len(records) != 1 {
+		t.Fatalf("expected one upstream attempt, got %d: %#v", len(records), records)
+	}
+	record := records[0]
+	if record.backendName != "claude" {
+		t.Fatalf("unexpected backend: %q", record.backendName)
+	}
+	if record.path != "/root/v1/messages" {
+		t.Fatalf("path changed: %q", record.path)
+	}
+	if record.rawQuery != "beta=1" {
+		t.Fatalf("query changed: %q", record.rawQuery)
+	}
+	if record.authorization != "" {
+		t.Fatalf("anthropic backend should not receive Authorization, got %q", record.authorization)
+	}
+	if record.xAPIKey != "backend-anthropic-key" {
+		t.Fatalf("anthropic backend x-api-key mismatch: %q", record.xAPIKey)
+	}
+	if record.anthropicVersion != "2023-06-01" {
+		t.Fatalf("anthropic version header mismatch: %q", record.anthropicVersion)
+	}
+	if record.body != requestBody {
+		t.Fatalf("body changed: got %q want %q", record.body, requestBody)
+	}
+	if record.trace != "keep-me" {
+		t.Fatalf("custom header missing: %q", record.trace)
+	}
+}
+
 func TestUpdateBackendPreservesAPIKeyWhenPayloadIsBlank(t *testing.T) {
 	application := newTestApp(t)
 	backend := createTestBackend(t, application, domain.Backend{
 		Name:      "editable",
+		Protocol:  domain.BackendProtocolAnthropic,
 		BaseURL:   "https://editable.local/v1",
 		APIKey:    "keep-this-key",
 		Enabled:   true,
@@ -165,6 +238,9 @@ func TestUpdateBackendPreservesAPIKeyWhenPayloadIsBlank(t *testing.T) {
 	}
 	if updated.APIKey != "keep-this-key" {
 		t.Fatalf("expected API key to be preserved, got %q", updated.APIKey)
+	}
+	if updated.Protocol != domain.BackendProtocolAnthropic {
+		t.Fatalf("expected protocol to be preserved when payload omits it, got %q", updated.Protocol)
 	}
 	if updated.Name != "editable-updated" {
 		t.Fatalf("expected name update, got %q", updated.Name)
@@ -378,14 +454,16 @@ func TestAdminOverviewAndListsReturnEmptyArrays(t *testing.T) {
 }
 
 type upstreamRecord struct {
-	backendName   string
-	method        string
-	path          string
-	rawQuery      string
-	authorization string
-	trace         string
-	connection    string
-	body          string
+	backendName      string
+	method           string
+	path             string
+	rawQuery         string
+	authorization    string
+	xAPIKey          string
+	anthropicVersion string
+	trace            string
+	connection       string
+	body             string
 }
 
 type failoverFixture struct {
@@ -429,14 +507,16 @@ func (f *failoverFixture) RoundTrip(req *http.Request) (*http.Response, error) {
 	f.mu.Lock()
 	status := f.statusByName[name]
 	f.records = append(f.records, upstreamRecord{
-		backendName:   name,
-		method:        req.Method,
-		path:          req.URL.Path,
-		rawQuery:      req.URL.RawQuery,
-		authorization: req.Header.Get("Authorization"),
-		trace:         req.Header.Get("X-Trace"),
-		connection:    req.Header.Get("Connection"),
-		body:          string(body),
+		backendName:      name,
+		method:           req.Method,
+		path:             req.URL.Path,
+		rawQuery:         req.URL.RawQuery,
+		authorization:    req.Header.Get("Authorization"),
+		xAPIKey:          req.Header.Get("X-Api-Key"),
+		anthropicVersion: req.Header.Get("Anthropic-Version"),
+		trace:            req.Header.Get("X-Trace"),
+		connection:       req.Header.Get("Connection"),
+		body:             string(body),
 	})
 	f.mu.Unlock()
 

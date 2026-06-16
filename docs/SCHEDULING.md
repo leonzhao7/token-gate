@@ -38,6 +38,7 @@
 - `responses`
 - `embeddings`
 - `images`
+- `messages`
 - `models`
 
 例如：
@@ -46,6 +47,8 @@
 - `/v1/responses` -> `responses`
 - `/v1/embeddings` -> `embeddings`
 - `/v1/images/generations` -> `images`
+- `/v1/messages` -> `messages`
+- `/v1/messages/count_tokens` -> `messages`
 
 ## 2. 先选出哪条 policy 生效
 
@@ -411,21 +414,31 @@ policy：
 
 - `bj-chat-1`
   - `pool = default`
+  - `protocol = openai`
   - `models = [gpt-4o, gpt-4.1]`
   - `endpoints = [chat, responses]`
   - `weight = 5`
 
 - `bj-chat-2`
   - `pool = default`
+  - `protocol = openai`
   - `models = [gpt-4o, gpt-4.1]`
   - `endpoints = [chat, responses]`
   - `weight = 1`
 
 - `img-1`
   - `pool = image`
+  - `protocol = openai`
   - `models = [gpt-image-*]`
   - `endpoints = [images]`
   - `weight = 3`
+
+- `claude-1`
+  - `pool = claude`
+  - `protocol = anthropic`
+  - `models = [claude-*]`
+  - `endpoints = [messages]`
+  - `weight = 2`
 
 ### policy 配置
 
@@ -441,6 +454,13 @@ policy：
   - `endpoint = images`
   - `placement_policy = spread`
   - `backend_pool = image`
+  - `priority = 100`
+
+- Policy C
+  - `pattern = claude-*`
+  - `endpoint = messages`
+  - `placement_policy = sticky`
+  - `backend_pool = claude`
   - `priority = 100`
 
 ### 请求 1：聊天
@@ -475,6 +495,21 @@ policy：
 2. 只允许 `pool = image`
 3. 只有 `img-1` 满足条件
 4. 最终只能发给 `img-1`
+
+### 请求 3：Claude Messages
+
+请求：
+
+- client key = `client-a`
+- endpoint = `messages`
+- model = `claude-3-5-sonnet-latest`
+
+调度过程：
+
+1. 命中 Policy C
+2. 只允许 `pool = claude`
+3. 只有 `claude-1` 满足 model 和 endpoint
+4. 出站请求使用 backend 的 `X-Api-Key`，请求体和响应体不做格式转换
 
 ## 11. 最容易混淆的几点
 

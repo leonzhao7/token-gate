@@ -1,6 +1,6 @@
 # token-gate
 
-`token-gate` 是一个用 Go 实现的 OpenAI-compatible 透明代理。它对外提供统一的 `base_url + api_key`，对内按模型把请求路由到多个后端 LLM 节点，并在节点不可用时自动切换。
+`token-gate` 是一个用 Go 实现的 AI 透明代理。它对外提供统一的 `base_url + api_key`，对内按模型把请求路由到多个 OpenAI-compatible 或 Claude/Anthropic 后端 LLM 节点，并在节点不可用时自动切换。
 
 当前 MVP 覆盖：
 
@@ -8,6 +8,8 @@
 - `/v1/responses`
 - `/v1/embeddings`
 - `/v1/images/generations`
+- `/v1/messages`
+- `/v1/messages/count_tokens`
 - `/v1/models`
 - 管理端 `/admin/`
 
@@ -19,7 +21,8 @@
 ## 设计约束
 
 - 代理层只做认证、调度、故障切换和 header 必要改写，不改写请求体或响应体。
-- 后端必须兼容 OpenAI API。
+- 后端可配置为 `openai` 或 `anthropic` 协议；代理不做 OpenAI Chat 和 Claude Messages 的请求体互转。
+- 客户端鉴权支持 `Authorization: Bearer <key>` 和 Claude/Anthropic 常用的 `x-api-key: <key>`。
 - 不自动探测后端 health；只根据真实代理请求的失败/成功维护冷却和恢复状态。
 - 流式响应一旦开始输出，若后端中途断流，当前版本不会尝试切到另一个后端。
 - “兼容官方 SDK”是支持目标；不做官方客户端身份伪装、专有签名伪造或设备指纹冒充。
