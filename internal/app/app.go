@@ -147,8 +147,22 @@ func (a *App) handlePublicModels(w http.ResponseWriter, r *http.Request) {
 		if !backend.Enabled {
 			continue
 		}
+		mappedUpstreamModels := make(map[string]struct{}, len(backend.ModelMapping))
+		for clientModel, upstreamModel := range backend.ModelMapping {
+			clientModel = strings.TrimSpace(clientModel)
+			upstreamModel = strings.TrimSpace(upstreamModel)
+			if clientModel == "" || upstreamModel == "" {
+				continue
+			}
+			mappedUpstreamModels[upstreamModel] = struct{}{}
+			models[clientModel] = struct{}{}
+		}
 		for _, model := range backend.Models {
+			model = strings.TrimSpace(model)
 			if strings.ContainsAny(model, "*?") {
+				continue
+			}
+			if _, mapped := mappedUpstreamModels[model]; mapped {
 				continue
 			}
 			models[model] = struct{}{}

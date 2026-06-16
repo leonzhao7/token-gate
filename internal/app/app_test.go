@@ -178,6 +178,59 @@ func TestProxyRewritesBackendModelByMapping(t *testing.T) {
 	}
 }
 
+func TestPublicModelsPrefersClientFacingMappedModelNames(t *testing.T) {
+	application := newTestApp(t)
+	createTestClient(t, application, "client-secret")
+	createTestBackend(t, application, domain.Backend{
+		Name:         "mapped-backend",
+		BaseURL:      "https://mapped.local/root/v1",
+		APIKey:       "mapped-key",
+		Enabled:      true,
+		Weight:       1,
+		Models:       []string{"gpt-5.4-test", "gpt-4o", "gpt-image-*"},
+		ModelMapping: map[string]string{"gpt-5.4": "gpt-5.4-test"},
+		Endpoints:    []string{domain.EndpointChat, domain.EndpointImages},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer client-secret")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Object string `json:"object"`
+		Data   []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal models payload: %v", err)
+	}
+
+	models := make(map[string]struct{}, len(payload.Data))
+	for _, item := range payload.Data {
+		models[item.ID] = struct{}{}
+	}
+
+	if _, ok := models["gpt-5.4"]; !ok {
+		t.Fatalf("expected mapped client-facing model to be listed, got %#v", models)
+	}
+	if _, ok := models["gpt-5.4-test"]; ok {
+		t.Fatalf("expected upstream-only model to be hidden, got %#v", models)
+	}
+	if _, ok := models["gpt-4o"]; !ok {
+		t.Fatalf("expected unmapped exact model to remain listed, got %#v", models)
+	}
+	if _, ok := models["gpt-image-*"]; ok {
+		t.Fatalf("expected wildcard model not to be listed, got %#v", models)
+	}
+}
+
 func TestProxySupportsAnthropicMessagesClientAndBackend(t *testing.T) {
 	const (
 		clientToken = "anthropic-client-secret"
