@@ -283,18 +283,37 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		usageLog.Attempts = attempt
 		usageLog.BackendID = backend.ID
 		usageLog.BackendName = backend.Name
+		upstreamModel := mappedBackendModel(backend, model)
+		requestBody := body
+		if upstreamModel != model {
+			requestBody, err = proxy.RewriteModel(body, upstreamModel)
+			if err != nil {
+				usageLog.StatusCode = http.StatusBadGateway
+				usageLog.ErrorMessage = "rewrite model failed: " + err.Error()
+				a.logEvent(r.Context(), slog.LevelWarn, "backend_request_rewrite_failed", append(append(clientAttrs(client),
+					backendAttemptAttrs(backend, attempt)...),
+					slog.String("endpoint", endpoint),
+					slog.String("model", model),
+					slog.String("upstream_model", upstreamModel),
+					slog.String("error", err.Error()),
+				)...)
+				lastErr = err
+				break
+			}
+		}
 		attemptStartedAt := time.Now()
 		a.logEvent(r.Context(), slog.LevelInfo, "backend_request_started", append(append(clientAttrs(client),
 			backendAttemptAttrs(backend, attempt)...),
 			slog.String("endpoint", endpoint),
 			slog.String("model", model),
+			slog.String("upstream_model", upstreamModel),
 			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
 			slog.String("query", r.URL.RawQuery),
 		)...)
 
 		release := a.scheduler.Acquire(backend.ID)
-		resp, err := a.proxy.Do(a.withBackendTrace(r.Context(), backend, attempt), r, backend, body)
+		resp, err := a.proxy.Do(a.withBackendTrace(r.Context(), backend, attempt), r, backend, requestBody)
 		if err != nil {
 			release()
 			a.scheduler.MarkFailure(backend.ID, err)
@@ -598,16 +617,17 @@ func (a *App) handleListBackends(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleCreateBackend(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		Name      string   `json:"name"`
-		Pool      string   `json:"pool"`
-		Protocol  string   `json:"protocol"`
-		BaseURL   string   `json:"base_url"`
-		APIKey    string   `json:"api_key"`
-		ProxyID   int64    `json:"proxy_id"`
-		Enabled   bool     `json:"enabled"`
-		Weight    int      `json:"weight"`
-		Models    []string `json:"models"`
-		Endpoints []string `json:"endpoints"`
+		Name         string            `json:"name"`
+		Pool         string            `json:"pool"`
+		Protocol     string            `json:"protocol"`
+		BaseURL      string            `json:"base_url"`
+		APIKey       string            `json:"api_key"`
+		ProxyID      int64             `json:"proxy_id"`
+		Enabled      bool              `json:"enabled"`
+		Weight       int               `json:"weight"`
+		Models       []string          `json:"models"`
+		ModelMapping map[string]string `json:"model_mapping"`
+		Endpoints    []string          `json:"endpoints"`
 	}
 	if err := decodeJSON(r, &payload); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -623,16 +643,17 @@ func (a *App) handleCreateBackend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	backend, err := a.store.CreateBackend(r.Context(), domain.Backend{
-		Name:      payload.Name,
-		Pool:      payload.Pool,
-		Protocol:  domain.NormalizeBackendProtocol(payload.Protocol),
-		BaseURL:   payload.BaseURL,
-		APIKey:    payload.APIKey,
-		ProxyID:   payload.ProxyID,
-		Enabled:   payload.Enabled,
-		Weight:    payload.Weight,
-		Models:    payload.Models,
-		Endpoints: payload.Endpoints,
+		Name:         payload.Name,
+		Pool:         payload.Pool,
+		Protocol:     domain.NormalizeBackendProtocol(payload.Protocol),
+		BaseURL:      payload.BaseURL,
+		APIKey:       payload.APIKey,
+		ProxyID:      payload.ProxyID,
+		Enabled:      payload.Enabled,
+		Weight:       payload.Weight,
+		Models:       payload.Models,
+		ModelMapping: payload.ModelMapping,
+		Endpoints:    payload.Endpoints,
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -660,16 +681,17 @@ func (a *App) handleUpdateBackend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload struct {
-		Name      string   `json:"name"`
-		Pool      string   `json:"pool"`
-		Protocol  string   `json:"protocol"`
-		BaseURL   string   `json:"base_url"`
-		APIKey    string   `json:"api_key"`
-		ProxyID   int64    `json:"proxy_id"`
-		Enabled   bool     `json:"enabled"`
-		Weight    int      `json:"weight"`
-		Models    []string `json:"models"`
-		Endpoints []string `json:"endpoints"`
+		Name         string            `json:"name"`
+		Pool         string            `json:"pool"`
+		Protocol     string            `json:"protocol"`
+		BaseURL      string            `json:"base_url"`
+		APIKey       string            `json:"api_key"`
+		ProxyID      int64             `json:"proxy_id"`
+		Enabled      bool              `json:"enabled"`
+		Weight       int               `json:"weight"`
+		Models       []string          `json:"models"`
+		ModelMapping map[string]string `json:"model_mapping"`
+		Endpoints    []string          `json:"endpoints"`
 	}
 	if err := decodeJSON(r, &payload); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -697,6 +719,7 @@ func (a *App) handleUpdateBackend(w http.ResponseWriter, r *http.Request) {
 	current.Enabled = payload.Enabled
 	current.Weight = payload.Weight
 	current.Models = payload.Models
+	current.ModelMapping = payload.ModelMapping
 	current.Endpoints = payload.Endpoints
 
 	backend, err := a.store.UpdateBackend(r.Context(), current)
@@ -1197,6 +1220,16 @@ func ensureUsageLogs(values []domain.UsageLog) []domain.UsageLog {
 		return []domain.UsageLog{}
 	}
 	return values
+}
+
+func mappedBackendModel(backend domain.Backend, clientModel string) string {
+	if backend.ModelMapping == nil {
+		return clientModel
+	}
+	if mapped := strings.TrimSpace(backend.ModelMapping[strings.TrimSpace(clientModel)]); mapped != "" {
+		return mapped
+	}
+	return clientModel
 }
 
 func parsePageQuery(r *http.Request) (int, int) {

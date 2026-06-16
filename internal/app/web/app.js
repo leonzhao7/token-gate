@@ -191,6 +191,7 @@ backendForm.addEventListener("submit", async (event) => {
     const editing = state.editingBackendID !== null;
     const data = readForm(event.currentTarget);
     data.models = splitList(data.models);
+    data.model_mapping = parseModelMapping(data.model_mapping);
     data.endpoints = splitList(data.endpoints);
     data.weight = Number(data.weight || 1);
     data.proxy_id = Number(data.proxy_id || 0);
@@ -680,6 +681,7 @@ function renderBackendRow(backend) {
               <div><strong>Proxy Address</strong><span>${escapeHTML(backend.proxy?.address || "-")}</span></div>
               <div><strong>Pool</strong><span>${escapeHTML(backend.pool || "-")}</span></div>
               <div><strong>Weight</strong><span>${backend.weight}</span></div>
+              <div><strong>Model Mapping</strong><span>${escapeHTML(formatModelMapping(backend.model_mapping))}</span></div>
               <div><strong>Cooldown Until</strong><span>${escapeHTML(formatDateTime(runtime.cooldown_until))}</span></div>
               <div><strong>Last Error</strong><span>${escapeHTML(runtime.last_error || "-")}</span></div>
               <div><strong>Created</strong><span>${escapeHTML(formatDateTime(backend.created_at))}</span></div>
@@ -1008,6 +1010,36 @@ function formatUsageDetail(log) {
   return parts.join(" · ") || "-";
 }
 
+function parseModelMapping(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return {};
+  }
+  const mapping = {};
+  raw.split(",").forEach((item) => {
+    const [from, to] = item.split("=").map((part) => String(part || "").trim());
+    if (from && to) {
+      mapping[from] = to;
+    }
+  });
+  return mapping;
+}
+
+function formatModelMapping(mapping) {
+  if (!mapping || typeof mapping !== "object") {
+    return "-";
+  }
+  const items = Object.entries(mapping).map(([from, to]) => `${from} -> ${to}`);
+  return items.length === 0 ? "-" : items.join(", ");
+}
+
+function formatModelMappingInput(mapping) {
+  if (!mapping || typeof mapping !== "object") {
+    return "";
+  }
+  return Object.entries(mapping).map(([from, to]) => `${from}=${to}`).join(", ");
+}
+
 function startEditProxy(id) {
   const proxy = state.proxies.find((item) => String(item.id) === String(id));
   if (!proxy) {
@@ -1048,6 +1080,7 @@ function startCreateBackend() {
   backendForm.elements.protocol.value = "openai";
   backendForm.elements.api_key.placeholder = "Backend API key";
   backendForm.elements.proxy_id.value = "0";
+  backendForm.elements.model_mapping.value = "";
   backendForm.elements.weight.value = 1;
   backendForm.elements.enabled.checked = true;
   backendSubmitBtn.textContent = "新增 Backend";
@@ -1073,6 +1106,7 @@ function startEditBackend(id) {
   backendForm.elements.api_key.placeholder = "Backend API key";
   backendForm.elements.proxy_id.value = String(backend.proxy_id || 0);
   backendForm.elements.models.value = (backend.models || []).join(", ");
+  backendForm.elements.model_mapping.value = formatModelMappingInput(backend.model_mapping);
   backendForm.elements.endpoints.value = (backend.endpoints || []).join(", ");
   backendForm.elements.weight.value = backend.weight || 1;
   backendForm.elements.enabled.checked = Boolean(backend.enabled);
@@ -1205,6 +1239,7 @@ function resetBackendForm() {
   backendForm.elements.protocol.value = "openai";
   backendForm.elements.api_key.placeholder = "Backend API key";
   backendForm.elements.proxy_id.value = "0";
+  backendForm.elements.model_mapping.value = "";
   backendForm.elements.weight.value = 1;
   backendForm.elements.enabled.checked = true;
   backendSubmitBtn.textContent = "新增 Backend";

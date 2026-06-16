@@ -67,6 +67,41 @@ func TestSelectBackendMatchesModelPatternEndpointAndPool(t *testing.T) {
 	if selection.Candidates[0].ID != imageBackend.ID {
 		t.Fatalf("expected image backend, got %#v", selection.Candidates[0])
 	}
+	if len(selection.Candidates[0].ModelMapping) != 0 {
+		t.Fatalf("expected empty model mapping by default, got %#v", selection.Candidates[0].ModelMapping)
+	}
+}
+
+func TestBackendModelMappingPersistsWithoutAffectingSelection(t *testing.T) {
+	ctx := context.Background()
+	st := openTestStore(t)
+	defer st.Close()
+
+	backend := createBackend(t, st, domain.Backend{
+		Name:         "mapped",
+		BaseURL:      "https://mapped.local/v1",
+		APIKey:       "mapped-key",
+		Enabled:      true,
+		Weight:       1,
+		Models:       []string{"gpt-5.4"},
+		ModelMapping: map[string]string{"gpt-5.4": "gpt-5.4-test"},
+		Endpoints:    []string{domain.EndpointChat},
+	})
+
+	service := New(st, time.Second, 1)
+	selection, err := service.SelectBackend(ctx, domain.ClientKey{TokenHash: "client-a"}, domain.EndpointChat, "gpt-5.4")
+	if err != nil {
+		t.Fatalf("SelectBackend returned error: %v", err)
+	}
+	if len(selection.Candidates) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(selection.Candidates))
+	}
+	if selection.Candidates[0].ID != backend.ID {
+		t.Fatalf("expected mapped backend, got %#v", selection.Candidates[0])
+	}
+	if selection.Candidates[0].ModelMapping["gpt-5.4"] != "gpt-5.4-test" {
+		t.Fatalf("expected model mapping to persist, got %#v", selection.Candidates[0].ModelMapping)
+	}
 }
 
 func TestPackPlacementUsesRouteGroupAcrossClients(t *testing.T) {

@@ -127,6 +127,57 @@ func TestProxyFailsOverAndKeepsTransparentRequest(t *testing.T) {
 	}
 }
 
+func TestProxyRewritesBackendModelByMapping(t *testing.T) {
+	const (
+		clientToken = "client-secret"
+		requestBody = `{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}]}`
+	)
+
+	application := newTestApp(t)
+	createTestClient(t, application, clientToken)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:         "mapped-backend",
+		BaseURL:      "https://mapped.local/root/v1",
+		APIKey:       "mapped-key",
+		Enabled:      true,
+		Weight:       1,
+		Models:       []string{"gpt-5.4"},
+		ModelMapping: map[string]string{"gpt-5.4": "gpt-5.4-test"},
+		Endpoints:    []string{domain.EndpointChat},
+	})
+	createTestPolicy(t, application, domain.ModelPolicy{
+		Pattern:         "gpt-5.4",
+		Endpoint:        domain.EndpointChat,
+		PlacementPolicy: domain.PlacementSticky,
+		FailoverEnabled: true,
+		Priority:        10,
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+clientToken)
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	records := fixture.recordsSnapshot()
+	if len(records) != 1 {
+		t.Fatalf("expected one upstream attempt, got %d", len(records))
+	}
+	if !strings.Contains(records[0].body, `"gpt-5.4-test"`) {
+		t.Fatalf("expected upstream body to use mapped model, got %s", records[0].body)
+	}
+	if strings.Contains(records[0].body, `"gpt-5.4","messages"`) {
+		t.Fatalf("expected client-facing model to be rewritten for upstream body, got %s", records[0].body)
+	}
+}
+
 func TestProxySupportsAnthropicMessagesClientAndBackend(t *testing.T) {
 	const (
 		clientToken = "anthropic-client-secret"
@@ -244,6 +295,7 @@ func TestUpdateBackendPreservesAPIKeyWhenPayloadIsBlank(t *testing.T) {
 		"enabled":true,
 		"weight":2,
 		"models":["gpt-4o","gpt-image-*"],
+		"model_mapping":{"gpt-4o":"gpt-4o-upstream"},
 		"endpoints":["chat","images"]
 	}`
 	req := httptest.NewRequest(http.MethodPut, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10), strings.NewReader(body))
@@ -271,6 +323,9 @@ func TestUpdateBackendPreservesAPIKeyWhenPayloadIsBlank(t *testing.T) {
 	}
 	if updated.Weight != 2 {
 		t.Fatalf("expected weight update, got %d", updated.Weight)
+	}
+	if updated.ModelMapping["gpt-4o"] != "gpt-4o-upstream" {
+		t.Fatalf("expected model mapping update, got %#v", updated.ModelMapping)
 	}
 }
 

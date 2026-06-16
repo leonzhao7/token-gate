@@ -86,6 +86,26 @@ func TestDoPreservesRequestBodyPathQueryAndHeaders(t *testing.T) {
 	}
 }
 
+func TestRewriteModelReplacesRequestModel(t *testing.T) {
+	const body = `{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}]}`
+
+	rewritten, err := RewriteModel([]byte(body), "gpt-5.4-test")
+	if err != nil {
+		t.Fatalf("RewriteModel returned error: %v", err)
+	}
+
+	model, err := ExtractModel(rewritten)
+	if err != nil {
+		t.Fatalf("ExtractModel on rewritten body returned error: %v", err)
+	}
+	if model != "gpt-5.4-test" {
+		t.Fatalf("expected rewritten model, got %q", model)
+	}
+	if !strings.Contains(string(rewritten), `"gpt-5.4-test"`) {
+		t.Fatalf("rewritten body missing target model: %s", string(rewritten))
+	}
+}
+
 func TestEndpointForPathIncludesAnthropicMessages(t *testing.T) {
 	cases := map[string]string{
 		"/v1/chat/completions":      domain.EndpointChat,

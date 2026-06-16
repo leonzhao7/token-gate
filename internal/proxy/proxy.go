@@ -71,6 +71,18 @@ func ExtractModel(body []byte) (string, error) {
 	return payload.Model, nil
 }
 
+func RewriteModel(body []byte, model string) ([]byte, error) {
+	if strings.TrimSpace(model) == "" {
+		return body, nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	payload["model"] = model
+	return json.Marshal(payload)
+}
+
 func (s *Service) Do(ctx context.Context, incoming *http.Request, backend domain.Backend, body []byte) (*http.Response, error) {
 	target, err := buildTargetURL(backend.BaseURL, incoming.URL)
 	if err != nil {

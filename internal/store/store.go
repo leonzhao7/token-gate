@@ -68,6 +68,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			enabled INTEGER NOT NULL DEFAULT 1,
 			weight INTEGER NOT NULL DEFAULT 1,
 			model_list TEXT NOT NULL,
+			model_mapping TEXT NOT NULL DEFAULT '{}',
 			endpoint_list TEXT NOT NULL,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
@@ -142,6 +143,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err := ensureColumn(ctx, db, "backends", "protocol", "TEXT NOT NULL DEFAULT 'openai'"); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate backends protocol: %w", err)
+	}
+	if err := ensureColumn(ctx, db, "backends", "model_mapping", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate backends model_mapping: %w", err)
 	}
 
 	return &Store{db: db}, nil
@@ -444,7 +449,7 @@ func (s *Store) DeleteSocksProxy(ctx context.Context, id int64) error {
 func (s *Store) ListBackends(ctx context.Context) ([]domain.Backend, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.weight, b.model_list, b.endpoint_list, b.created_at, b.updated_at,
+			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
 			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
 		FROM backends b
 		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
@@ -473,7 +478,7 @@ func (s *Store) CountBackends(ctx context.Context) (int, error) {
 func (s *Store) ListBackendsPage(ctx context.Context, limit, offset int) ([]domain.Backend, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.weight, b.model_list, b.endpoint_list, b.created_at, b.updated_at,
+			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
 			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
 		FROM backends b
 		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
@@ -502,8 +507,8 @@ func (s *Store) CreateBackend(ctx context.Context, backend domain.Backend) (doma
 	backend.UpdatedAt = now
 
 	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO backends(name, pool, protocol, base_url, api_key, proxy_id, enabled, weight, model_list, endpoint_list, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO backends(name, pool, protocol, base_url, api_key, proxy_id, enabled, weight, model_list, model_mapping, endpoint_list, created_at, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		strings.TrimSpace(backend.Name),
 		strings.TrimSpace(backend.Pool),
@@ -514,6 +519,7 @@ func (s *Store) CreateBackend(ctx context.Context, backend domain.Backend) (doma
 		boolToInt(backend.Enabled),
 		normalizeWeight(backend.Weight),
 		mustEncodeList(backend.Models),
+		mustEncodeMap(backend.ModelMapping),
 		mustEncodeList(backend.Endpoints),
 		formatTime(now),
 		formatTime(now),
@@ -535,7 +541,7 @@ func (s *Store) UpdateBackend(ctx context.Context, backend domain.Backend) (doma
 
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE backends
-		SET name = ?, pool = ?, protocol = ?, base_url = ?, api_key = ?, proxy_id = ?, enabled = ?, weight = ?, model_list = ?, endpoint_list = ?, updated_at = ?
+		SET name = ?, pool = ?, protocol = ?, base_url = ?, api_key = ?, proxy_id = ?, enabled = ?, weight = ?, model_list = ?, model_mapping = ?, endpoint_list = ?, updated_at = ?
 		WHERE id = ?
 	`,
 		strings.TrimSpace(backend.Name),
@@ -547,6 +553,7 @@ func (s *Store) UpdateBackend(ctx context.Context, backend domain.Backend) (doma
 		boolToInt(backend.Enabled),
 		normalizeWeight(backend.Weight),
 		mustEncodeList(backend.Models),
+		mustEncodeMap(backend.ModelMapping),
 		mustEncodeList(backend.Endpoints),
 		formatTime(now),
 		backend.ID,
@@ -560,7 +567,7 @@ func (s *Store) UpdateBackend(ctx context.Context, backend domain.Backend) (doma
 func (s *Store) GetBackend(ctx context.Context, id int64) (domain.Backend, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT
-			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.weight, b.model_list, b.endpoint_list, b.created_at, b.updated_at,
+			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
 			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
 		FROM backends b
 		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
@@ -882,10 +889,11 @@ func scanSocksProxy(s scanner) (domain.SocksProxy, error) {
 
 func scanBackend(s scanner) (domain.Backend, error) {
 	var (
-		backend                 domain.Backend
-		modelList, endpointList string
-		createdAt, updatedAt    string
-		enabled                 int
+		backend                    domain.Backend
+		modelList, modelMappingRaw string
+		endpointList               string
+		createdAt, updatedAt       string
+		enabled                    int
 	)
 	err := s.Scan(
 		&backend.ID,
@@ -898,6 +906,7 @@ func scanBackend(s scanner) (domain.Backend, error) {
 		&enabled,
 		&backend.Weight,
 		&modelList,
+		&modelMappingRaw,
 		&endpointList,
 		&createdAt,
 		&updatedAt,
@@ -908,6 +917,7 @@ func scanBackend(s scanner) (domain.Backend, error) {
 	backend.Enabled = enabled == 1
 	backend.Protocol = domain.NormalizeBackendProtocol(backend.Protocol)
 	backend.Models = decodeList(modelList)
+	backend.ModelMapping = decodeMap(modelMappingRaw)
 	backend.Endpoints = decodeList(endpointList)
 	backend.CreatedAt = parseTime(createdAt)
 	backend.UpdatedAt = parseTime(updatedAt)
@@ -916,18 +926,19 @@ func scanBackend(s scanner) (domain.Backend, error) {
 
 func scanBackendWithProxy(s scanner) (domain.Backend, error) {
 	var (
-		backend                 domain.Backend
-		modelList, endpointList string
-		createdAt, updatedAt    string
-		enabled                 int
-		proxyID                 sql.NullInt64
-		proxyName               sql.NullString
-		proxyAddress            sql.NullString
-		proxyUsername           sql.NullString
-		proxyPassword           sql.NullString
-		proxyEnabled            sql.NullInt64
-		proxyCreatedAt          sql.NullString
-		proxyUpdatedAt          sql.NullString
+		backend                    domain.Backend
+		modelList, modelMappingRaw string
+		endpointList               string
+		createdAt, updatedAt       string
+		enabled                    int
+		proxyID                    sql.NullInt64
+		proxyName                  sql.NullString
+		proxyAddress               sql.NullString
+		proxyUsername              sql.NullString
+		proxyPassword              sql.NullString
+		proxyEnabled               sql.NullInt64
+		proxyCreatedAt             sql.NullString
+		proxyUpdatedAt             sql.NullString
 	)
 	err := s.Scan(
 		&backend.ID,
@@ -940,6 +951,7 @@ func scanBackendWithProxy(s scanner) (domain.Backend, error) {
 		&enabled,
 		&backend.Weight,
 		&modelList,
+		&modelMappingRaw,
 		&endpointList,
 		&createdAt,
 		&updatedAt,
@@ -959,6 +971,7 @@ func scanBackendWithProxy(s scanner) (domain.Backend, error) {
 	backend.Enabled = enabled == 1
 	backend.Protocol = domain.NormalizeBackendProtocol(backend.Protocol)
 	backend.Models = decodeList(modelList)
+	backend.ModelMapping = decodeMap(modelMappingRaw)
 	backend.Endpoints = decodeList(endpointList)
 	backend.CreatedAt = parseTime(createdAt)
 	backend.UpdatedAt = parseTime(updatedAt)
@@ -1088,12 +1101,26 @@ func mustEncodeList(values []string) string {
 	return string(data)
 }
 
+func mustEncodeMap(values map[string]string) string {
+	normalized := normalizeMap(values)
+	data, _ := json.Marshal(normalized)
+	return string(data)
+}
+
 func decodeList(raw string) []string {
 	var values []string
 	if err := json.Unmarshal([]byte(raw), &values); err != nil {
 		return nil
 	}
 	return normalizeList(values)
+}
+
+func decodeMap(raw string) map[string]string {
+	var values map[string]string
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return map[string]string{}
+	}
+	return normalizeMap(values)
 }
 
 func normalizeList(values []string) []string {
@@ -1113,6 +1140,25 @@ func normalizeList(values []string) []string {
 		}
 		seen[trimmed] = struct{}{}
 		normalized = append(normalized, trimmed)
+	}
+	return normalized
+}
+
+func normalizeMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return map[string]string{}
+	}
+	normalized := make(map[string]string, len(values))
+	for key, value := range values {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
+			continue
+		}
+		normalized[key] = value
+	}
+	if len(normalized) == 0 {
+		return map[string]string{}
 	}
 	return normalized
 }

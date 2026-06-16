@@ -201,11 +201,15 @@
                       <input name="models" placeholder="gpt-4o, gpt-image-*" required />
                     </label>
                     <label class="field">
-                      <span>Endpoints</span>
-                      <input name="endpoints" placeholder="chat,responses,embeddings,images,messages" required />
+                      <span>Model Mapping</span>
+                      <input name="model_mapping" placeholder="gpt-5.4=gpt-5.4-test, gpt-4o=gpt-4o-prod" />
                     </label>
                   </div>
                   <div class="field-grid two-col">
+                    <label class="field">
+                      <span>Endpoints</span>
+                      <input name="endpoints" placeholder="chat,responses,embeddings,images,messages" required />
+                    </label>
                     <label class="field">
                       <span>Weight</span>
                       <input name="weight" type="number" min="1" value="1" />
