@@ -842,8 +842,6 @@ function renderUsageLogs() {
         <div class="event-table-head usage-log-head">
           <span>Time</span>
           <span>Client</span>
-          <span>Request</span>
-          <span>Endpoint</span>
           <span>Model</span>
           <span>Backend</span>
           <span>Status</span>
@@ -854,8 +852,6 @@ function renderUsageLogs() {
             <div class="event-row usage-log-row">
               <span>${escapeHTML(formatDateTime(log.created_at))}</span>
               <span>${escapeHTML(log.client_name || "-")}</span>
-              <span>${escapeHTML(formatUsageRequest(log))}</span>
-              <span>${escapeHTML(log.endpoint || "-")}</span>
               <span>${escapeHTML(log.model || "-")}</span>
               <span>${escapeHTML(log.backend_name || "-")}</span>
               <span>${escapeHTML(formatUsageStatus(log))}</span>
