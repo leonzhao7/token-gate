@@ -141,7 +141,7 @@ func TestProxyRewritesBackendModelByMapping(t *testing.T) {
 		APIKey:       "mapped-key",
 		Enabled:      true,
 		Weight:       1,
-		Models:       []string{"gpt-5.4"},
+		Models:       []string{"gpt-5.4-test"},
 		ModelMapping: map[string]string{"gpt-5.4": "gpt-5.4-test"},
 		Endpoints:    []string{domain.EndpointChat},
 	})

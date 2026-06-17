@@ -85,7 +85,7 @@ func (s *Service) SelectBackend(ctx context.Context, client domain.ClientKey, en
 		if !supportsEndpoint(backend.Endpoints, endpoint) {
 			continue
 		}
-		if !supportsModel(backend.Models, model) {
+		if !supportsBackendModel(backend, model) {
 			continue
 		}
 
@@ -290,6 +290,26 @@ func supportsModel(patterns []string, model string) bool {
 		if matchPattern(candidate, model) {
 			return true
 		}
+	}
+	return false
+}
+
+func supportsBackendModel(backend domain.Backend, model string) bool {
+	if supportsModel(backend.Models, model) {
+		return true
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return false
+	}
+	for clientModel, upstreamModel := range backend.ModelMapping {
+		if strings.TrimSpace(clientModel) != model {
+			continue
+		}
+		if strings.TrimSpace(upstreamModel) == "" {
+			continue
+		}
+		return true
 	}
 	return false
 }

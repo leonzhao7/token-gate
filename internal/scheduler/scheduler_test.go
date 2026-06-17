@@ -104,6 +104,42 @@ func TestBackendModelMappingPersistsWithoutAffectingSelection(t *testing.T) {
 	}
 }
 
+func TestSelectBackendMatchesMappedClientModel(t *testing.T) {
+	ctx := context.Background()
+	st := openTestStore(t)
+	defer st.Close()
+
+	backend := createBackend(t, st, domain.Backend{
+		Name:         "mapped",
+		BaseURL:      "https://mapped.local/v1",
+		APIKey:       "mapped-key",
+		Enabled:      true,
+		Weight:       1,
+		Models:       []string{"gpt-5.4-test"},
+		ModelMapping: map[string]string{"gpt-5.4": "gpt-5.4-test"},
+		Endpoints:    []string{domain.EndpointChat},
+	})
+	createPolicy(t, st, domain.ModelPolicy{
+		Pattern:         "gpt-5.4",
+		Endpoint:        domain.EndpointChat,
+		PlacementPolicy: domain.PlacementSticky,
+		FailoverEnabled: true,
+		Priority:        10,
+	})
+
+	service := New(st, time.Second, 1)
+	selection, err := service.SelectBackend(ctx, domain.ClientKey{TokenHash: "client-a"}, domain.EndpointChat, "gpt-5.4")
+	if err != nil {
+		t.Fatalf("SelectBackend returned error: %v", err)
+	}
+	if len(selection.Candidates) != 1 {
+		t.Fatalf("expected one candidate, got %d", len(selection.Candidates))
+	}
+	if selection.Candidates[0].ID != backend.ID {
+		t.Fatalf("expected mapped backend, got %#v", selection.Candidates[0])
+	}
+}
+
 func TestPackPlacementUsesRouteGroupAcrossClients(t *testing.T) {
 	clientA := domain.ClientKey{TokenHash: "client-a", RouteGroup: "frontend-group"}
 	clientB := domain.ClientKey{TokenHash: "client-b", RouteGroup: "frontend-group"}
