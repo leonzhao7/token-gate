@@ -878,7 +878,7 @@ function renderDashboardSummaryRow() {
       return renderDashboardFailedCard({
         title: `Summary ${index + 1}`,
         description: cardState.error || "Summary unavailable",
-        action: "summary",
+        action: `summary:${key}`,
       });
     }
     if (cardState.status === "empty" || !cardState.data) {
@@ -1002,7 +1002,7 @@ function renderDashboardEventsSummaryCard() {
       body: renderDashboardFailedCard({
         title: "Events summary unavailable",
         description: panelState.error || "Unable to fetch recent activity.",
-        action: "activity",
+        action: "activity:eventsSummary",
       }),
     });
   }
@@ -1039,7 +1039,7 @@ function renderDashboardRecentEventsCard() {
     eyebrow: "Recent Events",
     title: "Audit trail",
     stateValue: state.dashboard.recentEvents,
-    action: "activity",
+    action: "activity:recentEvents",
     emptyTitle: "No recent events",
     emptyDescription: "Policy, backend, and key changes will surface here.",
     items: ensureArray(state.dashboard.recentEvents.data).map((event) => `
@@ -1061,7 +1061,7 @@ function renderDashboardRecentUsageCard() {
     eyebrow: "Recent Usage",
     title: "Latest request samples",
     stateValue: state.dashboard.recentUsage,
-    action: "activity",
+    action: "activity:recentUsage",
     emptyTitle: "No recent usage logs",
     emptyDescription: "Recent request samples will appear after traffic is proxied.",
     items: ensureArray(state.dashboard.recentUsage.data).map((entry) => `
@@ -1218,38 +1218,37 @@ function bindDashboardInteractions() {
 }
 
 async function retryDashboardSection(target) {
-  if (target === "summary") {
-    Object.values(state.dashboard.summaryCards || {}).forEach((cardState) => {
-      cardState.status = "loading";
-      cardState.error = "";
-      cardState.data = null;
-    });
+  if (target.startsWith("summary:")) {
+    const targetKey = target.slice("summary:".length);
+    const cardState = state.dashboard.summaryCards?.[targetKey];
+    if (!cardState) {
+      return;
+    }
+    cardState.status = "loading";
+    cardState.error = "";
+    cardState.data = null;
     renderDashboardShell();
     try {
       const payload = await api("/admin/api/dashboard/summary");
       if (typeof DashboardUtils.applyDashboardSummaryPayload === "function") {
-        DashboardUtils.applyDashboardSummaryPayload(state.dashboard, payload);
+        DashboardUtils.applyDashboardSummaryPayload(state.dashboard, payload, targetKey);
       } else {
         const cards = DashboardUtils.createDashboardSummaryCards(payload);
         const cardsByKey = cards.reduce((accumulator, card) => {
           accumulator[card.key] = card;
           return accumulator;
         }, {});
-        Object.entries(state.dashboard.summaryCards || {}).forEach(([key, cardState]) => {
-          cardState.data = cardsByKey[key] || null;
-          cardState.error = "";
-          cardState.status = cardState.data ? "ready" : "empty";
-        });
+        cardState.data = cardsByKey[targetKey] || null;
+        cardState.error = "";
+        cardState.status = cardState.data ? "ready" : "empty";
       }
     } catch (error) {
       if (typeof DashboardUtils.applyDashboardSummaryError === "function") {
-        DashboardUtils.applyDashboardSummaryError(state.dashboard, error?.message || "Failed to load summary");
+        DashboardUtils.applyDashboardSummaryError(state.dashboard, error?.message || "Failed to load summary", targetKey);
       } else {
-        Object.values(state.dashboard.summaryCards || {}).forEach((cardState) => {
-          cardState.status = "failed";
-          cardState.error = error?.message || "Failed to load summary";
-          cardState.data = null;
-        });
+        cardState.status = "failed";
+        cardState.error = error?.message || "Failed to load summary";
+        cardState.data = null;
       }
     }
     renderDashboardShell();
@@ -1270,38 +1269,45 @@ async function retryDashboardSection(target) {
     renderDashboardShell();
     return;
   }
-  if (target === "activity") {
-    [state.dashboard.eventsSummary, state.dashboard.recentEvents, state.dashboard.recentUsage].forEach((panelState) => {
-      panelState.status = "loading";
-      panelState.error = "";
-      panelState.data = null;
-    });
+  if (target.startsWith("activity:")) {
+    const targetKey = target.slice("activity:".length);
+    const panelState = state.dashboard[targetKey];
+    if (!panelState) {
+      return;
+    }
+    panelState.status = "loading";
+    panelState.error = "";
+    panelState.data = null;
     renderDashboardShell();
     try {
       const payload = await api("/admin/api/dashboard/activity");
       if (typeof DashboardUtils.applyDashboardActivityPayload === "function") {
-        DashboardUtils.applyDashboardActivityPayload(state.dashboard, payload);
+        DashboardUtils.applyDashboardActivityPayload(state.dashboard, payload, targetKey);
       } else {
         const activityData = DashboardUtils.createDashboardActivityState(payload);
-        state.dashboard.eventsSummary.data = activityData.counters;
-        state.dashboard.eventsSummary.error = "";
-        state.dashboard.eventsSummary.status = (activityData.counters || []).some((item) => Number(item.count) > 0) ? "ready" : "empty";
-        state.dashboard.recentEvents.data = activityData.events;
-        state.dashboard.recentEvents.error = "";
-        state.dashboard.recentEvents.status = (activityData.events || []).length ? "ready" : "empty";
-        state.dashboard.recentUsage.data = activityData.usage;
-        state.dashboard.recentUsage.error = "";
-        state.dashboard.recentUsage.status = (activityData.usage || []).length ? "ready" : "empty";
+        if (targetKey === "eventsSummary") {
+          panelState.data = activityData.counters;
+          panelState.error = "";
+          panelState.status = (activityData.counters || []).some((item) => Number(item.count) > 0) ? "ready" : "empty";
+        }
+        if (targetKey === "recentEvents") {
+          panelState.data = activityData.events;
+          panelState.error = "";
+          panelState.status = (activityData.events || []).length ? "ready" : "empty";
+        }
+        if (targetKey === "recentUsage") {
+          panelState.data = activityData.usage;
+          panelState.error = "";
+          panelState.status = (activityData.usage || []).length ? "ready" : "empty";
+        }
       }
     } catch (error) {
       if (typeof DashboardUtils.applyDashboardActivityError === "function") {
-        DashboardUtils.applyDashboardActivityError(state.dashboard, error?.message || "Failed to load activity");
+        DashboardUtils.applyDashboardActivityError(state.dashboard, error?.message || "Failed to load activity", targetKey);
       } else {
-        [state.dashboard.eventsSummary, state.dashboard.recentEvents, state.dashboard.recentUsage].forEach((panelState) => {
-          panelState.status = "failed";
-          panelState.error = error?.message || "Failed to load activity";
-          panelState.data = null;
-        });
+        panelState.status = "failed";
+        panelState.error = error?.message || "Failed to load activity";
+        panelState.data = null;
       }
     }
     renderDashboardShell();

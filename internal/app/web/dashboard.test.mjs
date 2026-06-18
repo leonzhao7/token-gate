@@ -6,6 +6,7 @@ const require = createRequire(import.meta.url);
 const {
   applyDashboardActivityError,
   applyDashboardActivityPayload,
+  applyDashboardSummaryError,
   applyDashboardSummaryPayload,
   createDashboardState,
   createDashboardSummaryCards,
@@ -164,6 +165,50 @@ test("applyDashboardSummaryPayload stores each summary card separately", () => {
   assert.equal(state.summaryCards.proxies.status, "ready");
 });
 
+test("applyDashboardSummaryPayload can update one summary card without touching peers", () => {
+  const state = createDashboardState();
+
+  applyDashboardSummaryPayload(state, {
+    counts: {
+      backends: 9,
+      client_keys: 8,
+      model_policies: 4,
+      socks_proxies: 2,
+    },
+    growth: {
+      requests: 6.2,
+      errors: -3.5,
+    },
+    status: {
+      healthy_backends: 7,
+      recent_errors: 1,
+      active_clients: 5,
+    },
+    sparkline: [
+      { label: "06-15", requests: 4 },
+      { label: "06-16", requests: 5 },
+    ],
+  }, "backends");
+
+  assert.equal(state.summaryCards.backends.status, "ready");
+  assert.equal(state.summaryCards.backends.data.value, 9);
+  assert.equal(state.summaryCards.client_keys.status, "loading");
+  assert.equal(state.summaryCards.policies.status, "loading");
+  assert.equal(state.summaryCards.proxies.status, "loading");
+});
+
+test("applyDashboardSummaryError can fail one summary card without touching peers", () => {
+  const state = createDashboardState();
+
+  applyDashboardSummaryError(state, "summary unavailable", "backends");
+
+  assert.equal(state.summaryCards.backends.status, "failed");
+  assert.equal(state.summaryCards.backends.error, "summary unavailable");
+  assert.equal(state.summaryCards.client_keys.status, "loading");
+  assert.equal(state.summaryCards.policies.status, "loading");
+  assert.equal(state.summaryCards.proxies.status, "loading");
+});
+
 test("applyDashboardActivityPayload splits activity into independent panels", () => {
   const state = createDashboardState();
 
@@ -181,6 +226,23 @@ test("applyDashboardActivityPayload splits activity into independent panels", ()
   assert.equal(state.recentUsage.status, "empty");
 });
 
+test("applyDashboardActivityPayload can update one panel without touching peers", () => {
+  const state = createDashboardState();
+
+  applyDashboardActivityPayload(state, {
+    summary: [],
+    events: [
+      { id: 1, type: "backend.updated", message: "Backend rotated", created_at: "2026-06-18T01:05:03Z" },
+    ],
+    usage: [],
+  }, "recentEvents");
+
+  assert.equal(state.eventsSummary.status, "loading");
+  assert.equal(state.recentEvents.status, "ready");
+  assert.equal(state.recentEvents.data[0].title, "backend.updated");
+  assert.equal(state.recentUsage.status, "loading");
+});
+
 test("applyDashboardActivityError fails each activity panel independently", () => {
   const state = createDashboardState();
 
@@ -190,4 +252,15 @@ test("applyDashboardActivityError fails each activity panel independently", () =
   assert.equal(state.eventsSummary.error, "activity unavailable");
   assert.equal(state.recentEvents.status, "failed");
   assert.equal(state.recentUsage.status, "failed");
+});
+
+test("applyDashboardActivityError can fail one panel without touching peers", () => {
+  const state = createDashboardState();
+
+  applyDashboardActivityError(state, "activity unavailable", "recentEvents");
+
+  assert.equal(state.eventsSummary.status, "loading");
+  assert.equal(state.recentEvents.status, "failed");
+  assert.equal(state.recentEvents.error, "activity unavailable");
+  assert.equal(state.recentUsage.status, "loading");
 });

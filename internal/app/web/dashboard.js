@@ -162,7 +162,7 @@
     };
   }
 
-  function applyDashboardSummaryPayload(state, summary) {
+  function applyDashboardSummaryPayload(state, summary, targetKey = "") {
     const cards = createDashboardSummaryCards(summary);
     const cardMap = cards.reduce((accumulator, card) => {
       accumulator[card.key] = card;
@@ -170,6 +170,9 @@
     }, {});
 
     Object.keys(state?.summaryCards || {}).forEach((key) => {
+      if (targetKey && key !== targetKey) {
+        return;
+      }
       const nextCard = cardMap[key] || null;
       state.summaryCards[key].data = nextCard;
       state.summaryCards[key].error = "";
@@ -177,23 +180,39 @@
     });
   }
 
-  function applyDashboardSummaryError(state, message) {
+  function applyDashboardSummaryError(state, message, targetKey = "") {
     Object.keys(state?.summaryCards || {}).forEach((key) => {
+      if (targetKey && key !== targetKey) {
+        return;
+      }
       state.summaryCards[key].data = null;
       state.summaryCards[key].error = String(message || "Failed to load summary");
       state.summaryCards[key].status = "failed";
     });
   }
 
-  function applyDashboardActivityPayload(state, activity) {
+  function applyDashboardActivityPayload(state, activity, targetKey = "") {
     const normalized = createDashboardActivityState(activity);
-    applyPanelState(state?.eventsSummary, normalized.counters, (items) => ensureArray(items).some((item) => numberValue(item?.count) > 0));
-    applyPanelState(state?.recentEvents, normalized.events, (items) => ensureArray(items).length > 0);
-    applyPanelState(state?.recentUsage, normalized.usage, (items) => ensureArray(items).length > 0);
+    if (!targetKey || targetKey === "eventsSummary") {
+      applyPanelState(state?.eventsSummary, normalized.counters, (items) => ensureArray(items).some((item) => numberValue(item?.count) > 0));
+    }
+    if (!targetKey || targetKey === "recentEvents") {
+      applyPanelState(state?.recentEvents, normalized.events, (items) => ensureArray(items).length > 0);
+    }
+    if (!targetKey || targetKey === "recentUsage") {
+      applyPanelState(state?.recentUsage, normalized.usage, (items) => ensureArray(items).length > 0);
+    }
   }
 
-  function applyDashboardActivityError(state, message) {
-    [state?.eventsSummary, state?.recentEvents, state?.recentUsage].forEach((panelState) => {
+  function applyDashboardActivityError(state, message, targetKey = "") {
+    [
+      ["eventsSummary", state?.eventsSummary],
+      ["recentEvents", state?.recentEvents],
+      ["recentUsage", state?.recentUsage],
+    ].forEach(([key, panelState]) => {
+      if (targetKey && key !== targetKey) {
+        return;
+      }
       if (!panelState) {
         return;
       }
