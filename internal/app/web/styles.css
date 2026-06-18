@@ -1058,12 +1058,12 @@ button:hover {
 }
 
 .usage-log-table {
-  min-width: 1120px;
+  min-width: 1280px;
 }
 
 .usage-log-head,
 .usage-log-row {
-  grid-template-columns: 180px 170px 200px 170px 140px minmax(260px, 1fr);
+  grid-template-columns: 180px 150px 180px 180px 170px 140px minmax(220px, 1fr);
 }
 
 .hidden {

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -935,6 +936,63 @@ func TestUsageLogListAndPagination(t *testing.T) {
 	if pageRecorder.Code != http.StatusOK {
 		t.Fatalf("expected paged usage log status 200, got %d body=%s", pageRecorder.Code, pageRecorder.Body.String())
 	}
+}
+
+func TestUsageLogPersistsAfterClientWriteFailure(t *testing.T) {
+	application := newTestApp(t)
+	client := createTestClient(t, application, "client-secret")
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "alpha",
+		BaseURL:   "https://alpha.local/v1",
+		APIKey:    "alpha-key",
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+	createTestPolicy(t, application, domain.ModelPolicy{
+		Pattern:         "gpt-*",
+		Endpoint:        domain.EndpointChat,
+		PlacementPolicy: domain.PlacementSticky,
+		FailoverEnabled: true,
+		Priority:        10,
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o","messages":[{"role":"user","content":"hello"}]}`))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	writer := &failingResponseWriter{header: make(http.Header)}
+	application.Handler().ServeHTTP(writer, req)
+
+	logs, err := application.store.ListUsageLogsPage(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatalf("list usage logs: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected one usage log after client write failure, got %d", len(logs))
+	}
+	if logs[0].BackendID != backend.ID {
+		t.Fatalf("unexpected backend id in usage log: %#v", logs[0])
+	}
+}
+
+type failingResponseWriter struct {
+	header http.Header
+	status int
+}
+
+func (w *failingResponseWriter) Header() http.Header {
+	return w.header
+}
+
+func (w *failingResponseWriter) WriteHeader(status int) {
+	w.status = status
+}
+
+func (w *failingResponseWriter) Write(_ []byte) (int, error) {
+	return 0, errors.New("client write failed")
 }
 
 type upstreamRecord struct {

@@ -219,7 +219,9 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() {
 		usageLog.DurationMS = time.Since(startedAt).Milliseconds()
-		_ = a.store.AppendUsageLog(r.Context(), usageLog)
+		logCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+		defer cancel()
+		_ = a.store.AppendUsageLog(logCtx, usageLog)
 	}()
 
 	endpoint := proxy.EndpointForPath(r.URL.Path)

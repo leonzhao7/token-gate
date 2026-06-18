@@ -836,6 +836,7 @@ function renderUsageLogs() {
       <div class="event-table usage-log-table">
         <div class="event-table-head usage-log-head">
           <span>Time</span>
+          <span>Client Key</span>
           <span>Client</span>
           <span>Model</span>
           <span>Backend</span>
@@ -847,6 +848,7 @@ function renderUsageLogs() {
             <div class="event-row usage-log-row">
               <span>${escapeHTML(formatDateTime(log.created_at))}</span>
               <span>${escapeHTML(log.client_name || "-")}</span>
+              <span>${escapeHTML(log.client_ip || "-")}</span>
               <span>${escapeHTML(log.model || "-")}</span>
               <span>${escapeHTML(log.backend_name || "-")}</span>
               <span>${escapeHTML(formatUsageStatus(log))}</span>
@@ -989,12 +991,6 @@ function formatUsageStatus(log) {
 
 function formatUsageDetail(log) {
   const parts = [];
-  if (log.client_token_prefix) {
-    parts.push(`key ${log.client_token_prefix}`);
-  }
-  if (log.client_ip) {
-    parts.push(`ip ${log.client_ip}`);
-  }
   if (log.error_message) {
     parts.push(`err ${log.error_message}`);
   }
