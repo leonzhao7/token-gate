@@ -75,6 +75,12 @@ const addProxyBtn = document.querySelector("#addProxyBtn");
 const addBackendBtn = document.querySelector("#addBackendBtn");
 const addClientBtn = document.querySelector("#addClientBtn");
 const addPolicyBtn = document.querySelector("#addPolicyBtn");
+const settingsFocusTokenBtn = document.querySelector("#settingsFocusTokenBtn");
+const settingsRefreshBtn = document.querySelector("#settingsRefreshBtn");
+const settingsThemeBtn = document.querySelector("#settingsThemeBtn");
+const settingsSidebarBtn = document.querySelector("#settingsSidebarBtn");
+const settingsSearchBtn = document.querySelector("#settingsSearchBtn");
+const settingsUsageLogsBtn = document.querySelector("#settingsUsageLogsBtn");
 const proxyModal = document.querySelector("#proxyModal");
 const proxyModalCloseBtn = document.querySelector("#proxyModalCloseBtn");
 const proxyModalTitle = document.querySelector("#proxyModalTitle");
@@ -279,21 +285,30 @@ window.addEventListener("hashchange", () => {
 });
 
 sidebarToggleBtn?.addEventListener("click", () => {
-  appShell?.classList.toggle("sidebar-collapsed");
-  sidebarRoot?.classList.toggle("is-collapsed");
+  toggleSidebarCollapsed();
 });
 
 themeToggleBtn?.addEventListener("click", () => {
-  const nextPreference = typeof ThemeUtils.nextThemePreference === "function"
-    ? ThemeUtils.nextThemePreference(state.ui.themePreference)
-    : "light";
-  state.ui.themePreference = nextPreference;
-  persistThemePreference(nextPreference);
-  applyResolvedTheme();
-  renderTheme();
+  cycleThemePreference();
 });
 
 searchOpenBtn?.addEventListener("click", () => {
+  openSearchShell();
+});
+
+searchOpenBtn?.addEventListener("input", (event) => {
+  updateSearchQuery(String(event.currentTarget.value || ""));
+  if (!state.ui.search.open) {
+    openSearchShell();
+  }
+  renderSearchShell();
+});
+
+searchOpenBtn?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") {
+    return;
+  }
+  event.preventDefault();
   openSearchShell();
 });
 
@@ -310,6 +325,30 @@ searchModalRoot?.addEventListener("click", (event) => {
 searchInput?.addEventListener("input", (event) => {
   updateSearchQuery(String(event.currentTarget.value || ""));
   renderSearchShell();
+});
+
+settingsFocusTokenBtn?.addEventListener("click", () => {
+  tokenInput?.focus();
+});
+
+settingsRefreshBtn?.addEventListener("click", () => {
+  refreshAll().catch(reportError);
+});
+
+settingsThemeBtn?.addEventListener("click", () => {
+  cycleThemePreference();
+});
+
+settingsSidebarBtn?.addEventListener("click", () => {
+  toggleSidebarCollapsed();
+});
+
+settingsSearchBtn?.addEventListener("click", () => {
+  openSearchShell();
+});
+
+settingsUsageLogsBtn?.addEventListener("click", () => {
+  location.hash = "#usage-logs";
 });
 
 searchResultsRoot?.addEventListener("click", (event) => {
@@ -786,9 +825,10 @@ async function clearUsageLogs() {
   if (!confirm("确认清空所有使用日志？")) {
     return;
   }
-  await api("/admin/api/usage-logs", "DELETE");
+  const response = await api("/admin/api/usage-logs", "DELETE");
   state.pagination.usageLogs.page = 1;
   await refreshAll();
+  alert(`已清空 ${Number(response?.deleted || 0)} 条使用日志。`);
 }
 
 async function deleteFilteredUsageLogs() {
@@ -798,9 +838,10 @@ async function deleteFilteredUsageLogs() {
   if (!confirm("确认删除当前查询条件命中的使用日志？")) {
     return;
   }
-  await api(`/admin/api/usage-logs?${buildUsageLogDeleteQuery()}`, "DELETE");
+  const response = await api(`/admin/api/usage-logs?${buildUsageLogDeleteQuery()}`, "DELETE");
   state.pagination.usageLogs.page = 1;
   await refreshAll();
+  alert(`已删除 ${Number(response?.deleted || 0)} 条符合条件的使用日志。`);
 }
 
 function buildUsageLogDeleteQuery() {
@@ -1078,6 +1119,9 @@ function renderSearchShell() {
   searchModalRoot.classList.toggle("hidden", !isOpen);
   searchModalRoot.setAttribute("aria-hidden", String(!isOpen));
   searchOpenBtn?.setAttribute("aria-expanded", String(isOpen));
+  if (searchOpenBtn && searchOpenBtn.value !== state.ui.search.query) {
+    searchOpenBtn.value = state.ui.search.query;
+  }
   if (searchInput && searchInput.value !== state.ui.search.query) {
     searchInput.value = state.ui.search.query;
   }
@@ -1548,11 +1592,12 @@ function feedToneClass(tone) {
 }
 
 function closeSearchShell() {
+  const previousTrigger = state.ui.search.triggerElement;
   state.ui.search.open = false;
   searchDebounce?.cancel?.();
   renderSearchShell();
-  if (state.ui.search.triggerElement instanceof HTMLElement) {
-    state.ui.search.triggerElement.focus();
+  if (previousTrigger instanceof HTMLElement) {
+    previousTrigger.focus();
   }
 }
 
@@ -2678,56 +2723,56 @@ function createQuickDetailMarkup(resourceKey, record) {
 function renderEvents() {
   const events = state.events;
   syncEventFilterInputs();
+  const pageData = currentRemotePageData("events", events);
   const timelineItems = typeof ObservabilityUtils.createEventTimelineItems === "function"
     ? ObservabilityUtils.createEventTimelineItems(events)
+    : [];
+  const pageTimeline = typeof ObservabilityUtils.createEventTimelineItems === "function"
+    ? ObservabilityUtils.createEventTimelineItems(pageData.items)
     : [];
   const summary = typeof ObservabilityUtils.createEventSummaryModel === "function"
     ? ObservabilityUtils.createEventSummaryModel(state.eventSummary)
     : { total: 0, categories: [], severities: [] };
-  if (timelineItems.length === 0) {
-    eventList.innerHTML = emptyState(
-      "还没有事件",
-      "配置变更、backend failover 或上游异常会出现在这里。",
-    );
-    return;
-  }
-  const pageData = currentRemotePageData("events", events);
-  const pageTimeline = typeof ObservabilityUtils.createEventTimelineItems === "function"
-    ? ObservabilityUtils.createEventTimelineItems(pageData.items)
-    : [];
 
   eventList.innerHTML = `
     <div class="observability-shell">
       <section class="observability-main">
-        <div class="timeline-list">
-          ${pageTimeline.map((item) => `
-            <article class="timeline-item tone-${escapeHTML(item.tone)}">
-              <div class="timeline-rail">
-                <span class="timeline-icon">${escapeHTML(item.icon)}</span>
-              </div>
-              <div
-                class="timeline-card"
-                tabindex="0"
-                role="button"
-                data-event-row="${escapeHTML(item.id)}"
-                data-event-title="${escapeHTML(item.title || "Event")}"
-              >
-                <div class="timeline-card-head">
-                  <div>
-                    <strong>${escapeHTML(item.title)}</strong>
-                    <p>${escapeHTML(item.description)}</p>
+        ${timelineItems.length === 0
+    ? emptyState(
+      "还没有事件",
+      "配置变更、backend failover 或上游异常会出现在这里。",
+    )
+    : `
+          <div class="timeline-list">
+            ${pageTimeline.map((item) => `
+              <article class="timeline-item tone-${escapeHTML(item.tone)}">
+                <div class="timeline-rail">
+                  <span class="timeline-icon">${escapeHTML(item.icon)}</span>
+                </div>
+                <div
+                  class="timeline-card"
+                  tabindex="0"
+                  role="button"
+                  data-event-row="${escapeHTML(item.id)}"
+                  data-event-title="${escapeHTML(item.title || "Event")}"
+                >
+                  <div class="timeline-card-head">
+                    <div>
+                      <strong>${escapeHTML(item.title)}</strong>
+                      <p>${escapeHTML(item.description)}</p>
+                    </div>
+                    <span class="timeline-stamp">${escapeHTML(formatDateTime(item.timestamp))}</span>
                   </div>
-                  <span class="timeline-stamp">${escapeHTML(formatDateTime(item.timestamp))}</span>
+                  <div class="timeline-meta">
+                    <span class="status-pill ${feedToneClass(item.tone)}">${escapeHTML(item.category)}</span>
+                    <span>${escapeHTML(item.meta)}</span>
+                    <span>${escapeHTML(item.actor)}</span>
+                  </div>
                 </div>
-                <div class="timeline-meta">
-                  <span class="status-pill ${feedToneClass(item.tone)}">${escapeHTML(item.category)}</span>
-                  <span>${escapeHTML(item.meta)}</span>
-                  <span>${escapeHTML(item.actor)}</span>
-                </div>
-              </div>
-            </article>
-          `).join("")}
-        </div>
+              </article>
+            `).join("")}
+          </div>
+        `}
       </section>
       <aside class="observability-side">
         <section class="observability-summary-card">
@@ -2918,6 +2963,16 @@ function renderUsageLogInlineDetail(row) {
   if (!detail) {
     primeUsageLogDetail(row.id);
   }
+  if (detail?.error) {
+    return `
+      <span>Trace ID: ${escapeHTML(row.traceId || "-")}</span>
+      <span class="tone-danger">Detail: ${escapeHTML(detail.error)}</span>
+      <span>Request: ${escapeHTML(row.requestMetadata || "-")}</span>
+      <span>Headers: -</span>
+      <span>Payload: -</span>
+      <span>Response: -</span>
+    `;
+  }
   const request = detail?.request && typeof detail.request === "object" ? detail.request : {};
   const response = detail?.response && typeof detail.response === "object" ? detail.response : {};
   const requestHeaders = request.headers || row.headersPreview || "-";
@@ -2960,6 +3015,24 @@ async function primeUsageLogDetail(id) {
       renderUsageLogs();
     }
   }
+}
+
+function cycleThemePreference() {
+  const nextPreference = typeof ThemeUtils.nextThemePreference === "function"
+    ? ThemeUtils.nextThemePreference(state.ui.themePreference)
+    : "light";
+  state.ui.themePreference = nextPreference;
+  persistThemePreference(nextPreference);
+  applyResolvedTheme();
+  renderTheme();
+}
+
+function toggleSidebarCollapsed(forceState) {
+  const nextState = typeof forceState === "boolean"
+    ? forceState
+    : !appShell?.classList.contains("sidebar-collapsed");
+  appShell?.classList.toggle("sidebar-collapsed", nextState);
+  sidebarRoot?.classList.toggle("is-collapsed", nextState);
 }
 
 function bindPagination(container, key, rerender) {

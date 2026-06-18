@@ -1608,7 +1608,7 @@ func (a *App) handleClearUsageLogs(w http.ResponseWriter, r *http.Request) {
 		storeErr error
 	)
 	if filter == (store.UsageLogFilter{}) {
-		storeErr = a.store.ClearUsageLogs(r.Context())
+		deleted, storeErr = a.store.ClearUsageLogs(r.Context())
 	} else {
 		deleted, storeErr = a.store.DeleteUsageLogsFiltered(r.Context(), filter)
 	}

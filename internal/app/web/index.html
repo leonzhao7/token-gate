@@ -38,8 +38,8 @@
             <section class="nav-group">
               <span class="nav-group-label">Overview</span>
               <div class="nav-list">
-                <a href="#overview" class="nav-item" data-page-link="overview">
-                  <span class="nav-dot"></span>
+                <a href="#overview" class="nav-item" data-page-link="overview" data-nav-label="Dashboard" aria-label="Dashboard" title="Dashboard">
+                  <span class="nav-icon" aria-hidden="true">D</span>
                   <span>Dashboard</span>
                 </a>
               </div>
@@ -48,20 +48,20 @@
             <section class="nav-group">
               <span class="nav-group-label">Resources</span>
               <div class="nav-list">
-                <a href="#socks-proxies" class="nav-item" data-page-link="socks-proxies">
-                  <span class="nav-dot"></span>
+                <a href="#socks-proxies" class="nav-item" data-page-link="socks-proxies" data-nav-label="Proxies" aria-label="Proxies" title="Proxies">
+                  <span class="nav-icon" aria-hidden="true">P</span>
                   <span>Proxies</span>
                 </a>
-                <a href="#backends" class="nav-item" data-page-link="backends">
-                  <span class="nav-dot"></span>
+                <a href="#backends" class="nav-item" data-page-link="backends" data-nav-label="Backends" aria-label="Backends" title="Backends">
+                  <span class="nav-icon" aria-hidden="true">B</span>
                   <span>Backends</span>
                 </a>
-                <a href="#client-keys" class="nav-item" data-page-link="client-keys">
-                  <span class="nav-dot"></span>
+                <a href="#client-keys" class="nav-item" data-page-link="client-keys" data-nav-label="Client Keys" aria-label="Client Keys" title="Client Keys">
+                  <span class="nav-icon" aria-hidden="true">K</span>
                   <span>Client Keys</span>
                 </a>
-                <a href="#model-policies" class="nav-item" data-page-link="model-policies">
-                  <span class="nav-dot"></span>
+                <a href="#model-policies" class="nav-item" data-page-link="model-policies" data-nav-label="Policies" aria-label="Policies" title="Policies">
+                  <span class="nav-icon" aria-hidden="true">R</span>
                   <span>Policies</span>
                 </a>
               </div>
@@ -70,12 +70,12 @@
             <section class="nav-group">
               <span class="nav-group-label">Observability</span>
               <div class="nav-list">
-                <a href="#usage-logs" class="nav-item" data-page-link="usage-logs">
-                  <span class="nav-dot"></span>
+                <a href="#usage-logs" class="nav-item" data-page-link="usage-logs" data-nav-label="Usage Logs" aria-label="Usage Logs" title="Usage Logs">
+                  <span class="nav-icon" aria-hidden="true">U</span>
                   <span>Usage Logs</span>
                 </a>
-                <a href="#events" class="nav-item" data-page-link="events">
-                  <span class="nav-dot"></span>
+                <a href="#events" class="nav-item" data-page-link="events" data-nav-label="Events" aria-label="Events" title="Events">
+                  <span class="nav-icon" aria-hidden="true">E</span>
                   <span>Events</span>
                 </a>
               </div>
@@ -84,10 +84,10 @@
             <section class="nav-group">
               <span class="nav-group-label">Settings</span>
               <div class="nav-list">
-                <button class="nav-item nav-item-static" type="button">
-                  <span class="nav-dot"></span>
-                  <span>Access Control</span>
-                </button>
+                <a href="#settings" class="nav-item" data-page-link="settings" data-nav-label="Settings" aria-label="Settings" title="Settings">
+                  <span class="nav-icon" aria-hidden="true">S</span>
+                  <span>Settings</span>
+                </a>
               </div>
             </section>
           </nav>
@@ -120,13 +120,19 @@
             <h1 id="pageTitle">透明代理控制台</h1>
           </div>
           <div class="shell-searchbar shell-searchbar-center">
-            <button class="ghost-button shell-search-trigger" id="searchOpenBtn" type="button" aria-haspopup="dialog" aria-controls="searchModalRoot">
-              <span class="search-trigger-copy">
-                <strong>Search backends, keys, policies...</strong>
-                <small>Global search across resources and activity</small>
-              </span>
+            <label class="shell-search-trigger shell-search-field" for="searchOpenBtn">
+              <span class="shell-search-icon" aria-hidden="true">⌕</span>
+              <input
+                id="searchOpenBtn"
+                class="shell-search-launcher"
+                type="search"
+                placeholder="Search backends, keys, policies..."
+                autocomplete="off"
+                aria-haspopup="dialog"
+                aria-controls="searchModalRoot"
+              />
               <span class="search-shortcut">⌘ / Ctrl + K</span>
-            </button>
+            </label>
           </div>
           <div class="shell-utilities">
             <button class="icon-button theme-toggle" id="themeToggleBtn" type="button" aria-label="切换主题">
@@ -147,14 +153,12 @@
         </header>
 
         <main class="workspace shell-workspace">
-          <section class="page overview-page" id="overview" data-page-title="运行概览" data-page-breadcrumb="Dashboard / Overview">
+          <section class="page overview-page" id="overview" data-page-title="Dashboard" data-page-breadcrumb="Dashboard / Overview">
             <div class="page-head">
               <div>
                 <span class="section-label">Transparent LLM Gateway</span>
-                <h2>运行概览</h2>
-                <p>
-                  Token Gate 暴露统一 base_url 和 client key，后端节点、SOCKS5 出口、模型策略都在这里集中管理。
-                </p>
+                <h2>Dashboard</h2>
+                <p>Monitor infrastructure, access credentials, routing policies, and traffic usage.</p>
               </div>
               <div class="page-actions">
                 <a href="#backends">配置 Backend</a>
@@ -578,6 +582,48 @@
             <datalist id="usageLogProxyOptions"></datalist>
             <div class="resource-layout list-only">
               <div id="usageLogList" class="resource-list"></div>
+            </div>
+          </section>
+
+          <section class="page resource-page" id="settings" data-page-title="Settings" data-page-breadcrumb="Settings / Console">
+            <div class="page-head">
+              <div>
+                <span class="section-label">Control Plane</span>
+                <h2>Settings</h2>
+                <p>Manage console access, appearance, and operator shortcuts without leaving the control center.</p>
+              </div>
+              <div class="page-actions">
+                <a href="#overview">返回 Dashboard</a>
+              </div>
+            </div>
+            <div class="settings-grid">
+              <article class="settings-card">
+                <span class="section-label">Access</span>
+                <h3>Admin Session</h3>
+                <p>管理 Token 保存在本地浏览器。侧栏中的 Admin Session 卡片仍然是主入口，这里提供快捷操作。</p>
+                <div class="button-row compact">
+                  <button id="settingsFocusTokenBtn" type="button">定位 Token</button>
+                  <button class="ghost-button" id="settingsRefreshBtn" type="button">刷新数据</button>
+                </div>
+              </article>
+              <article class="settings-card">
+                <span class="section-label">Appearance</span>
+                <h3>Theme & Navigation</h3>
+                <p>在 dark、light 和 system 之间切换，并按需要收起侧栏，保持更专注的操作空间。</p>
+                <div class="button-row compact">
+                  <button id="settingsThemeBtn" type="button">切换主题</button>
+                  <button class="ghost-button" id="settingsSidebarBtn" type="button">折叠侧栏</button>
+                </div>
+              </article>
+              <article class="settings-card">
+                <span class="section-label">Productivity</span>
+                <h3>Global Search</h3>
+                <p>使用中心搜索栏或 `Ctrl / Cmd + K`，快速跳转到资源详情、Usage Logs 和 Events。</p>
+                <div class="button-row compact">
+                  <button id="settingsSearchBtn" type="button">打开搜索</button>
+                  <button class="ghost-button" id="settingsUsageLogsBtn" type="button">查看 Usage Logs</button>
+                </div>
+              </article>
             </div>
           </section>
         </main>

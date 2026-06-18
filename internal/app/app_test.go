@@ -1174,6 +1174,15 @@ func TestUsageLogDeleteFilteredAndClear(t *testing.T) {
 	if deleteRecorder.Code != http.StatusOK {
 		t.Fatalf("expected delete status 200, got %d body=%s", deleteRecorder.Code, deleteRecorder.Body.String())
 	}
+	var deletePayload struct {
+		Deleted int64 `json:"deleted"`
+	}
+	if err := json.Unmarshal(deleteRecorder.Body.Bytes(), &deletePayload); err != nil {
+		t.Fatalf("unmarshal filtered delete response: %v", err)
+	}
+	if deletePayload.Deleted != 1 {
+		t.Fatalf("expected filtered delete to remove 1 usage log, got %d", deletePayload.Deleted)
+	}
 
 	logs, err := application.store.ListUsageLogsPage(ctx, 10, 0)
 	if err != nil {
@@ -1192,6 +1201,15 @@ func TestUsageLogDeleteFilteredAndClear(t *testing.T) {
 	application.Handler().ServeHTTP(clearRecorder, clearReq)
 	if clearRecorder.Code != http.StatusOK {
 		t.Fatalf("expected clear status 200, got %d body=%s", clearRecorder.Code, clearRecorder.Body.String())
+	}
+	var clearPayload struct {
+		Deleted int64 `json:"deleted"`
+	}
+	if err := json.Unmarshal(clearRecorder.Body.Bytes(), &clearPayload); err != nil {
+		t.Fatalf("unmarshal clear response: %v", err)
+	}
+	if clearPayload.Deleted != 1 {
+		t.Fatalf("expected clear to remove remaining usage log, got %d", clearPayload.Deleted)
 	}
 
 	total, err := application.store.CountUsageLogs(ctx)

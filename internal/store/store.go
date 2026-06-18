@@ -1859,9 +1859,12 @@ func (s *Store) DeleteUsageLog(ctx context.Context, id int64) error {
 	return err
 }
 
-func (s *Store) ClearUsageLogs(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM usage_logs`)
-	return err
+func (s *Store) ClearUsageLogs(ctx context.Context) (int64, error) {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM usage_logs`)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 func (s *Store) DeleteUsageLogsFiltered(ctx context.Context, filter UsageLogFilter) (int64, error) {
