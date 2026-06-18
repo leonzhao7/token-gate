@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,6 +29,12 @@ type UsageLogFilter struct {
 	BackendName string
 	Model       string
 	ClientName  string
+}
+
+type UsageLogOptions struct {
+	Backends   []string
+	Models     []string
+	ClientKeys []string
 }
 
 func Open(ctx context.Context, path string) (*Store, error) {
@@ -898,6 +905,60 @@ func (s *Store) ClearUsageLogs(ctx context.Context) error {
 	return err
 }
 
+func (s *Store) DeleteUsageLogsFiltered(ctx context.Context, filter UsageLogFilter) (int64, error) {
+	where, args := usageLogFilterClause(filter)
+	result, err := s.db.ExecContext(ctx, `DELETE FROM usage_logs`+where, args...)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+func (s *Store) UsageLogOptions(ctx context.Context) (UsageLogOptions, error) {
+	backends, err := s.ListBackends(ctx)
+	if err != nil {
+		return UsageLogOptions{}, err
+	}
+	clients, err := s.ListClientKeys(ctx)
+	if err != nil {
+		return UsageLogOptions{}, err
+	}
+
+	backendSet := make(map[string]struct{})
+	modelSet := make(map[string]struct{})
+	clientSet := make(map[string]struct{})
+
+	for _, backend := range backends {
+		if name := strings.TrimSpace(backend.Name); name != "" {
+			backendSet[name] = struct{}{}
+		}
+		for _, model := range backend.Models {
+			model = strings.TrimSpace(model)
+			if model != "" {
+				modelSet[model] = struct{}{}
+			}
+		}
+		for clientModel := range backend.ModelMapping {
+			clientModel = strings.TrimSpace(clientModel)
+			if clientModel != "" {
+				modelSet[clientModel] = struct{}{}
+			}
+		}
+	}
+
+	for _, client := range clients {
+		if name := strings.TrimSpace(client.Name); name != "" {
+			clientSet[name] = struct{}{}
+		}
+	}
+
+	return UsageLogOptions{
+		Backends:   sortedKeys(backendSet),
+		Models:     sortedKeys(modelSet),
+		ClientKeys: sortedKeys(clientSet),
+	}, nil
+}
+
 func usageLogFilterClause(filter UsageLogFilter) (string, []any) {
 	var (
 		clauses []string
@@ -919,6 +980,18 @@ func usageLogFilterClause(filter UsageLogFilter) (string, []any) {
 		return "", nil
 	}
 	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func sortedKeys(set map[string]struct{}) []string {
+	if len(set) == 0 {
+		return []string{}
+	}
+	items := make([]string, 0, len(set))
+	for item := range set {
+		items = append(items, item)
+	}
+	slices.Sort(items)
+	return items
 }
 
 type scanner interface {

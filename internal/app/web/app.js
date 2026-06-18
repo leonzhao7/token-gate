@@ -10,10 +10,14 @@ const clientList = document.querySelector("#clientList");
 const policyList = document.querySelector("#policyList");
 const eventList = document.querySelector("#eventList");
 const usageLogList = document.querySelector("#usageLogList");
+const deleteUsageLogsBtn = document.querySelector("#deleteUsageLogsBtn");
 const clearUsageLogsBtn = document.querySelector("#clearUsageLogsBtn");
 const usageLogBackendFilter = document.querySelector("#usageLogBackendFilter");
 const usageLogModelFilter = document.querySelector("#usageLogModelFilter");
 const usageLogClientKeyFilter = document.querySelector("#usageLogClientKeyFilter");
+const usageLogBackendOptions = document.querySelector("#usageLogBackendOptions");
+const usageLogModelOptions = document.querySelector("#usageLogModelOptions");
+const usageLogClientKeyOptions = document.querySelector("#usageLogClientKeyOptions");
 const applyUsageLogFiltersBtn = document.querySelector("#applyUsageLogFiltersBtn");
 const resetUsageLogFiltersBtn = document.querySelector("#resetUsageLogFiltersBtn");
 const pages = Array.from(document.querySelectorAll(".page"));
@@ -62,6 +66,11 @@ const state = {
   policies: [],
   events: [],
   usageLogs: [],
+  usageLogOptions: {
+    backends: [],
+    models: [],
+    clientKeys: [],
+  },
   paginationMeta: {
     proxies: { total: 0, page: 1, limit: 10 },
     backends: { total: 0, page: 1, limit: 10 },
@@ -191,6 +200,10 @@ clearUsageLogsBtn.addEventListener("click", () => {
   clearUsageLogs().catch(reportError);
 });
 
+deleteUsageLogsBtn.addEventListener("click", () => {
+  deleteFilteredUsageLogs().catch(reportError);
+});
+
 [usageLogBackendFilter, usageLogModelFilter, usageLogClientKeyFilter].forEach((input) => {
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -290,7 +303,7 @@ async function refreshAll() {
   const eventPage = state.pagination.events;
   const usageLogPage = state.pagination.usageLogs;
   const usageLogQuery = buildUsageLogQuery();
-  const [overview, proxies, backends, clients, policies, events, usageLogs] = await Promise.all([
+  const [overview, proxies, backends, clients, policies, events, usageLogs, usageLogOptions] = await Promise.all([
     api("/admin/api/overview"),
     api(`/admin/api/socks-proxies?page=${proxyPage.page}&limit=${proxyPage.size}`),
     api(`/admin/api/backends?page=${backendPage.page}&limit=${backendPage.size}`),
@@ -298,6 +311,7 @@ async function refreshAll() {
     api(`/admin/api/model-policies?page=${policyPage.page}&limit=${policyPage.size}`),
     api(`/admin/api/events?page=${eventPage.page}&limit=${eventPage.size}`),
     api(`/admin/api/usage-logs?page=${usageLogPage.page}&limit=${usageLogPage.size}${usageLogQuery}`),
+    api("/admin/api/usage-log-options"),
   ]);
 
   overview.backends = ensureArray(overview.backends);
@@ -308,9 +322,13 @@ async function refreshAll() {
   applyPagedResponse("policies", policies);
   applyPagedResponse("events", events);
   applyPagedResponse("usageLogs", usageLogs);
+  state.usageLogOptions.backends = ensureArray(usageLogOptions?.backends);
+  state.usageLogOptions.models = ensureArray(usageLogOptions?.models);
+  state.usageLogOptions.clientKeys = ensureArray(usageLogOptions?.client_keys);
 
   renderStats(overview);
   renderProxyOptions();
+  renderUsageLogFilterOptions();
   renderProxies();
   renderBackends();
   renderClients();
@@ -364,6 +382,38 @@ async function clearUsageLogs() {
   await api("/admin/api/usage-logs", "DELETE");
   state.pagination.usageLogs.page = 1;
   await refreshAll();
+}
+
+async function deleteFilteredUsageLogs() {
+  if (!state.usageLogFilters.backend && !state.usageLogFilters.model && !state.usageLogFilters.clientKey) {
+    throw new Error("请先设置查询条件，再删除查询结果");
+  }
+  if (!confirm("确认删除当前查询条件命中的使用日志？")) {
+    return;
+  }
+  await api(`/admin/api/usage-logs?${buildUsageLogDeleteQuery()}`, "DELETE");
+  state.pagination.usageLogs.page = 1;
+  await refreshAll();
+}
+
+function buildUsageLogDeleteQuery() {
+  const params = new URLSearchParams();
+  if (state.usageLogFilters.backend) {
+    params.set("backend", state.usageLogFilters.backend);
+  }
+  if (state.usageLogFilters.model) {
+    params.set("model", state.usageLogFilters.model);
+  }
+  if (state.usageLogFilters.clientKey) {
+    params.set("client_key", state.usageLogFilters.clientKey);
+  }
+  return params.toString();
+}
+
+function renderUsageLogFilterOptions() {
+  renderDatalist(usageLogBackendOptions, state.usageLogOptions.backends);
+  renderDatalist(usageLogModelOptions, state.usageLogOptions.models);
+  renderDatalist(usageLogClientKeyOptions, state.usageLogOptions.clientKeys);
 }
 
 function renderStats(overview) {
@@ -902,6 +952,8 @@ function renderEvents() {
 
 function renderUsageLogs() {
   const logs = state.usageLogs;
+  syncUsageLogFilterInputs();
+  deleteUsageLogsBtn.disabled = logs.length === 0;
   if (logs.length === 0) {
     usageLogList.innerHTML = emptyState(
       "还没有使用日志",
@@ -922,7 +974,6 @@ function renderUsageLogs() {
           <span>Backend</span>
           <span>Status</span>
           <span>Detail</span>
-          <span>Action</span>
         </div>
         <div class="event-table-body">
           ${pageData.items.map((log) => `
@@ -934,7 +985,6 @@ function renderUsageLogs() {
               <span>${escapeHTML(log.backend_name || "-")}</span>
               <span>${escapeHTML(formatUsageStatus(log))}</span>
               <span>${escapeHTML(formatUsageDetail(log))}</span>
-              <span>${usageLogActionButton(log.id)}</span>
             </div>
           `).join("")}
         </div>
@@ -943,25 +993,7 @@ function renderUsageLogs() {
     ${renderPagination("usageLogs", pageData)}
   `;
 
-  usageLogList.querySelectorAll("[data-delete-usage-log]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      try {
-        if (!confirm("确认删除这条使用日志？")) {
-          return;
-        }
-        await api(`/admin/api/usage-logs/${button.dataset.deleteUsageLog}`, "DELETE");
-        await refreshAll();
-      } catch (error) {
-        reportError(error);
-      }
-    });
-  });
-
   bindPagination(usageLogList, "usageLogs", refreshAll);
-}
-
-function usageLogActionButton(id) {
-  return `<button class="small-button danger-button" data-delete-usage-log="${escapeHTML(id)}" type="button">删除</button>`;
 }
 
 function bindPagination(container, key, rerender) {
@@ -1529,6 +1561,13 @@ function emptyState(title, description) {
       <p class="empty-copy">${escapeHTML(description)}</p>
     </article>
   `;
+}
+
+function renderDatalist(element, values) {
+  element.innerHTML = ensureArray(values)
+    .filter(Boolean)
+    .map((value) => `<option value="${escapeHTML(value)}"></option>`)
+    .join("");
 }
 
 async function api(path, method = "GET", body) {

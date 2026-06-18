@@ -139,8 +139,8 @@ func (a *App) routes() {
 	a.mux.Handle("DELETE /admin/api/model-policies/{id}", a.adminAuth(http.HandlerFunc(a.handleDeletePolicy)))
 	a.mux.Handle("GET /admin/api/events", a.adminAuth(http.HandlerFunc(a.handleListEvents)))
 	a.mux.Handle("GET /admin/api/usage-logs", a.adminAuth(http.HandlerFunc(a.handleListUsageLogs)))
+	a.mux.Handle("GET /admin/api/usage-log-options", a.adminAuth(http.HandlerFunc(a.handleUsageLogOptions)))
 	a.mux.Handle("DELETE /admin/api/usage-logs", a.adminAuth(http.HandlerFunc(a.handleClearUsageLogs)))
-	a.mux.Handle("DELETE /admin/api/usage-logs/{id}", a.adminAuth(http.HandlerFunc(a.handleDeleteUsageLog)))
 }
 
 func (a *App) handlePublicModels(w http.ResponseWriter, r *http.Request) {
@@ -1029,11 +1029,7 @@ func (a *App) handleListEvents(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleListUsageLogs(w http.ResponseWriter, r *http.Request) {
 	page, limit := parsePageQuery(r)
-	filter := store.UsageLogFilter{
-		BackendName: strings.TrimSpace(r.URL.Query().Get("backend")),
-		Model:       strings.TrimSpace(r.URL.Query().Get("model")),
-		ClientName:  strings.TrimSpace(r.URL.Query().Get("client_key")),
-	}
+	filter := usageLogFilterFromRequest(r)
 	total, err := a.store.CountUsageLogsFiltered(r.Context(), filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -1047,25 +1043,39 @@ func (a *App) handleListUsageLogs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, pagedResponse(ensureUsageLogs(logs), total, page, limit))
 }
 
-func (a *App) handleDeleteUsageLog(w http.ResponseWriter, r *http.Request) {
-	id, err := parseID(r.PathValue("id"))
+func (a *App) handleUsageLogOptions(w http.ResponseWriter, r *http.Request) {
+	options, err := a.store.UsageLogOptions(r.Context())
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := a.store.DeleteUsageLog(r.Context(), id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"backends":    options.Backends,
+		"models":      options.Models,
+		"client_keys": options.ClientKeys,
+	})
 }
 
 func (a *App) handleClearUsageLogs(w http.ResponseWriter, r *http.Request) {
-	if err := a.store.ClearUsageLogs(r.Context()); err != nil {
+	filter := usageLogFilterFromRequest(r)
+	var (
+		deleted int64
+		err     error
+	)
+	if filter == (store.UsageLogFilter{}) {
+		err = a.store.ClearUsageLogs(r.Context())
+	} else {
+		deleted, err = a.store.DeleteUsageLogsFiltered(r.Context(), filter)
+	}
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"cleared": true})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"cleared": true,
+		"filter":  filter,
+		"deleted": deleted,
+	})
 }
 
 func (a *App) adminAuth(next http.Handler) http.Handler {
@@ -1090,6 +1100,14 @@ func (a *App) adminAuth(next http.Handler) http.Handler {
 		)
 		next.ServeHTTP(w, r)
 	})
+}
+
+func usageLogFilterFromRequest(r *http.Request) store.UsageLogFilter {
+	return store.UsageLogFilter{
+		BackendName: strings.TrimSpace(r.URL.Query().Get("backend")),
+		Model:       strings.TrimSpace(r.URL.Query().Get("model")),
+		ClientName:  strings.TrimSpace(r.URL.Query().Get("client_key")),
+	}
 }
 
 func (a *App) clientAuth(next http.Handler) http.Handler {

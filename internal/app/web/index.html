@@ -390,27 +390,31 @@
                 <p>每个 Client Key 的每次代理请求都会记录一条日志，便于追踪模型、后端、状态和耗时。</p>
               </div>
               <div class="page-actions">
+                <button class="danger-button" id="deleteUsageLogsBtn" type="button">删除查询结果</button>
                 <button class="ghost-button" id="clearUsageLogsBtn" type="button">清空</button>
               </div>
             </div>
             <div class="filter-bar">
               <label class="field">
                 <span>Backend</span>
-                <input id="usageLogBackendFilter" placeholder="backend name" />
+                <input id="usageLogBackendFilter" list="usageLogBackendOptions" placeholder="backend name" />
               </label>
               <label class="field">
                 <span>Model</span>
-                <input id="usageLogModelFilter" placeholder="model name" />
+                <input id="usageLogModelFilter" list="usageLogModelOptions" placeholder="model name" />
               </label>
               <label class="field">
                 <span>Client Key</span>
-                <input id="usageLogClientKeyFilter" placeholder="client key name" />
+                <input id="usageLogClientKeyFilter" list="usageLogClientKeyOptions" placeholder="client key name" />
               </label>
               <div class="button-row compact">
                 <button id="applyUsageLogFiltersBtn" type="button">查询</button>
                 <button class="ghost-button" id="resetUsageLogFiltersBtn" type="button">重置</button>
               </div>
             </div>
+            <datalist id="usageLogBackendOptions"></datalist>
+            <datalist id="usageLogModelOptions"></datalist>
+            <datalist id="usageLogClientKeyOptions"></datalist>
             <div class="resource-layout list-only">
               <div id="usageLogList" class="resource-list"></div>
             </div>

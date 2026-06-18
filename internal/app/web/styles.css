@@ -1074,20 +1074,12 @@ button:hover {
 }
 
 .usage-log-table {
-  min-width: 1410px;
+  min-width: 1300px;
 }
 
 .usage-log-head,
 .usage-log-row {
-  grid-template-columns: 180px 150px 180px 180px 170px 140px minmax(220px, 1fr) 110px;
-}
-
-.usage-log-row span:last-child {
-  color: var(--muted-strong);
-}
-
-.usage-log-row span:last-child button {
-  width: 100%;
+  grid-template-columns: 180px 150px 180px 180px 170px 140px minmax(300px, 1fr);
 }
 
 .hidden {

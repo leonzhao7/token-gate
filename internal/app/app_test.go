@@ -1019,7 +1019,90 @@ func TestUsageLogListFiltersByBackendModelAndClientKey(t *testing.T) {
 	assertUsageLogQuery("backend=alpha&model=gpt-4.1", 0)
 }
 
-func TestUsageLogDeleteAndClear(t *testing.T) {
+func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	if _, err := application.store.CreateClientKey(ctx, domain.ClientKey{
+		Name:        "client-a",
+		TokenHash:   store.HashToken("client-a-token"),
+		Token:       "client-a-token",
+		TokenPrefix: "cli-a",
+		Enabled:     true,
+	}); err != nil {
+		t.Fatalf("create client key a: %v", err)
+	}
+	if _, err := application.store.CreateClientKey(ctx, domain.ClientKey{
+		Name:        "client-b",
+		TokenHash:   store.HashToken("client-b-token"),
+		Token:       "client-b-token",
+		TokenPrefix: "cli-b",
+		Enabled:     true,
+	}); err != nil {
+		t.Fatalf("create client key b: %v", err)
+	}
+	if _, err := application.store.CreateBackend(ctx, domain.Backend{
+		Name:         "alpha",
+		BaseURL:      "https://alpha.local/v1",
+		APIKey:       "alpha-key",
+		Enabled:      true,
+		Weight:       1,
+		Models:       []string{"gpt-4o", "gpt-image-*"},
+		ModelMapping: map[string]string{"gpt-5.4": "gpt-5.4-test"},
+		Endpoints:    []string{domain.EndpointChat, domain.EndpointImages},
+	}); err != nil {
+		t.Fatalf("create backend alpha: %v", err)
+	}
+	if _, err := application.store.CreateBackend(ctx, domain.Backend{
+		Name:      "beta",
+		BaseURL:   "https://beta.local/v1",
+		APIKey:    "beta-key",
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"gpt-4.1"},
+		Endpoints: []string{domain.EndpointResponses},
+	}); err != nil {
+		t.Fatalf("create backend beta: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/usage-log-options", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected options status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Backends   []string `json:"backends"`
+		Models     []string `json:"models"`
+		ClientKeys []string `json:"client_keys"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal usage log options: %v", err)
+	}
+
+	assertHas := func(items []string, want string) {
+		t.Helper()
+		for _, item := range items {
+			if item == want {
+				return
+			}
+		}
+		t.Fatalf("expected %q in %#v", want, items)
+	}
+	assertHas(payload.Backends, "alpha")
+	assertHas(payload.Backends, "beta")
+	assertHas(payload.Models, "gpt-4o")
+	assertHas(payload.Models, "gpt-image-*")
+	assertHas(payload.Models, "gpt-4.1")
+	assertHas(payload.Models, "gpt-5.4")
+	assertHas(payload.ClientKeys, "client-a")
+	assertHas(payload.ClientKeys, "client-b")
+}
+
+func TestUsageLogDeleteFilteredAndClear(t *testing.T) {
 	application := newTestApp(t)
 	ctx := context.Background()
 
@@ -1059,15 +1142,7 @@ func TestUsageLogDeleteAndClear(t *testing.T) {
 		t.Fatalf("append usage log 2: %v", err)
 	}
 
-	logs, err := application.store.ListUsageLogsPage(ctx, 10, 0)
-	if err != nil {
-		t.Fatalf("list usage logs before delete: %v", err)
-	}
-	if len(logs) != 2 {
-		t.Fatalf("expected two usage logs before delete, got %d", len(logs))
-	}
-
-	deleteReq := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/admin/api/usage-logs/%d", logs[0].ID), nil)
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/admin/api/usage-logs?backend=beta&model=gpt-4.1&client_key=client-b", nil)
 	deleteReq.Header.Set("Authorization", "Bearer test-admin")
 	deleteRecorder := httptest.NewRecorder()
 	application.Handler().ServeHTTP(deleteRecorder, deleteReq)
@@ -1075,12 +1150,15 @@ func TestUsageLogDeleteAndClear(t *testing.T) {
 		t.Fatalf("expected delete status 200, got %d body=%s", deleteRecorder.Code, deleteRecorder.Body.String())
 	}
 
-	logs, err = application.store.ListUsageLogsPage(ctx, 10, 0)
+	logs, err := application.store.ListUsageLogsPage(ctx, 10, 0)
 	if err != nil {
-		t.Fatalf("list usage logs after delete: %v", err)
+		t.Fatalf("list usage logs after filtered delete: %v", err)
 	}
 	if len(logs) != 1 {
-		t.Fatalf("expected one usage log after delete, got %d", len(logs))
+		t.Fatalf("expected one usage log after filtered delete, got %d", len(logs))
+	}
+	if logs[0].RequestID != "req-1" {
+		t.Fatalf("unexpected remaining usage log after filtered delete: %#v", logs[0])
 	}
 
 	clearReq := httptest.NewRequest(http.MethodDelete, "/admin/api/usage-logs", nil)
