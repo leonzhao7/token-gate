@@ -24,6 +24,12 @@ type BackendRequestStats struct {
 	Failures  int
 }
 
+type UsageLogFilter struct {
+	BackendName string
+	Model       string
+	ClientName  string
+}
+
 func Open(ctx context.Context, path string) (*Store, error) {
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
@@ -837,18 +843,35 @@ func (s *Store) AppendUsageLog(ctx context.Context, log domain.UsageLog) error {
 }
 
 func (s *Store) CountUsageLogs(ctx context.Context) (int, error) {
-	return countRows(ctx, s.db, "usage_logs")
+	return s.CountUsageLogsFiltered(ctx, UsageLogFilter{})
+}
+
+func (s *Store) CountUsageLogsFiltered(ctx context.Context, filter UsageLogFilter) (int, error) {
+	where, args := usageLogFilterClause(filter)
+	row := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_logs`+where, args...)
+	var total int
+	if err := row.Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 func (s *Store) ListUsageLogsPage(ctx context.Context, limit, offset int) ([]domain.UsageLog, error) {
+	return s.ListUsageLogsPageFiltered(ctx, UsageLogFilter{}, limit, offset)
+}
+
+func (s *Store) ListUsageLogsPageFiltered(ctx context.Context, filter UsageLogFilter, limit, offset int) ([]domain.UsageLog, error) {
+	where, args := usageLogFilterClause(filter)
+	args = append(args, limit, offset)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, request_id, client_id, client_name, client_token_prefix, route_mode_override, route_group,
 			method, path, query, endpoint, model, backend_id, backend_name, attempts, status_code,
 			duration_ms, error_message, client_ip, user_agent, created_at
 		FROM usage_logs
+	`+where+`
 		ORDER BY id DESC
 		LIMIT ? OFFSET ?
-	`, limit, offset)
+	`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -863,6 +886,39 @@ func (s *Store) ListUsageLogsPage(ctx context.Context, limit, offset int) ([]dom
 		logs = append(logs, entry)
 	}
 	return logs, rows.Err()
+}
+
+func (s *Store) DeleteUsageLog(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM usage_logs WHERE id = ?`, id)
+	return err
+}
+
+func (s *Store) ClearUsageLogs(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM usage_logs`)
+	return err
+}
+
+func usageLogFilterClause(filter UsageLogFilter) (string, []any) {
+	var (
+		clauses []string
+		args    []any
+	)
+	if value := strings.TrimSpace(filter.BackendName); value != "" {
+		clauses = append(clauses, `backend_name = ?`)
+		args = append(args, value)
+	}
+	if value := strings.TrimSpace(filter.Model); value != "" {
+		clauses = append(clauses, `model = ?`)
+		args = append(args, value)
+	}
+	if value := strings.TrimSpace(filter.ClientName); value != "" {
+		clauses = append(clauses, `client_name = ?`)
+		args = append(args, value)
+	}
+	if len(clauses) == 0 {
+		return "", nil
+	}
+	return " WHERE " + strings.Join(clauses, " AND "), args
 }
 
 type scanner interface {

@@ -392,6 +392,14 @@ a {
   padding: 22px 24px 0;
 }
 
+.filter-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 18px 24px 0;
+}
+
 .resource-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 390px);
@@ -569,6 +577,14 @@ button:hover {
 
 .button-row button {
   flex: 1;
+}
+
+.button-row.compact {
+  justify-content: flex-start;
+}
+
+.button-row.compact button {
+  flex: 0 0 auto;
 }
 
 .ghost-button {
@@ -1058,12 +1074,20 @@ button:hover {
 }
 
 .usage-log-table {
-  min-width: 1280px;
+  min-width: 1410px;
 }
 
 .usage-log-head,
 .usage-log-row {
-  grid-template-columns: 180px 150px 180px 180px 170px 140px minmax(220px, 1fr);
+  grid-template-columns: 180px 150px 180px 180px 170px 140px minmax(220px, 1fr) 110px;
+}
+
+.usage-log-row span:last-child {
+  color: var(--muted-strong);
+}
+
+.usage-log-row span:last-child button {
+  width: 100%;
 }
 
 .hidden {
@@ -1134,6 +1158,10 @@ button:hover {
 
   .editor-card {
     position: static;
+  }
+
+  .filter-bar {
+    grid-template-columns: 1fr;
   }
 }
 

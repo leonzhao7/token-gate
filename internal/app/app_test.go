@@ -938,6 +938,168 @@ func TestUsageLogListAndPagination(t *testing.T) {
 	}
 }
 
+func TestUsageLogListFiltersByBackendModelAndClientKey(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "req-1",
+		ClientID:          1,
+		ClientName:        "client-a",
+		ClientTokenPrefix: "sk-a",
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "gpt-4o",
+		BackendID:         11,
+		BackendName:       "alpha",
+		Attempts:          1,
+		StatusCode:        http.StatusOK,
+		DurationMS:        120,
+		ClientIP:          "10.0.0.1:1234",
+	}); err != nil {
+		t.Fatalf("append usage log 1: %v", err)
+	}
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "req-2",
+		ClientID:          2,
+		ClientName:        "client-b",
+		ClientTokenPrefix: "sk-b",
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "gpt-4.1",
+		BackendID:         22,
+		BackendName:       "beta",
+		Attempts:          1,
+		StatusCode:        http.StatusBadGateway,
+		DurationMS:        90,
+		ClientIP:          "10.0.0.2:2345",
+		ErrorMessage:      "backend failed",
+	}); err != nil {
+		t.Fatalf("append usage log 2: %v", err)
+	}
+
+	assertUsageLogQuery := func(rawQuery string, wantTotal int, wantRequestIDs ...string) {
+		t.Helper()
+
+		req := httptest.NewRequest(http.MethodGet, "/admin/api/usage-logs?"+rawQuery, nil)
+		req.Header.Set("Authorization", "Bearer test-admin")
+		recorder := httptest.NewRecorder()
+		application.Handler().ServeHTTP(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected status 200 for query %q, got %d body=%s", rawQuery, recorder.Code, recorder.Body.String())
+		}
+
+		var payload struct {
+			Items []domain.UsageLog `json:"items"`
+			Total int               `json:"total"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("unmarshal filtered usage log list: %v", err)
+		}
+		if payload.Total != wantTotal {
+			t.Fatalf("unexpected total for query %q: got %d want %d", rawQuery, payload.Total, wantTotal)
+		}
+		if len(payload.Items) != len(wantRequestIDs) {
+			t.Fatalf("unexpected item count for query %q: got %d want %d", rawQuery, len(payload.Items), len(wantRequestIDs))
+		}
+		for index, requestID := range wantRequestIDs {
+			if payload.Items[index].RequestID != requestID {
+				t.Fatalf("unexpected request id at %d for query %q: got %q want %q", index, rawQuery, payload.Items[index].RequestID, requestID)
+			}
+		}
+	}
+
+	assertUsageLogQuery("backend=alpha", 1, "req-1")
+	assertUsageLogQuery("model=gpt-4.1", 1, "req-2")
+	assertUsageLogQuery("client_key=client-a", 1, "req-1")
+	assertUsageLogQuery("backend=beta&model=gpt-4.1&client_key=client-b", 1, "req-2")
+	assertUsageLogQuery("backend=alpha&model=gpt-4.1", 0)
+}
+
+func TestUsageLogDeleteAndClear(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "req-1",
+		ClientID:          1,
+		ClientName:        "client-a",
+		ClientTokenPrefix: "sk-a",
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "gpt-4o",
+		BackendID:         11,
+		BackendName:       "alpha",
+		Attempts:          1,
+		StatusCode:        http.StatusOK,
+		DurationMS:        10,
+	}); err != nil {
+		t.Fatalf("append usage log 1: %v", err)
+	}
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "req-2",
+		ClientID:          2,
+		ClientName:        "client-b",
+		ClientTokenPrefix: "sk-b",
+		Method:            http.MethodPost,
+		Path:              "/v1/responses",
+		Endpoint:          domain.EndpointResponses,
+		Model:             "gpt-4.1",
+		BackendID:         22,
+		BackendName:       "beta",
+		Attempts:          2,
+		StatusCode:        http.StatusBadGateway,
+		DurationMS:        20,
+		ErrorMessage:      "upstream error",
+	}); err != nil {
+		t.Fatalf("append usage log 2: %v", err)
+	}
+
+	logs, err := application.store.ListUsageLogsPage(ctx, 10, 0)
+	if err != nil {
+		t.Fatalf("list usage logs before delete: %v", err)
+	}
+	if len(logs) != 2 {
+		t.Fatalf("expected two usage logs before delete, got %d", len(logs))
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/admin/api/usage-logs/%d", logs[0].ID), nil)
+	deleteReq.Header.Set("Authorization", "Bearer test-admin")
+	deleteRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(deleteRecorder, deleteReq)
+	if deleteRecorder.Code != http.StatusOK {
+		t.Fatalf("expected delete status 200, got %d body=%s", deleteRecorder.Code, deleteRecorder.Body.String())
+	}
+
+	logs, err = application.store.ListUsageLogsPage(ctx, 10, 0)
+	if err != nil {
+		t.Fatalf("list usage logs after delete: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected one usage log after delete, got %d", len(logs))
+	}
+
+	clearReq := httptest.NewRequest(http.MethodDelete, "/admin/api/usage-logs", nil)
+	clearReq.Header.Set("Authorization", "Bearer test-admin")
+	clearRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(clearRecorder, clearReq)
+	if clearRecorder.Code != http.StatusOK {
+		t.Fatalf("expected clear status 200, got %d body=%s", clearRecorder.Code, clearRecorder.Body.String())
+	}
+
+	total, err := application.store.CountUsageLogs(ctx)
+	if err != nil {
+		t.Fatalf("count usage logs after clear: %v", err)
+	}
+	if total != 0 {
+		t.Fatalf("expected usage logs to be empty after clear, got %d", total)
+	}
+}
+
 func TestUsageLogPersistsAfterClientWriteFailure(t *testing.T) {
 	application := newTestApp(t)
 	client := createTestClient(t, application, "client-secret")

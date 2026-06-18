@@ -139,6 +139,8 @@ func (a *App) routes() {
 	a.mux.Handle("DELETE /admin/api/model-policies/{id}", a.adminAuth(http.HandlerFunc(a.handleDeletePolicy)))
 	a.mux.Handle("GET /admin/api/events", a.adminAuth(http.HandlerFunc(a.handleListEvents)))
 	a.mux.Handle("GET /admin/api/usage-logs", a.adminAuth(http.HandlerFunc(a.handleListUsageLogs)))
+	a.mux.Handle("DELETE /admin/api/usage-logs", a.adminAuth(http.HandlerFunc(a.handleClearUsageLogs)))
+	a.mux.Handle("DELETE /admin/api/usage-logs/{id}", a.adminAuth(http.HandlerFunc(a.handleDeleteUsageLog)))
 }
 
 func (a *App) handlePublicModels(w http.ResponseWriter, r *http.Request) {
@@ -1027,17 +1029,43 @@ func (a *App) handleListEvents(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleListUsageLogs(w http.ResponseWriter, r *http.Request) {
 	page, limit := parsePageQuery(r)
-	total, err := a.store.CountUsageLogs(r.Context())
+	filter := store.UsageLogFilter{
+		BackendName: strings.TrimSpace(r.URL.Query().Get("backend")),
+		Model:       strings.TrimSpace(r.URL.Query().Get("model")),
+		ClientName:  strings.TrimSpace(r.URL.Query().Get("client_key")),
+	}
+	total, err := a.store.CountUsageLogsFiltered(r.Context(), filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	logs, err := a.store.ListUsageLogsPage(r.Context(), limit, pageOffset(page, limit))
+	logs, err := a.store.ListUsageLogsPageFiltered(r.Context(), filter, limit, pageOffset(page, limit))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, pagedResponse(ensureUsageLogs(logs), total, page, limit))
+}
+
+func (a *App) handleDeleteUsageLog(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := a.store.DeleteUsageLog(r.Context(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
+}
+
+func (a *App) handleClearUsageLogs(w http.ResponseWriter, r *http.Request) {
+	if err := a.store.ClearUsageLogs(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"cleared": true})
 }
 
 func (a *App) adminAuth(next http.Handler) http.Handler {
