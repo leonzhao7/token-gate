@@ -5,10 +5,12 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const {
   buildSearchRequestPath,
+  createSearchRequest,
   createDebouncedTask,
   getSearchResultTarget,
   isSearchDismissKey,
   isSearchShortcut,
+  nextSearchSequence,
   normalizeSearchResponse,
 } = require("./search.js");
 
@@ -156,6 +158,20 @@ test("getSearchResultTarget extracts route and drawer target", () => {
       },
     },
   );
+});
+
+test("nextSearchSequence increments and sanitizes invalid state", () => {
+  assert.equal(nextSearchSequence(0), 1);
+  assert.equal(nextSearchSequence(4), 5);
+  assert.equal(nextSearchSequence(-2), 1);
+  assert.equal(nextSearchSequence("bad"), 1);
+});
+
+test("createSearchRequest trims query and allocates the next sequence immediately", () => {
+  assert.deepEqual(createSearchRequest("  alpha  ", 7), {
+    sequence: 8,
+    query: "alpha",
+  });
 });
 
 test("createDebouncedTask cancels the previous schedule and runs the latest args", () => {

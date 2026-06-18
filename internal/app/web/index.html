@@ -125,7 +125,7 @@
                 <strong>Search backends, keys, policies...</strong>
                 <small>Global search across resources and activity</small>
               </span>
-              <span class="search-shortcut">⌘K</span>
+              <span class="search-shortcut">⌘ / Ctrl + K</span>
             </button>
           </div>
           <div class="shell-utilities">
@@ -525,12 +525,12 @@
       </div>
     </div>
 
-    <div class="search-modal hidden" id="searchModalRoot" aria-hidden="true">
-      <div class="search-modal-panel">
+    <div class="search-modal hidden" id="searchModalRoot" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="searchDialogTitle">
+      <div class="search-modal-panel" tabindex="-1">
         <div class="search-modal-head">
           <div>
             <span class="section-label">Command Menu</span>
-            <strong>Global Search</strong>
+            <strong id="searchDialogTitle">Global Search</strong>
           </div>
           <button class="icon-button" id="searchCloseBtn" type="button" aria-label="关闭搜索">×</button>
         </div>
@@ -544,8 +544,8 @@
       </div>
     </div>
 
-    <aside class="drawer-shell hidden" id="drawerRoot" aria-hidden="true">
-      <div class="drawer-shell-panel">
+    <aside class="drawer-shell hidden" id="drawerRoot" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+      <div class="drawer-shell-panel" tabindex="-1">
         <div class="drawer-shell-head">
           <div>
             <span class="section-label">Drawer</span>

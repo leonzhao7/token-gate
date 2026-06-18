@@ -105,6 +105,21 @@
     };
   }
 
+  function nextSearchSequence(currentSequence = 0) {
+    const normalized = Number(currentSequence);
+    if (!Number.isFinite(normalized) || normalized < 0) {
+      return 1;
+    }
+    return Math.floor(normalized) + 1;
+  }
+
+  function createSearchRequest(query, currentSequence = 0) {
+    return {
+      sequence: nextSearchSequence(currentSequence),
+      query: String(query || "").trim(),
+    };
+  }
+
   function createDebouncedTask(task, wait = 250, timerAPI = {}) {
     const schedule = typeof timerAPI.schedule === "function" ? timerAPI.schedule : (callback, delay) => setTimeout(callback, delay);
     const cancel = typeof timerAPI.cancel === "function" ? timerAPI.cancel : (handle) => clearTimeout(handle);
@@ -135,10 +150,12 @@
     SEARCH_GROUP_MAP,
     buildSearchRequestPath,
     clampSearchLimit,
+    createSearchRequest,
     createDebouncedTask,
     getSearchResultTarget,
     isSearchDismissKey,
     isSearchShortcut,
+    nextSearchSequence,
     normalizeSearchResponse,
   };
 

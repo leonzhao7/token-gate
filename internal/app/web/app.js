@@ -11,11 +11,13 @@ const themeToggleBtn = document.querySelector("#themeToggleBtn");
 const themeToggleLabel = document.querySelector("#themeToggleLabel");
 const dashboardRoot = document.querySelector("#dashboardRoot");
 const drawerRoot = document.querySelector("#drawerRoot");
+const drawerPanel = document.querySelector(".drawer-shell-panel");
 const drawerTitle = document.querySelector("#drawerTitle");
 const drawerCloseBtn = document.querySelector("#drawerCloseBtn");
 const drawerBodyRoot = document.querySelector("#drawerBodyRoot");
 const drawerTabRoot = document.querySelector("#drawerTabRoot");
 const searchModalRoot = document.querySelector("#searchModalRoot");
+const searchModalPanel = document.querySelector(".search-modal-panel");
 const searchOpenBtn = document.querySelector("#searchOpenBtn");
 const searchCloseBtn = document.querySelector("#searchCloseBtn");
 const searchInput = document.querySelector("#searchInput");
@@ -138,12 +140,15 @@ const state = {
       loading: false,
       results: { query: "", total: 0, groups: [] },
       requestSequence: 0,
+      activeSequence: 0,
+      triggerElement: null,
     },
   },
 };
 
 tokenInput.value = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
 initializeThemeState();
+renderTheme();
 
 window.addEventListener("hashchange", () => {
   activatePage(pageIDFromHash());
@@ -311,6 +316,15 @@ deleteUsageLogsBtn.addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Tab") {
+    if (state.ui.search.open && trapFocusWithin(searchModalRoot, event)) {
+      return;
+    }
+    if (state.ui.drawer.open && trapFocusWithin(drawerRoot, event)) {
+      return;
+    }
+  }
+
   if (typeof SearchUtils.isSearchShortcut === "function" && SearchUtils.isSearchShortcut(event)) {
     event.preventDefault();
     openSearchShell();
@@ -716,6 +730,9 @@ function closeDrawerShell() {
   state.ui.drawer.title = "";
   state.ui.drawer.tab = "overview";
   renderDrawerShell();
+  if (state.ui.search.triggerElement instanceof HTMLElement) {
+    state.ui.search.triggerElement.focus();
+  }
 }
 
 function renderSearchShell() {
@@ -738,12 +755,20 @@ function closeSearchShell() {
   state.ui.search.open = false;
   searchDebounce?.cancel?.();
   renderSearchShell();
+  if (state.ui.search.triggerElement instanceof HTMLElement) {
+    state.ui.search.triggerElement.focus();
+  }
 }
 
 function openSearchShell() {
+  state.ui.search.triggerElement = document.activeElement instanceof HTMLElement ? document.activeElement : searchOpenBtn;
   state.ui.search.open = true;
   renderSearchShell();
-  searchInput?.focus();
+  if (searchInput) {
+    searchInput.focus();
+  } else {
+    searchModalPanel?.focus();
+  }
   if (state.ui.search.query.trim()) {
     searchInput?.select();
     if (!state.ui.search.results.total && !state.ui.search.loading) {
@@ -756,6 +781,11 @@ function updateSearchQuery(value) {
   state.ui.search.query = String(value || "");
   if (!state.ui.search.query.trim()) {
     searchDebounce?.cancel?.();
+    const clearedSequence = typeof SearchUtils.nextSearchSequence === "function"
+      ? SearchUtils.nextSearchSequence(Math.max(state.ui.search.requestSequence, state.ui.search.activeSequence))
+      : Math.max(state.ui.search.requestSequence, state.ui.search.activeSequence) + 1;
+    state.ui.search.requestSequence = clearedSequence;
+    state.ui.search.activeSequence = clearedSequence;
     state.ui.search.loading = false;
     state.ui.search.results = {
       query: "",
@@ -768,17 +798,26 @@ function updateSearchQuery(value) {
 }
 
 function triggerSearch() {
+  const request = typeof SearchUtils.createSearchRequest === "function"
+    ? SearchUtils.createSearchRequest(state.ui.search.query, state.ui.search.requestSequence)
+    : {
+      sequence: (Number(state.ui.search.requestSequence) || 0) + 1,
+      query: String(state.ui.search.query || "").trim(),
+    };
+  state.ui.search.requestSequence = request.sequence;
+  state.ui.search.activeSequence = request.sequence;
   if (!searchDebounce) {
-    executeSearch(state.ui.search.query).catch(reportError);
+    executeSearch(request).catch(reportError);
     return;
   }
   state.ui.search.loading = true;
   renderSearchShell();
-  searchDebounce(state.ui.search.query);
+  searchDebounce(request);
 }
 
-async function executeSearch(query) {
-  const trimmedQuery = String(query || "").trim();
+async function executeSearch(request) {
+  const requestID = Number(request?.sequence) || 0;
+  const trimmedQuery = String(request?.query || "").trim();
   if (!trimmedQuery) {
     state.ui.search.loading = false;
     state.ui.search.results = {
@@ -790,7 +829,6 @@ async function executeSearch(query) {
     return;
   }
 
-  const requestID = ++state.ui.search.requestSequence;
   state.ui.search.loading = true;
   renderSearchShell();
   const path = typeof SearchUtils.buildSearchRequestPath === "function"
@@ -798,14 +836,14 @@ async function executeSearch(query) {
     : `/admin/api/search?q=${encodeURIComponent(trimmedQuery)}&limit=${SEARCH_LIMIT}`;
   try {
     const response = await api(path);
-    if (requestID !== state.ui.search.requestSequence) {
+    if (requestID !== state.ui.search.activeSequence) {
       return;
     }
     state.ui.search.results = typeof SearchUtils.normalizeSearchResponse === "function"
       ? SearchUtils.normalizeSearchResponse(response)
       : { query: trimmedQuery, total: 0, groups: [] };
   } finally {
-    if (requestID === state.ui.search.requestSequence) {
+    if (requestID === state.ui.search.activeSequence) {
       state.ui.search.loading = false;
       renderSearchShell();
     }
@@ -893,6 +931,41 @@ function navigateToSearchResult(payload) {
   state.ui.drawer.tab = "overview";
   closeSearchShell();
   renderDrawerShell();
+  drawerPanel?.focus();
+}
+
+function trapFocusWithin(container, event) {
+  if (!container || event.key !== "Tab") {
+    return false;
+  }
+
+  const focusable = Array.from(
+    container.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((element) => !element.hasAttribute("hidden") && !element.closest(".hidden"));
+
+  if (focusable.length === 0) {
+    return false;
+  }
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+
+  if (event.shiftKey && active === first) {
+    event.preventDefault();
+    last.focus();
+    return true;
+  }
+
+  if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+    return true;
+  }
+
+  return false;
 }
 
 function renderProxies() {
