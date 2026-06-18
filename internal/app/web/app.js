@@ -10,6 +10,11 @@ const sidebarToggleBtn = document.querySelector("#sidebarToggleBtn");
 const themeToggleBtn = document.querySelector("#themeToggleBtn");
 const themeToggleLabel = document.querySelector("#themeToggleLabel");
 const dashboardRoot = document.querySelector("#dashboardRoot");
+const dashboardSummaryRow = document.querySelector("#dashboardSummaryRow");
+const dashboardUsageCard = document.querySelector("#dashboardUsageCard");
+const dashboardEventsSummaryCard = document.querySelector("#dashboardEventsSummaryCard");
+const dashboardRecentEventsCard = document.querySelector("#dashboardRecentEventsCard");
+const dashboardRecentUsageCard = document.querySelector("#dashboardRecentUsageCard");
 const drawerRoot = document.querySelector("#drawerRoot");
 const drawerPanel = document.querySelector(".drawer-shell-panel");
 const drawerTitle = document.querySelector("#drawerTitle");
@@ -22,7 +27,6 @@ const searchOpenBtn = document.querySelector("#searchOpenBtn");
 const searchCloseBtn = document.querySelector("#searchCloseBtn");
 const searchInput = document.querySelector("#searchInput");
 const searchResultsRoot = document.querySelector("#searchResultsRoot");
-const stats = document.querySelector("#stats");
 const proxyList = document.querySelector("#proxyList");
 const backendList = document.querySelector("#backendList");
 const clientList = document.querySelector("#clientList");
@@ -83,13 +87,30 @@ const SEARCH_LIMIT = 8;
 const SEARCH_DEBOUNCE_MS = 220;
 const ThemeUtils = globalThis.ThemeUtils || {};
 const SearchUtils = globalThis.SearchUtils || {};
+const DashboardUtils = globalThis.DashboardUtils || {};
+const ChartsUtils = globalThis.ChartsUtils || {};
 const systemThemeQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 const searchDebounce = typeof SearchUtils.createDebouncedTask === "function"
   ? SearchUtils.createDebouncedTask((query) => {
     executeSearch(query).catch(reportError);
   }, SEARCH_DEBOUNCE_MS)
   : null;
+const initialDashboardState = typeof DashboardUtils.createDashboardState === "function"
+  ? DashboardUtils.createDashboardState()
+  : {
+    summaryCards: {
+      backends: { status: "loading", data: null, error: "" },
+      client_keys: { status: "loading", data: null, error: "" },
+      policies: { status: "loading", data: null, error: "" },
+      proxies: { status: "loading", data: null, error: "" },
+    },
+    usage: { status: "loading", data: null, error: "", metric: "requests", range: "7d" },
+    eventsSummary: { status: "loading", data: null, error: "" },
+    recentEvents: { status: "loading", data: null, error: "" },
+    recentUsage: { status: "loading", data: null, error: "" },
+  };
 const state = {
+  dashboard: initialDashboardState,
   proxies: [],
   backends: [],
   clients: [],
@@ -449,6 +470,10 @@ policyForm.addEventListener("submit", async (event) => {
 });
 
 async function refreshAll() {
+  startDashboardLoading();
+  renderDashboardShell();
+  const dashboardRefresh = refreshDashboardData().catch(reportError);
+
   const proxyPage = state.pagination.proxies;
   const backendPage = state.pagination.backends;
   const clientPage = state.pagination.clients;
@@ -456,8 +481,7 @@ async function refreshAll() {
   const eventPage = state.pagination.events;
   const usageLogPage = state.pagination.usageLogs;
   const usageLogQuery = buildUsageLogQuery();
-  const [overview, proxies, backends, clients, policies, events, usageLogs, usageLogOptions] = await Promise.all([
-    api("/admin/api/overview"),
+  const [proxies, backends, clients, policies, events, usageLogs, usageLogOptions] = await Promise.all([
     api(`/admin/api/socks-proxies?page=${proxyPage.page}&limit=${proxyPage.size}`),
     api(`/admin/api/backends?page=${backendPage.page}&limit=${backendPage.size}`),
     api(`/admin/api/client-keys?page=${clientPage.page}&limit=${clientPage.size}`),
@@ -467,8 +491,6 @@ async function refreshAll() {
     api("/admin/api/usage-log-options"),
   ]);
 
-  overview.backends = ensureArray(overview.backends);
-  overview.events = ensureArray(overview.events);
   applyPagedResponse("proxies", proxies);
   applyPagedResponse("backends", backends);
   applyPagedResponse("clients", clients);
@@ -479,7 +501,6 @@ async function refreshAll() {
   state.usageLogOptions.models = ensureArray(usageLogOptions?.models);
   state.usageLogOptions.clientKeys = ensureArray(usageLogOptions?.client_keys);
 
-  renderStats(overview);
   renderProxyOptions();
   renderUsageLogFilterOptions();
   renderProxies();
@@ -492,6 +513,7 @@ async function refreshAll() {
   renderDrawerShell();
   renderSearchShell();
   renderTheme();
+  await dashboardRefresh;
 }
 
 function buildUsageLogQuery() {
@@ -573,35 +595,113 @@ function renderUsageLogFilterOptions() {
   renderDatalist(usageLogClientKeyOptions, state.usageLogOptions.clientKeys);
 }
 
-function renderStats(overview) {
-  const enabled = overview.backends.filter((backend) => backend.enabled).length;
-  stats.innerHTML = `
-    <article class="metric-card">
-      <strong>${overview.backends.length}</strong>
-      <span>Backends</span>
-      <span class="metric-copy">已登记的真实上游节点数量。</span>
-    </article>
-    <article class="metric-card">
-      <strong>${enabled}</strong>
-      <span>Enabled</span>
-      <span class="metric-copy">当前处于启用状态的上游节点数量。</span>
-    </article>
-    <article class="metric-card">
-      <strong>${overview.socks_proxies || 0}</strong>
-      <span>SOCKS5</span>
-      <span class="metric-copy">可被 Backend 绑定的出口代理数量。</span>
-    </article>
-    <article class="metric-card">
-      <strong>${overview.client_keys}</strong>
-      <span>Client Keys</span>
-      <span class="metric-copy">当前可管理的客户端身份数量。</span>
-    </article>
-    <article class="metric-card">
-      <strong>${overview.model_policies || 0}</strong>
-      <span>Policies</span>
-      <span class="metric-copy">正在生效的模型调度规则数量。</span>
-    </article>
-  `;
+async function refreshDashboardData() {
+  const usageRange = state.dashboard.usage.range || "7d";
+  const requests = [
+    api("/admin/api/dashboard/summary")
+      .then((payload) => {
+        if (typeof DashboardUtils.applyDashboardSummaryPayload === "function") {
+          DashboardUtils.applyDashboardSummaryPayload(state.dashboard, payload);
+          return;
+        }
+        const cards = typeof DashboardUtils.createDashboardSummaryCards === "function"
+          ? DashboardUtils.createDashboardSummaryCards(payload)
+          : [];
+        const cardsByKey = cards.reduce((accumulator, card) => {
+          accumulator[card.key] = card;
+          return accumulator;
+        }, {});
+        Object.entries(state.dashboard.summaryCards || {}).forEach(([key, cardState]) => {
+          cardState.data = cardsByKey[key] || null;
+          cardState.error = "";
+          cardState.status = cardState.data ? "ready" : "empty";
+        });
+      })
+      .catch((error) => {
+        if (typeof DashboardUtils.applyDashboardSummaryError === "function") {
+          DashboardUtils.applyDashboardSummaryError(state.dashboard, error?.message || "Failed to load summary");
+          return;
+        }
+        Object.values(state.dashboard.summaryCards || {}).forEach((cardState) => {
+          cardState.status = "failed";
+          cardState.error = error?.message || "Failed to load summary";
+          cardState.data = null;
+        });
+      })
+      .finally(() => {
+        renderDashboardShell();
+      }),
+    api(`/admin/api/dashboard/usage?range=${encodeURIComponent(usageRange)}`)
+      .then((payload) => {
+        state.dashboard.usage.status = "ready";
+        state.dashboard.usage.data = typeof DashboardUtils.createDashboardUsageState === "function"
+          ? DashboardUtils.createDashboardUsageState(payload)
+          : null;
+        state.dashboard.usage.error = "";
+      })
+      .catch((error) => {
+        state.dashboard.usage.status = "failed";
+        state.dashboard.usage.error = error?.message || "Failed to load usage";
+        state.dashboard.usage.data = null;
+      })
+      .finally(() => {
+        if (state.dashboard.usage.status === "ready" && !(state.dashboard.usage.data?.points || []).length) {
+          state.dashboard.usage.status = "empty";
+        }
+        renderDashboardShell();
+      }),
+    api("/admin/api/dashboard/activity")
+      .then((payload) => {
+        if (typeof DashboardUtils.applyDashboardActivityPayload === "function") {
+          DashboardUtils.applyDashboardActivityPayload(state.dashboard, payload);
+          return;
+        }
+        const activityState = typeof DashboardUtils.createDashboardActivityState === "function"
+          ? DashboardUtils.createDashboardActivityState(payload)
+          : { counters: [], events: [], usage: [] };
+        state.dashboard.eventsSummary.data = activityState.counters;
+        state.dashboard.eventsSummary.error = "";
+        state.dashboard.eventsSummary.status = (activityState.counters || []).some((item) => Number(item.count) > 0) ? "ready" : "empty";
+        state.dashboard.recentEvents.data = activityState.events;
+        state.dashboard.recentEvents.error = "";
+        state.dashboard.recentEvents.status = (activityState.events || []).length ? "ready" : "empty";
+        state.dashboard.recentUsage.data = activityState.usage;
+        state.dashboard.recentUsage.error = "";
+        state.dashboard.recentUsage.status = (activityState.usage || []).length ? "ready" : "empty";
+      })
+      .catch((error) => {
+        if (typeof DashboardUtils.applyDashboardActivityError === "function") {
+          DashboardUtils.applyDashboardActivityError(state.dashboard, error?.message || "Failed to load activity");
+          return;
+        }
+        [state.dashboard.eventsSummary, state.dashboard.recentEvents, state.dashboard.recentUsage].forEach((panelState) => {
+          panelState.status = "failed";
+          panelState.error = error?.message || "Failed to load activity";
+          panelState.data = null;
+        });
+      })
+      .finally(() => {
+        renderDashboardShell();
+      }),
+  ];
+
+  await Promise.allSettled(requests);
+}
+
+function startDashboardLoading() {
+  Object.values(state.dashboard.summaryCards || {}).forEach((cardState) => {
+    cardState.status = "loading";
+    cardState.error = "";
+    cardState.data = null;
+  });
+  state.dashboard.usage.status = "loading";
+  state.dashboard.usage.error = "";
+  state.dashboard.usage.data = null;
+  [state.dashboard.eventsSummary, state.dashboard.recentEvents, state.dashboard.recentUsage].forEach((panelState) => {
+    panelState.status = "loading";
+    panelState.error = "";
+    panelState.data = null;
+  });
 }
 
 function pageIDFromHash() {
@@ -696,6 +796,22 @@ function renderDashboardShell() {
     return;
   }
   dashboardRoot.dataset.theme = state.ui.theme;
+  if (dashboardSummaryRow) {
+    dashboardSummaryRow.innerHTML = renderDashboardSummaryRow();
+  }
+  if (dashboardUsageCard) {
+    dashboardUsageCard.innerHTML = renderDashboardUsageCard();
+  }
+  if (dashboardEventsSummaryCard) {
+    dashboardEventsSummaryCard.innerHTML = renderDashboardEventsSummaryCard();
+  }
+  if (dashboardRecentEventsCard) {
+    dashboardRecentEventsCard.innerHTML = renderDashboardRecentEventsCard();
+  }
+  if (dashboardRecentUsageCard) {
+    dashboardRecentUsageCard.innerHTML = renderDashboardRecentUsageCard();
+  }
+  bindDashboardInteractions();
 }
 
 function renderDrawerShell() {
@@ -749,6 +865,461 @@ function renderSearchShell() {
   if (searchResultsRoot) {
     searchResultsRoot.innerHTML = renderSearchResults();
   }
+}
+
+function renderDashboardSummaryRow() {
+  const order = ["backends", "client_keys", "policies", "proxies"];
+  return order.map((key, index) => {
+    const cardState = state.dashboard.summaryCards?.[key];
+    if (!cardState || cardState.status === "loading") {
+      return renderDashboardLoadingCard("Loading summary");
+    }
+    if (cardState.status === "failed") {
+      return renderDashboardFailedCard({
+        title: `Summary ${index + 1}`,
+        description: cardState.error || "Summary unavailable",
+        action: "summary",
+      });
+    }
+    if (cardState.status === "empty" || !cardState.data) {
+      return renderDashboardEmptyCard({
+        title: `Summary ${index + 1}`,
+        description: "No dashboard summary data yet.",
+      });
+    }
+
+    const card = cardState.data;
+    const sparkline = renderSparkline(card.sparkline, {
+      width: 150,
+      height: 54,
+      padding: 5,
+      className: `sparkline-chart tone-${escapeHTML(card.tone)}`,
+    });
+    return `
+      <article class="dashboard-card dashboard-summary-card">
+        <div class="dashboard-card-head">
+          <span class="section-label">Signal</span>
+          <span class="dashboard-trend tone-${escapeHTML(card.tone)}">${escapeHTML(card.trend)}</span>
+        </div>
+        <div class="dashboard-card-value-row">
+          <div>
+            <strong>${escapeHTML(card.value)}</strong>
+            <h3>${escapeHTML(card.label)}</h3>
+            <p>${escapeHTML(card.detail)}</p>
+          </div>
+          ${sparkline}
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderDashboardUsageCard() {
+  const usageState = state.dashboard.usage;
+  if (usageState.status === "loading") {
+    return renderDashboardPanelFrame({
+      eyebrow: "Usage Overview",
+      title: "Traffic intelligence",
+      body: renderDashboardLoadingCard("Loading usage"),
+    });
+  }
+  if (usageState.status === "failed") {
+    return renderDashboardPanelFrame({
+      eyebrow: "Usage Overview",
+      title: "Traffic intelligence",
+      body: renderDashboardFailedCard({
+        title: "Usage unavailable",
+        description: usageState.error || "Unable to fetch usage series.",
+        action: "usage",
+      }),
+    });
+  }
+  if (usageState.status === "empty") {
+    return renderDashboardPanelFrame({
+      eyebrow: "Usage Overview",
+      title: "Traffic intelligence",
+      body: renderDashboardEmptyCard({
+        title: "No usage yet",
+        description: "Requests, traffic, and error rates will appear after proxy traffic arrives.",
+      }),
+    });
+  }
+
+  const usageData = usageState.data || { points: [], metrics: {} };
+  const metrics = Object.values(usageData.metrics || {});
+  const activeMetric = state.dashboard.usage.metric in (usageData.metrics || {}) ? state.dashboard.usage.metric : "requests";
+  state.dashboard.usage.metric = activeMetric;
+  const selectedMetric = usageData.metrics?.[activeMetric];
+  const values = usageData.points.map((point) => usageValueForMetric(point, activeMetric));
+  const chart = renderAreaChart(values, usageData.points.map((point) => point.label), { width: 720, height: 260, padding: 22 });
+
+  return renderDashboardPanelFrame({
+    eyebrow: "Usage Overview",
+    title: "Traffic intelligence",
+    subtitle: `Range ${escapeHTML(usageData.range || state.dashboard.usage.range)}`,
+    body: `
+      <div class="dashboard-metric-tabs" role="tablist" aria-label="Usage metrics">
+        ${metrics.map((metric) => `
+          <button
+            class="dashboard-metric-tab ${metric.key === activeMetric ? "active" : ""}"
+            type="button"
+            data-dashboard-metric="${escapeHTML(metric.key)}"
+            aria-pressed="${String(metric.key === activeMetric)}"
+          >
+            <span>${escapeHTML(metric.label)}</span>
+            <strong>${escapeHTML(metric.value)}</strong>
+            <small>${escapeHTML(metric.delta)}</small>
+          </button>
+        `).join("")}
+      </div>
+      <div class="dashboard-chart-stage">
+        <div class="dashboard-chart-meta">
+          <div>
+            <span class="dashboard-chart-label">${escapeHTML(selectedMetric?.label || "Metric")}</span>
+            <strong>${escapeHTML(selectedMetric?.value ?? "-")}</strong>
+          </div>
+          <span class="dashboard-chart-delta">${escapeHTML(selectedMetric?.delta || "")}</span>
+        </div>
+        ${chart}
+      </div>
+    `,
+  });
+}
+
+function renderDashboardEventsSummaryCard() {
+  const panelState = state.dashboard.eventsSummary;
+  if (panelState.status === "loading") {
+    return renderDashboardPanelFrame({
+      eyebrow: "Events Summary",
+      title: "Control plane activity",
+      body: renderDashboardLoadingCard("Loading events summary"),
+    });
+  }
+  if (panelState.status === "failed") {
+    return renderDashboardPanelFrame({
+      eyebrow: "Events Summary",
+      title: "Control plane activity",
+      body: renderDashboardFailedCard({
+        title: "Events summary unavailable",
+        description: panelState.error || "Unable to fetch recent activity.",
+        action: "activity",
+      }),
+    });
+  }
+  if (panelState.status === "empty") {
+    return renderDashboardPanelFrame({
+      eyebrow: "Events Summary",
+      title: "Control plane activity",
+      body: renderDashboardEmptyCard({
+        title: "No recent control plane changes",
+        description: "Warnings, errors, and change events will collect here.",
+      }),
+    });
+  }
+
+  const counters = ensureArray(panelState.data);
+  return renderDashboardPanelFrame({
+    eyebrow: "Events Summary",
+    title: "Control plane activity",
+    body: `
+      <div class="dashboard-counter-grid">
+        ${counters.map((counter) => `
+          <article class="dashboard-counter tone-${escapeHTML(counter.tone)}">
+            <small>${escapeHTML(counter.label)}</small>
+            <strong>${escapeHTML(counter.count)}</strong>
+          </article>
+        `).join("")}
+      </div>
+    `,
+  });
+}
+
+function renderDashboardRecentEventsCard() {
+  return renderDashboardFeedPanel({
+    eyebrow: "Recent Events",
+    title: "Audit trail",
+    stateValue: state.dashboard.recentEvents,
+    action: "activity",
+    emptyTitle: "No recent events",
+    emptyDescription: "Policy, backend, and key changes will surface here.",
+    items: ensureArray(state.dashboard.recentEvents.data).map((event) => `
+      <li class="dashboard-feed-item">
+        <div class="dashboard-feed-copy">
+          <strong>${escapeHTML(event.title)}</strong>
+          <p>${escapeHTML(event.message || "No event message")}</p>
+        </div>
+        <div class="dashboard-feed-meta">
+          <span class="status-pill ${feedToneClass(event.tone)}">${escapeHTML(formatDateTime(event.createdAt))}</span>
+        </div>
+      </li>
+    `),
+  });
+}
+
+function renderDashboardRecentUsageCard() {
+  return renderDashboardFeedPanel({
+    eyebrow: "Recent Usage",
+    title: "Latest request samples",
+    stateValue: state.dashboard.recentUsage,
+    action: "activity",
+    emptyTitle: "No recent usage logs",
+    emptyDescription: "Recent request samples will appear after traffic is proxied.",
+    items: ensureArray(state.dashboard.recentUsage.data).map((entry) => `
+      <li class="dashboard-feed-item">
+        <div class="dashboard-feed-copy">
+          <strong>${escapeHTML(entry.client)} · ${escapeHTML(entry.model)}</strong>
+          <p>${escapeHTML(entry.backend)} · ${escapeHTML(entry.requestId)} · ${escapeHTML(entry.duration)} ms</p>
+        </div>
+        <div class="dashboard-feed-meta">
+          <span class="status-pill ${Number(entry.status) >= 400 ? "off" : "ok"}">${escapeHTML(entry.status)}</span>
+          <small>${escapeHTML(formatDateTime(entry.createdAt))}</small>
+        </div>
+      </li>
+    `),
+  });
+}
+
+function renderDashboardFeedPanel({ eyebrow, title, stateValue, action, emptyTitle, emptyDescription, items }) {
+  let body = "";
+  if (stateValue.status === "loading") {
+    body = renderDashboardLoadingCard(`Loading ${title}`);
+  } else if (stateValue.status === "failed") {
+    body = renderDashboardFailedCard({
+      title: `${title} unavailable`,
+      description: stateValue.error || `Unable to fetch ${title.toLowerCase()}.`,
+      action,
+    });
+  } else if (stateValue.status === "empty" || items.length === 0) {
+    body = renderDashboardEmptyCard({
+      title: emptyTitle,
+      description: emptyDescription,
+    });
+  } else {
+    body = `<ul class="dashboard-feed-list">${items.join("")}</ul>`;
+  }
+
+  return renderDashboardPanelFrame({ eyebrow, title, body });
+}
+
+function renderDashboardPanelFrame({ eyebrow, title, subtitle = "", body }) {
+  return `
+    <div class="dashboard-panel-head">
+      <div>
+        <span class="section-label">${escapeHTML(eyebrow)}</span>
+        <h3>${escapeHTML(title)}</h3>
+        ${subtitle ? `<p>${escapeHTML(subtitle)}</p>` : ""}
+      </div>
+    </div>
+    <div class="dashboard-panel-body">
+      ${body}
+    </div>
+  `;
+}
+
+function renderDashboardLoadingCard(label) {
+  return `
+    <div class="dashboard-state dashboard-state-loading" aria-busy="true">
+      <span class="dashboard-state-shimmer"></span>
+      <strong>${escapeHTML(label)}</strong>
+      <p>Fetching the latest dashboard data.</p>
+    </div>
+  `;
+}
+
+function renderDashboardFailedCard({ title, description, action }) {
+  return `
+    <div class="dashboard-state dashboard-state-failed">
+      <strong>${escapeHTML(title)}</strong>
+      <p>${escapeHTML(description)}</p>
+      <button class="ghost-button" type="button" data-dashboard-retry="${escapeHTML(action)}">Retry</button>
+    </div>
+  `;
+}
+
+function renderDashboardEmptyCard({ title, description }) {
+  return `
+    <div class="dashboard-state dashboard-state-empty">
+      <strong>${escapeHTML(title)}</strong>
+      <p>${escapeHTML(description)}</p>
+    </div>
+  `;
+}
+
+function renderSparkline(values, { width, height, padding, className = "" }) {
+  const points = typeof ChartsUtils.createSparklinePoints === "function"
+    ? ChartsUtils.createSparklinePoints(values, { width, height, padding })
+    : [];
+  if (points.length === 0) {
+    return `<div class="dashboard-chart-empty">No trend</div>`;
+  }
+  const linePath = typeof ChartsUtils.createLinePath === "function" ? ChartsUtils.createLinePath(points) : "";
+  const areaPath = typeof ChartsUtils.createAreaPath === "function" ? ChartsUtils.createAreaPath(points, { height, padding }) : "";
+  return `
+    <svg class="${escapeHTML(className)}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Trend sparkline">
+      <path class="sparkline-area" d="${escapeHTML(areaPath)}"></path>
+      <path class="sparkline-line" d="${escapeHTML(linePath)}"></path>
+    </svg>
+  `;
+}
+
+function renderAreaChart(values, labels, { width, height, padding }) {
+  const points = typeof ChartsUtils.createSparklinePoints === "function"
+    ? ChartsUtils.createSparklinePoints(values, { width, height, padding })
+    : [];
+  if (points.length === 0) {
+    return `<div class="dashboard-chart-empty">No chart data</div>`;
+  }
+  const linePath = typeof ChartsUtils.createLinePath === "function" ? ChartsUtils.createLinePath(points) : "";
+  const areaPath = typeof ChartsUtils.createAreaPath === "function" ? ChartsUtils.createAreaPath(points, { height, padding }) : "";
+  return `
+    <div class="dashboard-area-chart">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Usage overview chart">
+        <defs>
+          <linearGradient id="usageAreaFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="var(--primary)" stop-opacity="0.28"></stop>
+            <stop offset="100%" stop-color="var(--primary)" stop-opacity="0.02"></stop>
+          </linearGradient>
+        </defs>
+        <path class="usage-area-path" d="${escapeHTML(areaPath)}"></path>
+        <path class="usage-line-path" d="${escapeHTML(linePath)}"></path>
+        ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="3.2"></circle>`).join("")}
+      </svg>
+      <div class="dashboard-chart-axis">
+        ${labels.map((label) => `<span>${escapeHTML(label)}</span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function usageValueForMetric(point, metric) {
+  if (metric === "traffic") {
+    return Number(point?.trafficBytes) || 0;
+  }
+  if (metric === "errors") {
+    return (Number(point?.errorRate) || 0) * 100;
+  }
+  return Number(point?.requests) || 0;
+}
+
+function bindDashboardInteractions() {
+  dashboardRoot?.querySelectorAll("[data-dashboard-metric]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.dashboard.usage.metric = button.dataset.dashboardMetric || "requests";
+      renderDashboardShell();
+    });
+  });
+
+  dashboardRoot?.querySelectorAll("[data-dashboard-retry]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = button.dataset.dashboardRetry || "";
+      retryDashboardSection(target).catch(reportError);
+    });
+  });
+}
+
+async function retryDashboardSection(target) {
+  if (target === "summary") {
+    Object.values(state.dashboard.summaryCards || {}).forEach((cardState) => {
+      cardState.status = "loading";
+      cardState.error = "";
+      cardState.data = null;
+    });
+    renderDashboardShell();
+    try {
+      const payload = await api("/admin/api/dashboard/summary");
+      if (typeof DashboardUtils.applyDashboardSummaryPayload === "function") {
+        DashboardUtils.applyDashboardSummaryPayload(state.dashboard, payload);
+      } else {
+        const cards = DashboardUtils.createDashboardSummaryCards(payload);
+        const cardsByKey = cards.reduce((accumulator, card) => {
+          accumulator[card.key] = card;
+          return accumulator;
+        }, {});
+        Object.entries(state.dashboard.summaryCards || {}).forEach(([key, cardState]) => {
+          cardState.data = cardsByKey[key] || null;
+          cardState.error = "";
+          cardState.status = cardState.data ? "ready" : "empty";
+        });
+      }
+    } catch (error) {
+      if (typeof DashboardUtils.applyDashboardSummaryError === "function") {
+        DashboardUtils.applyDashboardSummaryError(state.dashboard, error?.message || "Failed to load summary");
+      } else {
+        Object.values(state.dashboard.summaryCards || {}).forEach((cardState) => {
+          cardState.status = "failed";
+          cardState.error = error?.message || "Failed to load summary";
+          cardState.data = null;
+        });
+      }
+    }
+    renderDashboardShell();
+    return;
+  }
+  if (target === "usage") {
+    state.dashboard.usage.status = "loading";
+    renderDashboardShell();
+    try {
+      const payload = await api(`/admin/api/dashboard/usage?range=${encodeURIComponent(state.dashboard.usage.range)}`);
+      state.dashboard.usage.data = DashboardUtils.createDashboardUsageState(payload);
+      state.dashboard.usage.status = (state.dashboard.usage.data?.points || []).length ? "ready" : "empty";
+      state.dashboard.usage.error = "";
+    } catch (error) {
+      state.dashboard.usage.status = "failed";
+      state.dashboard.usage.error = error?.message || "Failed to load usage";
+    }
+    renderDashboardShell();
+    return;
+  }
+  if (target === "activity") {
+    [state.dashboard.eventsSummary, state.dashboard.recentEvents, state.dashboard.recentUsage].forEach((panelState) => {
+      panelState.status = "loading";
+      panelState.error = "";
+      panelState.data = null;
+    });
+    renderDashboardShell();
+    try {
+      const payload = await api("/admin/api/dashboard/activity");
+      if (typeof DashboardUtils.applyDashboardActivityPayload === "function") {
+        DashboardUtils.applyDashboardActivityPayload(state.dashboard, payload);
+      } else {
+        const activityData = DashboardUtils.createDashboardActivityState(payload);
+        state.dashboard.eventsSummary.data = activityData.counters;
+        state.dashboard.eventsSummary.error = "";
+        state.dashboard.eventsSummary.status = (activityData.counters || []).some((item) => Number(item.count) > 0) ? "ready" : "empty";
+        state.dashboard.recentEvents.data = activityData.events;
+        state.dashboard.recentEvents.error = "";
+        state.dashboard.recentEvents.status = (activityData.events || []).length ? "ready" : "empty";
+        state.dashboard.recentUsage.data = activityData.usage;
+        state.dashboard.recentUsage.error = "";
+        state.dashboard.recentUsage.status = (activityData.usage || []).length ? "ready" : "empty";
+      }
+    } catch (error) {
+      if (typeof DashboardUtils.applyDashboardActivityError === "function") {
+        DashboardUtils.applyDashboardActivityError(state.dashboard, error?.message || "Failed to load activity");
+      } else {
+        [state.dashboard.eventsSummary, state.dashboard.recentEvents, state.dashboard.recentUsage].forEach((panelState) => {
+          panelState.status = "failed";
+          panelState.error = error?.message || "Failed to load activity";
+          panelState.data = null;
+        });
+      }
+    }
+    renderDashboardShell();
+    return;
+  }
+  startDashboardLoading();
+  renderDashboardShell();
+  await refreshDashboardData();
+}
+
+function feedToneClass(tone) {
+  if (tone === "danger") {
+    return "off";
+  }
+  if (tone === "warning") {
+    return "";
+  }
+  return "ok";
 }
 
 function closeSearchShell() {

@@ -162,26 +162,17 @@
                 <a href="#model-policies">调整策略</a>
               </div>
             </div>
-            <section class="dashboard-root" id="dashboardRoot" aria-label="Dashboard shell placeholders">
-              <div class="dashboard-shell-cards">
-                <article class="dashboard-shell-card">
-                  <span class="section-label">Card</span>
-                  <strong>Summary Card</strong>
-                  <p>Placeholder for premium dashboard KPI surface.</p>
-                </article>
-                <article class="dashboard-shell-card">
-                  <span class="section-label">Card</span>
-                  <strong>Usage Card</strong>
-                  <p>Placeholder for time-series and trend modules.</p>
-                </article>
-                <article class="dashboard-shell-card">
-                  <span class="section-label">Card</span>
-                  <strong>Activity Card</strong>
-                  <p>Placeholder for recent events and request activity.</p>
-                </article>
+            <section class="dashboard-root" id="dashboardRoot" aria-label="Dashboard overview panels">
+              <div class="dashboard-summary-row" id="dashboardSummaryRow" aria-label="Summary cards"></div>
+              <div class="dashboard-main-grid">
+                <article class="dashboard-panel dashboard-panel-usage" id="dashboardUsageCard" aria-label="Usage overview chart"></article>
+                <article class="dashboard-panel dashboard-panel-events" id="dashboardEventsSummaryCard" aria-label="Events summary"></article>
+              </div>
+              <div class="dashboard-detail-grid">
+                <article class="dashboard-panel dashboard-panel-feed" id="dashboardRecentEventsCard" aria-label="Recent events"></article>
+                <article class="dashboard-panel dashboard-panel-feed" id="dashboardRecentUsageCard" aria-label="Recent usage logs"></article>
               </div>
             </section>
-            <div class="stats-grid" id="stats"></div>
           </section>
 
           <section class="page resource-page" id="socks-proxies" data-page-title="SOCKS5 Proxies" data-page-breadcrumb="Dashboard / SOCKS5 Proxies">
@@ -566,6 +557,8 @@
 
     <script src="./theme.js"></script>
     <script src="./search.js"></script>
+    <script src="./charts.js"></script>
+    <script src="./dashboard.js"></script>
     <script src="./app.js" type="module"></script>
   </body>
 </html>
