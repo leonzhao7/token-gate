@@ -26,6 +26,11 @@ type BackendRequestStats struct {
 	Failures  int
 }
 
+type ClientKeyUsageSummary struct {
+	UsageCount int
+	LastUsedAt time.Time
+}
+
 type UsageLogFilter struct {
 	BackendName string
 	Model       string
@@ -1287,6 +1292,46 @@ func (s *Store) BackendRequestStatsSince(ctx context.Context, since time.Time) (
 			return nil, err
 		}
 		out[backendID] = stats
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ClientKeyUsageSummaryByIDs(ctx context.Context, ids []int64) (map[int64]ClientKeyUsageSummary, error) {
+	if len(ids) == 0 {
+		return map[int64]ClientKeyUsageSummary{}, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT client_id, COUNT(*), MAX(created_at)
+		FROM usage_logs
+		WHERE client_id IN (`+placeholders+`)
+		GROUP BY client_id
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[int64]ClientKeyUsageSummary, len(ids))
+	for rows.Next() {
+		var (
+			clientID int64
+			count    int
+			lastUsed string
+			summary  ClientKeyUsageSummary
+		)
+		if err := rows.Scan(&clientID, &count, &lastUsed); err != nil {
+			return nil, err
+		}
+		summary.UsageCount = count
+		summary.LastUsedAt = parseTime(lastUsed)
+		out[clientID] = summary
 	}
 	return out, rows.Err()
 }

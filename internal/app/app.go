@@ -164,6 +164,13 @@ type backendView struct {
 	RecentStats backendRecentStats `json:"recent_stats"`
 }
 
+type clientKeyView struct {
+	domain.ClientKey
+	MaskedToken string     `json:"masked_token"`
+	UsageCount  int        `json:"usage_count"`
+	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
+}
+
 type backendRecentStats struct {
 	WindowMinutes int `json:"window_minutes"`
 	Successes     int `json:"successes"`
@@ -1125,7 +1132,23 @@ func (a *App) handleListClientKeys(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, pagedResponse(ensureClientKeys(clients), total, page, limit))
+	usageSummary, err := a.store.ClientKeyUsageSummaryByIDs(r.Context(), clientKeyIDs(clients))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response := make([]clientKeyView, 0, len(clients))
+	for _, client := range clients {
+		summary := usageSummary[client.ID]
+		response = append(response, clientKeyView{
+			ClientKey:   client,
+			MaskedToken: maskToken(client.Token),
+			UsageCount:  summary.UsageCount,
+			LastUsedAt:  optionalTime(summary.LastUsedAt),
+		})
+	}
+	writeJSON(w, http.StatusOK, pagedResponse(ensureClientKeyViews(response), total, page, limit))
 }
 
 func (a *App) handleCreateClientKey(w http.ResponseWriter, r *http.Request) {
@@ -1248,13 +1271,22 @@ func (a *App) handleClientKeyDetail(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "client key not found")
 		return
 	}
+	usageSummary, err := a.store.ClientKeyUsageSummaryByIDs(r.Context(), []int64{id})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	summary := usageSummary[id]
 	writeJSON(w, http.StatusOK, map[string]any{
 		"overview": map[string]any{
 			"name":         detail.Client.Name,
 			"enabled":      detail.Client.Enabled,
 			"token_prefix": detail.Client.TokenPrefix,
+			"usage_count":  summary.UsageCount,
+			"last_used_at": optionalTime(summary.LastUsedAt),
 		},
 		"configuration": map[string]any{
+			"token":               detail.Client.Token,
 			"route_mode_override": detail.Client.RouteModeOverride,
 			"route_group":         detail.Client.RouteGroup,
 		},
@@ -1801,6 +1833,30 @@ func tokenPrefix(token string) string {
 	return token[:8]
 }
 
+func maskToken(token string) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ""
+	}
+	if len(token) <= 4 {
+		return token[:1] + "..."
+	}
+	if len(token) <= 8 {
+		return token[:2] + "..." + token[len(token)-1:]
+	}
+	suffixLen := 4
+	if len(token) < 12 {
+		suffixLen = 2
+	}
+	if suffixLen >= len(token)-8 {
+		suffixLen = len(token) - 9
+		if suffixLen < 1 {
+			suffixLen = 1
+		}
+	}
+	return token[:8] + "..." + token[len(token)-suffixLen:]
+}
+
 func validateURL(value string) error {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil {
@@ -1868,6 +1924,13 @@ func ensureClientKeys(values []domain.ClientKey) []domain.ClientKey {
 	return values
 }
 
+func ensureClientKeyViews(values []clientKeyView) []clientKeyView {
+	if values == nil {
+		return []clientKeyView{}
+	}
+	return values
+}
+
 func ensureModelPolicies(values []domain.ModelPolicy) []domain.ModelPolicy {
 	if values == nil {
 		return []domain.ModelPolicy{}
@@ -1897,6 +1960,25 @@ func mappedBackendModel(backend domain.Backend, clientModel string) string {
 		return mapped
 	}
 	return clientModel
+}
+
+func clientKeyIDs(values []domain.ClientKey) []int64 {
+	if len(values) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(values))
+	for _, value := range values {
+		ids = append(ids, value.ID)
+	}
+	return ids
+}
+
+func optionalTime(value time.Time) *time.Time {
+	if value.IsZero() {
+		return nil
+	}
+	copy := value.UTC()
+	return &copy
 }
 
 func parsePageQuery(r *http.Request) (int, int) {

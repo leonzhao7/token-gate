@@ -3,7 +3,7 @@
     return {
       resourceKey: String(resourceKey || "").trim(),
       searchPlaceholder: String(searchPlaceholder || "").trim(),
-      actions: ["search", "filters", "sort", "refresh", "create"],
+      actions: ["search", "filters", "sort", "refresh"],
     };
   }
 
@@ -52,24 +52,24 @@
     if (kind === "clients") {
       return [
         {
-          title: "Relationships",
+          title: "Routing",
           items: compactItems([
             source.route_mode_override ? `Route ${source.route_mode_override}` : "Route default",
             source.route_group ? `Group ${source.route_group}` : "",
           ]),
         },
         {
-          title: "Capabilities",
+          title: "Usage",
           items: compactItems([
-            source.enabled ? "Enabled" : "Disabled",
-            source.token_prefix ? `Prefix ${source.token_prefix}` : "",
+            Number.isFinite(Number(source.usage_count)) ? `${Number(source.usage_count)} requests` : "",
+            source.last_used_at ? `Last used ${source.last_used_at}` : "",
           ]),
         },
         {
-          title: "JSON Preview",
+          title: "Client Key",
           items: compactItems([
-            source.name ? `"name":"${source.name}"` : "",
-            source.route_group ? `"route_group":"${source.route_group}"` : "",
+            source.masked_token || (source.token_prefix ? `Prefix ${source.token_prefix} (历史记录仅保存 prefix)` : ""),
+            source.token || "",
           ]),
         },
       ];

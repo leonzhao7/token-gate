@@ -530,6 +530,109 @@ func TestAdminClientKeyStoresAndReturnsToken(t *testing.T) {
 	}
 }
 
+func TestAdminClientKeyListIncludesUsageSummary(t *testing.T) {
+	application := newTestApp(t)
+	client := createTestClient(t, application, "client-visible-key")
+
+	ctx := context.Background()
+	for i := 0; i < 2; i++ {
+		if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+			RequestID:         fmt.Sprintf("client-list-%d", i),
+			ClientID:          client.ID,
+			ClientName:        client.Name,
+			ClientTokenPrefix: client.TokenPrefix,
+			Method:            http.MethodPost,
+			Path:              "/v1/chat/completions",
+			Endpoint:          domain.EndpointChat,
+			Model:             "gpt-4o",
+			BackendID:         1,
+			BackendName:       "alpha",
+			Attempts:          1,
+			StatusCode:        http.StatusOK,
+			DurationMS:        45,
+		}); err != nil {
+			t.Fatalf("append usage log %d: %v", i, err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/client-keys", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected list status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID          int64     `json:"id"`
+			Name        string    `json:"name"`
+			Token       string    `json:"token"`
+			MaskedToken string    `json:"masked_token"`
+			UsageCount  int       `json:"usage_count"`
+			LastUsedAt  time.Time `json:"last_used_at"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal client key list: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one client item, got %#v", payload.Items)
+	}
+	item := payload.Items[0]
+	if item.ID != client.ID || item.Name != client.Name {
+		t.Fatalf("unexpected client identity: %#v", item)
+	}
+	if item.Token != client.Token {
+		t.Fatalf("expected full client token %q, got %q", client.Token, item.Token)
+	}
+	if item.MaskedToken == "" || item.MaskedToken == client.Token {
+		t.Fatalf("expected masked token distinct from raw token, got %q", item.MaskedToken)
+	}
+	if item.UsageCount != 2 {
+		t.Fatalf("expected usage_count=2, got %#v", item)
+	}
+	if item.LastUsedAt.IsZero() {
+		t.Fatalf("expected last_used_at to be populated, got %#v", item)
+	}
+}
+
+func TestAdminClientKeyListMasksShortTokens(t *testing.T) {
+	application := newTestApp(t)
+	client := createTestClient(t, application, "short1")
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/client-keys", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected list status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			Token       string `json:"token"`
+			MaskedToken string `json:"masked_token"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal short-token list: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one client item, got %#v", payload.Items)
+	}
+	if payload.Items[0].Token != client.Token {
+		t.Fatalf("expected raw token %q, got %#v", client.Token, payload.Items[0])
+	}
+	if payload.Items[0].MaskedToken == "" || payload.Items[0].MaskedToken == client.Token {
+		t.Fatalf("expected short token to be masked, got %#v", payload.Items[0])
+	}
+}
+
 func TestAdminSocksProxyCRUDAndBackendBinding(t *testing.T) {
 	application := newTestApp(t)
 
@@ -2349,6 +2452,7 @@ func TestClientKeyDetailReturnsDrawerData(t *testing.T) {
 	var payload struct {
 		Overview      map[string]any `json:"overview"`
 		Configuration struct {
+			Token             string `json:"token"`
 			RouteModeOverride string `json:"route_mode_override"`
 			RouteGroup        string `json:"route_group"`
 		} `json:"configuration"`
@@ -2366,8 +2470,17 @@ func TestClientKeyDetailReturnsDrawerData(t *testing.T) {
 	if payload.Metadata.ID != client.ID || payload.Raw.ID != client.ID {
 		t.Fatalf("expected client ids in payload, got metadata=%#v raw=%#v", payload.Metadata, payload.Raw)
 	}
+	if payload.Configuration.Token != client.Token {
+		t.Fatalf("expected detail configuration token %q, got %#v", client.Token, payload.Configuration)
+	}
 	if payload.Configuration.RouteModeOverride != domain.PlacementSticky || payload.Configuration.RouteGroup != "alpha-group" {
 		t.Fatalf("unexpected client configuration: %#v", payload.Configuration)
+	}
+	if payload.Overview["usage_count"] != float64(1) {
+		t.Fatalf("expected overview usage_count=1, got %#v", payload.Overview)
+	}
+	if _, ok := payload.Overview["last_used_at"].(string); !ok {
+		t.Fatalf("expected overview last_used_at string, got %#v", payload.Overview)
 	}
 	if !containsUsageLog(payload.Activity.Usage, func(entry domain.UsageLog) bool {
 		return entry.ClientID == client.ID

@@ -17,7 +17,7 @@ test("createResourceToolbarModel keeps shared admin list actions in order", () =
   }), {
     resourceKey: "backends",
     searchPlaceholder: "Search backends",
-    actions: ["search", "filters", "sort", "refresh", "create"],
+    actions: ["search", "filters", "sort", "refresh"],
   });
 });
 
@@ -56,6 +56,38 @@ test("createQuickDetailSections limits inline expansion to concise summaries", (
     { title: "Relationships", items: ["Pool premium", "Proxy tokyo-egress"] },
     { title: "Capabilities", items: ["2 models", "2 endpoints"] },
     { title: "JSON Preview", items: ['"base_url":"https://edge.example.com/v1"', '"gpt-4o":"gpt-4o-prod"'] },
+  ]);
+});
+
+test("createQuickDetailSections surfaces client usage and routing summaries", () => {
+  const sections = createQuickDetailSections("clients", {
+    name: "prod-web",
+    token: "client-visible-key",
+    masked_token: "client-v...-key",
+    route_mode_override: "sticky",
+    route_group: "frontend-a",
+    usage_count: 12,
+    last_used_at: "2026-06-19T12:00:00Z",
+  });
+
+  assert.deepEqual(sections, [
+    { title: "Routing", items: ["Route sticky", "Group frontend-a"] },
+    { title: "Usage", items: ["12 requests", "Last used 2026-06-19T12:00:00Z"] },
+    { title: "Client Key", items: ["client-v...-key", "client-visible-key"] },
+  ]);
+});
+
+test("createQuickDetailSections preserves legacy prefix-only client key context", () => {
+  const sections = createQuickDetailSections("clients", {
+    route_mode_override: "",
+    route_group: "",
+    token_prefix: "legacy-ab",
+  });
+
+  assert.deepEqual(sections, [
+    { title: "Routing", items: ["Route default"] },
+    { title: "Usage", items: [] },
+    { title: "Client Key", items: ["Prefix legacy-ab (历史记录仅保存 prefix)"] },
   ]);
 });
 

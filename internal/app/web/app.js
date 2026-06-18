@@ -2277,11 +2277,11 @@ function renderClients() {
         <table class="resource-table">
           <thead>
             <tr>
-              <th>Client</th>
-              <th>Status</th>
               <th>Client Key</th>
-              <th>Route Mode</th>
-              <th>Route Group</th>
+              <th>Status</th>
+              <th>Routing</th>
+              <th>Usage</th>
+              <th>Last Used</th>
               <th>Updated</th>
               <th>Actions</th>
             </tr>
@@ -2479,11 +2479,15 @@ function renderClientRow(client) {
           <span class="chevron">${expanded ? "收起" : "展开"}</span>
           <span>${escapeHTML(client.name)}</span>
         </button>
+        <div class="cell-subtitle"><span class="secret-text">${escapeHTML(clientTokenDisplay(client))}</span></div>
       </td>
       <td>${statusPill(client.enabled, "enabled", "disabled")}</td>
-      <td><span class="secret-text">${escapeHTML(clientTokenDisplay(client))}</span></td>
-      <td>${escapeHTML(client.route_mode_override || "default")}</td>
-      <td>${escapeHTML(client.route_group || "-")}</td>
+      <td>
+        <div>${escapeHTML(client.route_mode_override || "default")}</div>
+        <div class="cell-subtitle">${escapeHTML(client.route_group || "-")}</div>
+      </td>
+      <td>${escapeHTML(formatUsageCount(client.usage_count))}</td>
+      <td>${escapeHTML(formatDateTime(client.last_used_at))}</td>
       <td>${escapeHTML(formatDateTime(client.updated_at))}</td>
       <td>${tableActions("client", client.id)}</td>
     </tr>
@@ -2585,7 +2589,6 @@ function renderResourceToolbar({ resourceKey, searchPlaceholder, count }) {
           ${config.sortOptions.map((option) => `<option value="${escapeHTML(option.value)}" ${option.value === viewState.sort ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")}
         </select>
         <button class="ghost-button small-button" type="button" data-toolbar-refresh="${escapeHTML(resourceKey)}">Refresh</button>
-        <button class="ghost-button small-button" type="button" data-toolbar-create="${escapeHTML(resourceKey)}">Create</button>
       </div>
     </div>
   `;
@@ -3525,6 +3528,9 @@ function formatDateTime(value) {
 }
 
 function clientTokenDisplay(client) {
+  if (client.masked_token) {
+    return client.masked_token;
+  }
   if (client.token) {
     return client.token;
   }
@@ -3532,6 +3538,14 @@ function clientTokenDisplay(client) {
     return `${client.token_prefix} (历史记录仅保存 prefix)`;
   }
   return "-";
+}
+
+function formatUsageCount(value) {
+  const count = Number(value || 0);
+  if (!Number.isFinite(count) || count <= 0) {
+    return "0 requests";
+  }
+  return `${count} requests`;
 }
 
 function proxyLabel(proxyID, proxy) {
