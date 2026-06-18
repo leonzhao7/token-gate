@@ -91,6 +91,25 @@ test("createQuickDetailSections preserves legacy prefix-only client key context"
   ]);
 });
 
+test("createQuickDetailSections surfaces proxy bindings and usage summary", () => {
+  const sections = createQuickDetailSections("proxies", {
+    username: "proxy-user",
+    address: "127.0.0.1:1080",
+    enabled: true,
+    password: "secret",
+    bound_backend_count: 3,
+    request_count: 42,
+    avg_latency_ms: 88,
+    last_used_at: "2026-06-19T13:00:00Z",
+  });
+
+  assert.deepEqual(sections, [
+    { title: "Relationships", items: ["3 bound backends", "Address 127.0.0.1:1080"] },
+    { title: "Usage", items: ["42 requests", "88 ms avg latency", "Last used 2026-06-19T13:00:00Z"] },
+    { title: "Access", items: ["Auth user proxy-user", "Password set", "Enabled"] },
+  ]);
+});
+
 test("paginateResourceRows uses local filtered totals and clamps out-of-range pages", () => {
   assert.deepEqual(
     paginateResourceRows(

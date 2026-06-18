@@ -2131,8 +2131,10 @@ function renderProxies() {
             <tr>
               <th>Proxy</th>
               <th>Status</th>
-              <th>Address</th>
-              <th>Auth</th>
+              <th>Bindings</th>
+              <th>Traffic</th>
+              <th>Latency</th>
+              <th>Last Used</th>
               <th>Updated</th>
               <th>Actions</th>
             </tr>
@@ -2419,14 +2421,16 @@ function renderProxyRow(proxy) {
         </button>
       </td>
       <td>${statusPill(proxy.enabled, "enabled", "disabled")}</td>
-      <td><span class="secret-text">${escapeHTML(proxy.address)}</span></td>
-      <td>${escapeHTML(proxy.username ? `user: ${proxy.username}` : "none")}</td>
+      <td>${escapeHTML(formatBindingCount(proxy.bound_backend_count))}</td>
+      <td>${escapeHTML(formatDataSize(proxy.traffic_bytes))}</td>
+      <td>${escapeHTML(formatLatency(proxy.avg_latency_ms))}</td>
+      <td>${escapeHTML(formatDateTime(proxy.last_used_at))}</td>
       <td>${escapeHTML(formatDateTime(proxy.updated_at))}</td>
       <td>${tableActions("proxy", proxy.id)}</td>
     </tr>
     ${expanded ? `
       <tr class="detail-row">
-        <td colspan="6">
+        <td colspan="8">
           ${quickDetails}
         </td>
       </tr>
@@ -3546,6 +3550,38 @@ function formatUsageCount(value) {
     return "0 requests";
   }
   return `${count} requests`;
+}
+
+function formatBindingCount(value) {
+  const count = Number(value || 0);
+  if (!Number.isFinite(count) || count <= 0) {
+    return "0 backends";
+  }
+  return `${count} backends`;
+}
+
+function formatLatency(value) {
+  const latency = Number(value || 0);
+  if (!Number.isFinite(latency) || latency <= 0) {
+    return "-";
+  }
+  return `${Math.round(latency)} ms`;
+}
+
+function formatDataSize(value) {
+  const size = Number(value || 0);
+  if (!Number.isFinite(size) || size <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB"];
+  let amount = size;
+  let unitIndex = 0;
+  while (amount >= 1024 && unitIndex < units.length - 1) {
+    amount /= 1024;
+    unitIndex += 1;
+  }
+  const rounded = amount >= 10 || unitIndex === 0 ? Math.round(amount) : Math.round(amount * 10) / 10;
+  return `${rounded} ${units[unitIndex]}`;
 }
 
 function proxyLabel(proxyID, proxy) {

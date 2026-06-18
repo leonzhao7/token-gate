@@ -106,22 +106,24 @@
         {
           title: "Relationships",
           items: compactItems([
-            source.username ? `Auth user ${source.username}` : "Auth none",
+            Number.isFinite(Number(source.bound_backend_count)) ? `${Number(source.bound_backend_count)} bound backends` : "",
             source.address ? `Address ${source.address}` : "",
           ]),
         },
         {
-          title: "Capabilities",
+          title: "Usage",
           items: compactItems([
-            source.enabled ? "Enabled" : "Disabled",
-            source.password ? "Password set" : "No password",
+            Number.isFinite(Number(source.request_count)) ? `${Number(source.request_count)} requests` : "",
+            Number.isFinite(Number(source.avg_latency_ms)) && Number(source.avg_latency_ms) > 0 ? `${Math.round(Number(source.avg_latency_ms))} ms avg latency` : "",
+            source.last_used_at ? `Last used ${source.last_used_at}` : "",
           ]),
         },
         {
-          title: "JSON Preview",
+          title: "Access",
           items: compactItems([
-            source.name ? `"name":"${source.name}"` : "",
-            source.address ? `"address":"${source.address}"` : "",
+            source.username ? `Auth user ${source.username}` : "Auth none",
+            source.password ? "Password set" : "No password",
+            source.enabled ? "Enabled" : "Disabled",
           ]),
         },
       ];

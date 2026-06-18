@@ -171,6 +171,15 @@ type clientKeyView struct {
 	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
 }
 
+type proxyView struct {
+	domain.SocksProxy
+	BoundBackendCount int        `json:"bound_backend_count"`
+	RequestCount      int        `json:"request_count"`
+	TrafficBytes      int64      `json:"traffic_bytes"`
+	AvgLatencyMS      float64    `json:"avg_latency_ms"`
+	LastUsedAt        *time.Time `json:"last_used_at,omitempty"`
+}
+
 type backendRecentStats struct {
 	WindowMinutes int `json:"window_minutes"`
 	Successes     int `json:"successes"`
@@ -781,7 +790,32 @@ func (a *App) handleListSocksProxies(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, pagedResponse(ensureSocksProxies(proxies), total, page, limit))
+	ids := socksProxyIDs(proxies)
+	bindingCounts, err := a.store.BackendBindingCountByProxyIDs(r.Context(), ids)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	usageSummary, err := a.store.ProxyUsageSummaryByIDs(r.Context(), ids)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response := make([]proxyView, 0, len(proxies))
+	for _, proxy := range proxies {
+		summary := usageSummary[proxy.ID]
+		response = append(response, proxyView{
+			SocksProxy:        proxy,
+			BoundBackendCount: bindingCounts[proxy.ID],
+			RequestCount:      summary.RequestCount,
+			TrafficBytes:      summary.TrafficBytes,
+			AvgLatencyMS:      summary.AvgLatencyMS,
+			LastUsedAt:        optionalTime(summary.LastUsedAt),
+		})
+	}
+
+	writeJSON(w, http.StatusOK, pagedResponse(ensureProxyViews(response), total, page, limit))
 }
 
 func (a *App) handleCreateSocksProxy(w http.ResponseWriter, r *http.Request) {
@@ -1917,6 +1951,13 @@ func ensureSocksProxies(values []domain.SocksProxy) []domain.SocksProxy {
 	return values
 }
 
+func ensureProxyViews(values []proxyView) []proxyView {
+	if values == nil {
+		return []proxyView{}
+	}
+	return values
+}
+
 func ensureClientKeys(values []domain.ClientKey) []domain.ClientKey {
 	if values == nil {
 		return []domain.ClientKey{}
@@ -1963,6 +2004,17 @@ func mappedBackendModel(backend domain.Backend, clientModel string) string {
 }
 
 func clientKeyIDs(values []domain.ClientKey) []int64 {
+	if len(values) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(values))
+	for _, value := range values {
+		ids = append(ids, value.ID)
+	}
+	return ids
+}
+
+func socksProxyIDs(values []domain.SocksProxy) []int64 {
 	if len(values) == 0 {
 		return nil
 	}

@@ -31,6 +31,13 @@ type ClientKeyUsageSummary struct {
 	LastUsedAt time.Time
 }
 
+type ProxyUsageSummary struct {
+	RequestCount int
+	TrafficBytes int64
+	AvgLatencyMS float64
+	LastUsedAt   time.Time
+}
+
 type UsageLogFilter struct {
 	BackendName string
 	Model       string
@@ -1332,6 +1339,86 @@ func (s *Store) ClientKeyUsageSummaryByIDs(ctx context.Context, ids []int64) (ma
 		summary.UsageCount = count
 		summary.LastUsedAt = parseTime(lastUsed)
 		out[clientID] = summary
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ProxyUsageSummaryByIDs(ctx context.Context, ids []int64) (map[int64]ProxyUsageSummary, error) {
+	if len(ids) == 0 {
+		return map[int64]ProxyUsageSummary{}, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT proxy_id, COUNT(*), SUM(request_bytes + response_bytes), AVG(duration_ms), MAX(created_at)
+		FROM usage_logs
+		WHERE proxy_id IN (`+placeholders+`)
+		GROUP BY proxy_id
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[int64]ProxyUsageSummary, len(ids))
+	for rows.Next() {
+		var (
+			proxyID    int64
+			requests   int
+			traffic    int64
+			avgLatency float64
+			lastUsed   string
+		)
+		if err := rows.Scan(&proxyID, &requests, &traffic, &avgLatency, &lastUsed); err != nil {
+			return nil, err
+		}
+		out[proxyID] = ProxyUsageSummary{
+			RequestCount: requests,
+			TrafficBytes: traffic,
+			AvgLatencyMS: avgLatency,
+			LastUsedAt:   parseTime(lastUsed),
+		}
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) BackendBindingCountByProxyIDs(ctx context.Context, ids []int64) (map[int64]int, error) {
+	if len(ids) == 0 {
+		return map[int64]int{}, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT proxy_id, COUNT(*)
+		FROM backends
+		WHERE proxy_id IN (`+placeholders+`)
+		GROUP BY proxy_id
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[int64]int, len(ids))
+	for rows.Next() {
+		var (
+			proxyID int64
+			count   int
+		)
+		if err := rows.Scan(&proxyID, &count); err != nil {
+			return nil, err
+		}
+		out[proxyID] = count
 	}
 	return out, rows.Err()
 }

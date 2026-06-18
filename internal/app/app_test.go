@@ -706,6 +706,97 @@ func TestAdminSocksProxyCRUDAndBackendBinding(t *testing.T) {
 	}
 }
 
+func TestAdminSocksProxyListIncludesBindingAndUsageSummary(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	proxy, err := application.store.CreateSocksProxy(ctx, domain.SocksProxy{
+		Name:     "tokyo-socks",
+		Address:  "127.0.0.1:1080",
+		Username: "proxy-user",
+		Password: "proxy-pass",
+		Enabled:  true,
+	})
+	if err != nil {
+		t.Fatalf("create socks proxy: %v", err)
+	}
+
+	createTestBackend(t, application, domain.Backend{
+		Name:      "alpha",
+		BaseURL:   "https://alpha.local/v1",
+		APIKey:    "alpha-key",
+		ProxyID:   proxy.ID,
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:     "proxy-list-1",
+		ClientID:      1,
+		ClientName:    "prod-web",
+		Method:        http.MethodPost,
+		Path:          "/v1/chat/completions",
+		Endpoint:      domain.EndpointChat,
+		Model:         "gpt-4o",
+		ProxyID:       proxy.ID,
+		ProxyName:     proxy.Name,
+		BackendID:     7,
+		BackendName:   "alpha",
+		Attempts:      1,
+		StatusCode:    http.StatusOK,
+		DurationMS:    88,
+		RequestBytes:  120,
+		ResponseBytes: 640,
+	}); err != nil {
+		t.Fatalf("append usage log: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/socks-proxies", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected list status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID                int64     `json:"id"`
+			BoundBackendCount int       `json:"bound_backend_count"`
+			RequestCount      int       `json:"request_count"`
+			TrafficBytes      int64     `json:"traffic_bytes"`
+			AvgLatencyMS      float64   `json:"avg_latency_ms"`
+			LastUsedAt        time.Time `json:"last_used_at"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal proxy list: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one proxy item, got %#v", payload.Items)
+	}
+	item := payload.Items[0]
+	if item.ID != proxy.ID {
+		t.Fatalf("expected proxy id %d, got %#v", proxy.ID, item)
+	}
+	if item.BoundBackendCount != 1 || item.RequestCount != 1 {
+		t.Fatalf("unexpected proxy counts: %#v", item)
+	}
+	if item.TrafficBytes != 760 {
+		t.Fatalf("expected traffic_bytes=760, got %#v", item)
+	}
+	if item.AvgLatencyMS != 88 {
+		t.Fatalf("expected avg_latency_ms=88, got %#v", item)
+	}
+	if item.LastUsedAt.IsZero() {
+		t.Fatalf("expected last_used_at populated, got %#v", item)
+	}
+}
+
 func TestAdminOverviewAndListsReturnEmptyArrays(t *testing.T) {
 	application := newTestApp(t)
 
