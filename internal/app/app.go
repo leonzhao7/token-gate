@@ -58,10 +58,10 @@ type pagedListResponse struct {
 }
 
 type dashboardSummaryResponse struct {
-	Counts    dashboardSummaryCounts  `json:"counts"`
-	Growth    dashboardSummaryGrowth  `json:"growth"`
-	Status    dashboardSummaryStatus  `json:"status"`
-	Sparkline []dashboardSparkPoint   `json:"sparkline"`
+	Counts    dashboardSummaryCounts `json:"counts"`
+	Growth    dashboardSummaryGrowth `json:"growth"`
+	Status    dashboardSummaryStatus `json:"status"`
+	Sparkline []dashboardSparkPoint  `json:"sparkline"`
 }
 
 type dashboardSummaryCounts struct {
@@ -248,7 +248,10 @@ func (a *App) routes() {
 	a.mux.Handle("PUT /admin/api/model-policies/{id}", a.adminAuth(http.HandlerFunc(a.handleUpdatePolicy)))
 	a.mux.Handle("DELETE /admin/api/model-policies/{id}", a.adminAuth(http.HandlerFunc(a.handleDeletePolicy)))
 	a.mux.Handle("GET /admin/api/events", a.adminAuth(http.HandlerFunc(a.handleListEvents)))
+	a.mux.Handle("GET /admin/api/events/summary", a.adminAuth(http.HandlerFunc(a.handleEventSummary)))
 	a.mux.Handle("GET /admin/api/usage-logs", a.adminAuth(http.HandlerFunc(a.handleListUsageLogs)))
+	a.mux.Handle("GET /admin/api/usage-logs/stats", a.adminAuth(http.HandlerFunc(a.handleUsageLogStats)))
+	a.mux.Handle("GET /admin/api/usage-logs/{id}", a.adminAuth(http.HandlerFunc(a.handleGetUsageLog)))
 	a.mux.Handle("GET /admin/api/usage-log-options", a.adminAuth(http.HandlerFunc(a.handleUsageLogOptions)))
 	a.mux.Handle("DELETE /admin/api/usage-logs", a.adminAuth(http.HandlerFunc(a.handleClearUsageLogs)))
 }
@@ -317,17 +320,19 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 	startedAt := time.Now()
 	usageLog := domain.UsageLog{
-		RequestID:         requestIDFromContext(r.Context()),
-		ClientID:          client.ID,
-		ClientName:        client.Name,
-		ClientTokenPrefix: client.TokenPrefix,
-		RouteModeOverride: client.RouteModeOverride,
-		RouteGroup:        client.RouteGroup,
-		Method:            r.Method,
-		Path:              r.URL.Path,
-		Query:             r.URL.RawQuery,
-		ClientIP:          clientIP(r),
-		UserAgent:         r.UserAgent(),
+		RequestID:          requestIDFromContext(r.Context()),
+		TraceID:            requestIDFromContext(r.Context()),
+		ClientID:           client.ID,
+		ClientName:         client.Name,
+		ClientTokenPrefix:  client.TokenPrefix,
+		RouteModeOverride:  client.RouteModeOverride,
+		RouteGroup:         client.RouteGroup,
+		Method:             r.Method,
+		Path:               r.URL.Path,
+		Query:              r.URL.RawQuery,
+		ClientIP:           clientIP(r),
+		UserAgent:          r.UserAgent(),
+		RequestHeadersJSON: marshalHeaders(redactedHeaders(r.Header)),
 	}
 	defer func() {
 		usageLog.DurationMS = time.Since(startedAt).Milliseconds()
@@ -382,6 +387,8 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		slog.Int("body_bytes", len(body)),
 	)...)
 	usageLog.Model = model
+	usageLog.RequestBytes = int64(len(body))
+	usageLog.RequestBodyPreview, usageLog.PreviewTruncated = previewText(body, 16*1024)
 
 	selection, err := a.scheduler.SelectBackend(r.Context(), client, endpoint, model)
 	if err != nil {
@@ -406,6 +413,8 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		slog.Int("candidate_count", len(selection.Candidates)),
 		slog.Any("candidate_backends", candidateNames(selection.Candidates)),
 	)...)
+	usageLog.PolicyName = selection.Policy.Pattern
+	usageLog.PolicyID = selection.Policy.ID
 
 	var (
 		lastErr    error
@@ -417,6 +426,12 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		usageLog.Attempts = attempt
 		usageLog.BackendID = backend.ID
 		usageLog.BackendName = backend.Name
+		usageLog.ProxyID = backend.ProxyID
+		if backend.Proxy != nil {
+			usageLog.ProxyName = backend.Proxy.Name
+		} else {
+			usageLog.ProxyName = "direct"
+		}
 		upstreamModel := mappedBackendModel(backend, model)
 		requestBody := body
 		if upstreamModel != model {
@@ -511,7 +526,28 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 			a.scheduler.MarkSuccess(backend.ID)
 		}
 		usageLog.StatusCode = resp.StatusCode
+		usageLog.StatusFamily = statusFamily(resp.StatusCode)
 		usageLog.ErrorMessage = ""
+		usageLog.ResponseHeadersJSON = marshalHeaders(redactedHeaders(resp.Header))
+		usageLog.IsStream = strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
+		bufferedResp, responseBytes, responsePreview, truncated, err := cloneResponseForLogging(resp)
+		if err != nil {
+			release()
+			usageLog.StatusCode = http.StatusBadGateway
+			usageLog.StatusFamily = statusFamily(http.StatusBadGateway)
+			usageLog.ErrorMessage = err.Error()
+			a.logEvent(r.Context(), slog.LevelWarn, "backend_response_buffer_failed", append(append(clientAttrs(client),
+				backendAttemptAttrs(backend, attempt)...),
+				slog.String("endpoint", endpoint),
+				slog.String("model", model),
+				slog.String("error", err.Error()),
+			)...)
+			return
+		}
+		resp = bufferedResp
+		usageLog.ResponseBytes = responseBytes
+		usageLog.ResponseBodyPreview = responsePreview
+		usageLog.PreviewTruncated = usageLog.PreviewTruncated || truncated
 
 		a.logEvent(r.Context(), slog.LevelInfo, "backend_response_selected", append(append(clientAttrs(client),
 			backendAttemptAttrs(backend, attempt)...),
@@ -624,40 +660,103 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (a *App) handleDashboardSummary(w http.ResponseWriter, _ *http.Request) {
+func (a *App) handleDashboardSummary(w http.ResponseWriter, r *http.Request) {
+	summary, err := a.store.DashboardSummary(r.Context(), time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	sparkline := make([]dashboardSparkPoint, 0, len(summary.Sparkline))
+	for _, point := range summary.Sparkline {
+		sparkline = append(sparkline, dashboardSparkPoint{
+			Label:    point.Label,
+			Requests: point.Requests,
+		})
+	}
+
 	writeJSON(w, http.StatusOK, dashboardSummaryResponse{
-		Counts:    dashboardSummaryCounts{},
-		Growth:    dashboardSummaryGrowth{},
-		Status:    dashboardSummaryStatus{},
-		Sparkline: []dashboardSparkPoint{},
+		Counts: dashboardSummaryCounts{
+			Backends:      summary.Backends,
+			ClientKeys:    summary.ClientKeys,
+			ModelPolicies: summary.ModelPolicies,
+			SocksProxies:  summary.SocksProxies,
+		},
+		Growth: dashboardSummaryGrowth{
+			Requests: summary.RequestGrowth,
+			Errors:   summary.ErrorGrowth,
+		},
+		Status: dashboardSummaryStatus{
+			HealthyBackends: summary.HealthyBackends,
+			RecentErrors:    summary.RecentErrors,
+			ActiveClients:   summary.ActiveClients,
+		},
+		Sparkline: sparkline,
 	})
 }
 
 func (a *App) handleDashboardUsage(w http.ResponseWriter, r *http.Request) {
+	rangeKey, series, err := a.store.DashboardUsageSeries(r.Context(), time.Now().UTC(), r.URL.Query().Get("range"))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	responseSeries := make([]dashboardUsagePoint, 0, len(series))
+	for _, point := range series {
+		responseSeries = append(responseSeries, dashboardUsagePoint{
+			Label:        point.Label,
+			Requests:     point.Requests,
+			TrafficBytes: point.TrafficBytes,
+			ErrorRate:    point.ErrorRate,
+		})
+	}
+
 	writeJSON(w, http.StatusOK, dashboardUsageResponse{
-		Range:  strings.TrimSpace(r.URL.Query().Get("range")),
-		Series: []dashboardUsagePoint{},
+		Range:  rangeKey,
+		Series: responseSeries,
 	})
 }
 
-func (a *App) handleDashboardActivity(w http.ResponseWriter, _ *http.Request) {
+func (a *App) handleDashboardActivity(w http.ResponseWriter, r *http.Request) {
+	activity, err := a.store.DashboardRecentActivity(r.Context(), 10)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	summary := make([]dashboardActivitySummary, 0, len(activity.Summary))
+	for _, item := range activity.Summary {
+		summary = append(summary, dashboardActivitySummary{
+			Category: item.Category,
+			Count:    item.Count,
+		})
+	}
+
 	writeJSON(w, http.StatusOK, dashboardActivityResponse{
-		Events:  []domain.AuditEvent{},
-		Usage:   []domain.UsageLog{},
-		Summary: []dashboardActivitySummary{},
+		Events:  ensureAuditEvents(activity.Events),
+		Usage:   ensureUsageLogs(activity.Usage),
+		Summary: summary,
 	})
 }
 
 func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	results, err := a.store.Search(r.Context(), query, parseLimitQuery(r, 6))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	writeJSON(w, http.StatusOK, searchResponse{
-		Query: strings.TrimSpace(r.URL.Query().Get("q")),
+		Query: query,
 		Results: searchResultsResponse{
-			Backends:   []searchResultItem{},
-			ClientKeys: []searchResultItem{},
-			Policies:   []searchResultItem{},
-			Proxies:    []searchResultItem{},
-			UsageLogs:  []searchResultItem{},
-			Events:     []searchResultItem{},
+			Backends:   toSearchResultItems(results.Backends),
+			ClientKeys: toSearchResultItems(results.ClientKeys),
+			Policies:   toSearchResultItems(results.Policies),
+			Proxies:    toSearchResultItems(results.Proxies),
+			UsageLogs:  toSearchResultItems(results.UsageLogs),
+			Events:     toSearchResultItems(results.Events),
 		},
 	})
 }
@@ -773,7 +872,38 @@ func (a *App) handleDeleteSocksProxy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleSocksProxyDetail(w http.ResponseWriter, r *http.Request) {
-	a.handlePlaceholderDetail(w, r)
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	detail, err := a.store.SocksProxyDetail(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "socks proxy not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"overview": map[string]any{
+			"name":           detail.Proxy.Name,
+			"enabled":        detail.Proxy.Enabled,
+			"bound_backends": len(detail.Backends),
+		},
+		"configuration": map[string]any{
+			"address":  detail.Proxy.Address,
+			"username": detail.Proxy.Username,
+		},
+		"metadata": map[string]any{
+			"id":         detail.Proxy.ID,
+			"created_at": detail.Proxy.CreatedAt,
+			"updated_at": detail.Proxy.UpdatedAt,
+		},
+		"raw": detail.Proxy,
+		"activity": map[string]any{
+			"usage":    []domain.UsageLog{},
+			"events":   []domain.AuditEvent{},
+			"backends": detail.Backends,
+		},
+	})
 }
 
 func (a *App) handleListBackends(w http.ResponseWriter, r *http.Request) {
@@ -943,7 +1073,43 @@ func (a *App) handleDeleteBackend(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleBackendDetail(w http.ResponseWriter, r *http.Request) {
-	a.handlePlaceholderDetail(w, r)
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	detail, err := a.store.BackendDetail(r.Context(), id, 10)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "backend not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"overview": map[string]any{
+			"name":     detail.Backend.Name,
+			"pool":     detail.Backend.Pool,
+			"enabled":  detail.Backend.Enabled,
+			"proxy_id": detail.Backend.ProxyID,
+			"protocol": detail.Backend.Protocol,
+			"weight":   detail.Backend.Weight,
+		},
+		"configuration": map[string]any{
+			"models":        detail.Backend.Models,
+			"model_mapping": detail.Backend.ModelMapping,
+			"endpoints":     detail.Backend.Endpoints,
+			"base_url":      detail.Backend.BaseURL,
+		},
+		"metadata": map[string]any{
+			"id":         detail.Backend.ID,
+			"created_at": detail.Backend.CreatedAt,
+			"updated_at": detail.Backend.UpdatedAt,
+		},
+		"raw": detail.Backend,
+		"activity": map[string]any{
+			"usage":    ensureUsageLogs(detail.Usage),
+			"events":   ensureAuditEvents(detail.Events),
+			"backends": []domain.Backend{},
+		},
+	})
 }
 
 func (a *App) handleListClientKeys(w http.ResponseWriter, r *http.Request) {
@@ -1071,7 +1237,38 @@ func (a *App) handleDeleteClientKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleClientKeyDetail(w http.ResponseWriter, r *http.Request) {
-	a.handlePlaceholderDetail(w, r)
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	detail, err := a.store.ClientKeyDetail(r.Context(), id, 10)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "client key not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"overview": map[string]any{
+			"name":         detail.Client.Name,
+			"enabled":      detail.Client.Enabled,
+			"token_prefix": detail.Client.TokenPrefix,
+		},
+		"configuration": map[string]any{
+			"route_mode_override": detail.Client.RouteModeOverride,
+			"route_group":         detail.Client.RouteGroup,
+		},
+		"metadata": map[string]any{
+			"id":         detail.Client.ID,
+			"created_at": detail.Client.CreatedAt,
+			"updated_at": detail.Client.UpdatedAt,
+		},
+		"raw": detail.Client,
+		"activity": map[string]any{
+			"usage":    ensureUsageLogs(detail.Usage),
+			"events":   ensureAuditEvents(detail.Events),
+			"backends": []domain.Backend{},
+		},
+	})
 }
 
 func (a *App) handleListPolicies(w http.ResponseWriter, r *http.Request) {
@@ -1173,22 +1370,86 @@ func (a *App) handleDeletePolicy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handlePolicyDetail(w http.ResponseWriter, r *http.Request) {
-	a.handlePlaceholderDetail(w, r)
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	detail, err := a.store.ModelPolicyDetail(r.Context(), id, 10)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "policy not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"overview": map[string]any{
+			"pattern":          detail.Policy.Pattern,
+			"endpoint":         detail.Policy.Endpoint,
+			"placement_policy": detail.Policy.PlacementPolicy,
+			"backend_pool":     detail.Policy.BackendPool,
+		},
+		"configuration": map[string]any{
+			"pattern":          detail.Policy.Pattern,
+			"endpoint":         detail.Policy.Endpoint,
+			"placement_policy": detail.Policy.PlacementPolicy,
+			"backend_pool":     detail.Policy.BackendPool,
+			"failover_enabled": detail.Policy.FailoverEnabled,
+			"priority":         detail.Policy.Priority,
+		},
+		"metadata": map[string]any{
+			"id":         detail.Policy.ID,
+			"created_at": detail.Policy.CreatedAt,
+			"updated_at": detail.Policy.UpdatedAt,
+		},
+		"raw": detail.Policy,
+		"activity": map[string]any{
+			"usage":    []domain.UsageLog{},
+			"events":   ensureAuditEvents(detail.Events),
+			"backends": []domain.Backend{},
+		},
+	})
 }
 
 func (a *App) handleListEvents(w http.ResponseWriter, r *http.Request) {
 	page, limit := parsePageQuery(r)
-	total, err := a.store.CountAuditEvents(r.Context())
+	filter := eventFilterFromRequest(r)
+	total, err := a.store.CountAuditEventsFiltered(r.Context(), filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	events, err := a.store.ListAuditEventsPage(r.Context(), limit, pageOffset(page, limit))
+	events, err := a.store.ListAuditEventsPageFiltered(r.Context(), filter, limit, pageOffset(page, limit))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, pagedResponse(ensureAuditEvents(events), total, page, limit))
+}
+
+func (a *App) handleEventSummary(w http.ResponseWriter, r *http.Request) {
+	summary, err := a.store.EventSummary(r.Context(), eventFilterFromRequest(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	categories := make([]map[string]any, 0, len(summary.Categories))
+	for _, item := range summary.Categories {
+		categories = append(categories, map[string]any{"category": item.Name, "count": item.Count})
+	}
+	severities := make([]map[string]any, 0, len(summary.Severities))
+	for _, item := range summary.Severities {
+		severities = append(severities, map[string]any{"severity": item.Name, "count": item.Count})
+	}
+	actors := make([]map[string]any, 0, len(summary.Actors))
+	for _, item := range summary.Actors {
+		actors = append(actors, map[string]any{"actor": item.Name, "count": item.Count})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"total":       summary.Total,
+		"categories":  categories,
+		"severities":  severities,
+		"actors":      actors,
+		"time_series": []any{},
+	})
 }
 
 func (a *App) handleListUsageLogs(w http.ResponseWriter, r *http.Request) {
@@ -1205,6 +1466,72 @@ func (a *App) handleListUsageLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, pagedResponse(ensureUsageLogs(logs), total, page, limit))
+}
+
+func (a *App) handleUsageLogStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := a.store.UsageLogStats(r.Context(), usageLogFilterFromRequest(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	families := make([]map[string]any, 0, len(stats.StatusFamilies))
+	for _, item := range stats.StatusFamilies {
+		families = append(families, map[string]any{"family": item.Family, "count": item.Count})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"totals": map[string]any{
+			"requests":  stats.Requests,
+			"successes": stats.Successes,
+			"failures":  stats.Failures,
+		},
+		"latency": map[string]any{
+			"avg_ms": stats.AvgDurationMS,
+			"p95_ms": stats.P95DurationMS,
+		},
+		"status_families": families,
+	})
+}
+
+func (a *App) handleGetUsageLog(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	entry, err := a.store.GetUsageLog(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "usage log not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"overview": map[string]any{
+			"request_id":  entry.RequestID,
+			"status_code": entry.StatusCode,
+			"backend":     entry.BackendName,
+			"model":       entry.Model,
+		},
+		"request": map[string]any{
+			"bytes":        entry.RequestBytes,
+			"body_preview": entry.RequestBodyPreview,
+			"headers_json": entry.RequestHeadersJSON,
+		},
+		"response": map[string]any{
+			"bytes":         entry.ResponseBytes,
+			"body_preview":  entry.ResponseBodyPreview,
+			"headers_json":  entry.ResponseHeadersJSON,
+			"status_family": nonEmpty(entry.StatusFamily, statusFamily(entry.StatusCode)),
+			"is_stream":     entry.IsStream,
+		},
+		"metadata": map[string]any{
+			"id":                entry.ID,
+			"trace_id":          entry.TraceID,
+			"policy_name":       entry.PolicyName,
+			"proxy_name":        entry.ProxyName,
+			"preview_truncated": entry.PreviewTruncated,
+			"created_at":        entry.CreatedAt,
+		},
+		"raw": entry,
+	})
 }
 
 func (a *App) handleUsageLogOptions(w http.ResponseWriter, r *http.Request) {
@@ -1267,10 +1594,27 @@ func (a *App) adminAuth(next http.Handler) http.Handler {
 }
 
 func usageLogFilterFromRequest(r *http.Request) store.UsageLogFilter {
-	return store.UsageLogFilter{
+	filter := store.UsageLogFilter{
 		BackendName: strings.TrimSpace(r.URL.Query().Get("backend")),
 		Model:       strings.TrimSpace(r.URL.Query().Get("model")),
 		ClientName:  strings.TrimSpace(r.URL.Query().Get("client_key")),
+	}
+	filter.Status = strings.TrimSpace(r.URL.Query().Get("status"))
+	filter.Query = strings.TrimSpace(r.URL.Query().Get("q"))
+	filter.DateFrom = parseTimeQuery(r.URL.Query().Get("date_from"))
+	filter.DateTo = parseTimeQuery(r.URL.Query().Get("date_to"))
+	return filter
+}
+
+func eventFilterFromRequest(r *http.Request) store.EventFilter {
+	return store.EventFilter{
+		Category: strings.TrimSpace(r.URL.Query().Get("category")),
+		Severity: strings.TrimSpace(r.URL.Query().Get("severity")),
+		Actor:    strings.TrimSpace(r.URL.Query().Get("actor")),
+		Backend:  strings.TrimSpace(r.URL.Query().Get("backend")),
+		Query:    strings.TrimSpace(r.URL.Query().Get("q")),
+		DateFrom: parseTimeQuery(r.URL.Query().Get("date_from")),
+		DateTo:   parseTimeQuery(r.URL.Query().Get("date_to")),
 	}
 }
 
@@ -1496,6 +1840,26 @@ func parsePageQuery(r *http.Request) (int, int) {
 	return page, limit
 }
 
+func parseLimitQuery(r *http.Request, fallback int) int {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 {
+		return fallback
+	}
+	return limit
+}
+
+func parseTimeQuery(value string) time.Time {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed.UTC()
+}
+
 func pageOffset(page, limit int) int {
 	if page < 1 {
 		page = 1
@@ -1515,27 +1879,96 @@ func pagedResponse(items any, total, page, limit int) map[string]any {
 	}
 }
 
-func (a *App) handlePlaceholderDetail(w http.ResponseWriter, r *http.Request) {
-	id, err := parseID(r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
+func toSearchResultItems(items []store.SearchResult) []searchResultItem {
+	if items == nil {
+		return []searchResultItem{}
 	}
-	writeJSON(w, http.StatusOK, placeholderDetailResponse(id))
+	out := make([]searchResultItem, 0, len(items))
+	for _, item := range items {
+		out = append(out, searchResultItem{
+			Kind:       item.Kind,
+			ID:         item.ID,
+			Title:      item.Title,
+			Subtitle:   item.Subtitle,
+			Meta:       item.Meta,
+			Status:     item.Status,
+			TargetPage: item.TargetPage,
+			TargetID:   item.TargetID,
+		})
+	}
+	return out
 }
 
-func placeholderDetailResponse(id int64) detailPlaceholderResponse {
-	return detailPlaceholderResponse{
-		Overview:      detailOverviewPlaceholder{},
-		Configuration: detailConfigurationPlaceholder{},
-		Metadata: detailMetadataPlaceholder{
-			ID: id,
-		},
-		Raw: detailRawPlaceholder{},
-		Activity: detailActivityPlaceholder{
-			Usage:    []domain.UsageLog{},
-			Events:   []domain.AuditEvent{},
-			Backends: []domain.Backend{},
-		},
+func redactedHeaders(header http.Header) http.Header {
+	out := make(http.Header, len(header))
+	for key, values := range header {
+		lower := strings.ToLower(strings.TrimSpace(key))
+		if lower == "authorization" || lower == "api-key" || lower == "x-api-key" || lower == "cookie" {
+			out[key] = []string{"[redacted]"}
+			continue
+		}
+		copied := make([]string, len(values))
+		copy(copied, values)
+		out[key] = copied
 	}
+	return out
+}
+
+func marshalHeaders(header http.Header) string {
+	if len(header) == 0 {
+		return "{}"
+	}
+	data, err := json.Marshal(header)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
+}
+
+func previewText(data []byte, limit int) (string, bool) {
+	if len(data) == 0 {
+		return "", false
+	}
+	if limit <= 0 || len(data) <= limit {
+		return string(data), false
+	}
+	return string(data[:limit]), true
+}
+
+func cloneResponseForLogging(resp *http.Response) (*http.Response, int64, string, bool, error) {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		_ = resp.Body.Close()
+		return nil, 0, "", false, err
+	}
+	_ = resp.Body.Close()
+	preview, truncated := previewText(body, 16*1024)
+	cloned := *resp
+	cloned.Body = io.NopCloser(strings.NewReader(string(body)))
+	return &cloned, int64(len(body)), preview, truncated, nil
+}
+
+func statusFamily(statusCode int) string {
+	switch {
+	case statusCode >= 200 && statusCode < 300:
+		return "2xx"
+	case statusCode >= 300 && statusCode < 400:
+		return "3xx"
+	case statusCode >= 400 && statusCode < 500:
+		return "4xx"
+	case statusCode >= 500 && statusCode < 600:
+		return "5xx"
+	default:
+		return "other"
+	}
+}
+
+func nonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

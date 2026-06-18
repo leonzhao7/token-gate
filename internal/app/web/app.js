@@ -3,6 +3,21 @@ const saveTokenBtn = document.querySelector("#saveTokenBtn");
 const refreshBtn = document.querySelector("#refreshBtn");
 const pageTitle = document.querySelector("#pageTitle");
 const pageBreadcrumb = document.querySelector("#pageBreadcrumb");
+const appShell = document.querySelector(".app-shell");
+const sidebarRoot = document.querySelector("#sidebarRoot");
+const sidebarToggleBtn = document.querySelector("#sidebarToggleBtn");
+const themeToggleBtn = document.querySelector("#themeToggleBtn");
+const dashboardRoot = document.querySelector("#dashboardRoot");
+const drawerRoot = document.querySelector("#drawerRoot");
+const drawerTitle = document.querySelector("#drawerTitle");
+const drawerCloseBtn = document.querySelector("#drawerCloseBtn");
+const drawerBodyRoot = document.querySelector("#drawerBodyRoot");
+const drawerTabRoot = document.querySelector("#drawerTabRoot");
+const searchModalRoot = document.querySelector("#searchModalRoot");
+const searchOpenBtn = document.querySelector("#searchOpenBtn");
+const searchCloseBtn = document.querySelector("#searchCloseBtn");
+const searchInput = document.querySelector("#searchInput");
+const searchResultsRoot = document.querySelector("#searchResultsRoot");
 const stats = document.querySelector("#stats");
 const proxyList = document.querySelector("#proxyList");
 const backendList = document.querySelector("#backendList");
@@ -100,12 +115,64 @@ const state = {
     events: { page: 1, size: 10 },
     usageLogs: { page: 1, size: 10 },
   },
+  ui: {
+    theme: "light",
+    drawer: { open: false, kind: "", id: null, tab: "overview" },
+    search: { open: false, query: "", results: null },
+  },
 };
 
 tokenInput.value = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
 
 window.addEventListener("hashchange", () => {
   activatePage(pageIDFromHash());
+});
+
+sidebarToggleBtn?.addEventListener("click", () => {
+  appShell?.classList.toggle("sidebar-collapsed");
+  sidebarRoot?.classList.toggle("is-collapsed");
+});
+
+themeToggleBtn?.addEventListener("click", () => {
+  state.ui.theme = state.ui.theme === "light" ? "dark" : "light";
+  renderTheme();
+});
+
+searchOpenBtn?.addEventListener("click", () => {
+  state.ui.search.open = true;
+  renderSearchShell();
+});
+
+searchCloseBtn?.addEventListener("click", () => {
+  closeSearchShell();
+});
+
+searchModalRoot?.addEventListener("click", (event) => {
+  if (event.target === searchModalRoot) {
+    closeSearchShell();
+  }
+});
+
+searchInput?.addEventListener("input", (event) => {
+  state.ui.search.query = String(event.currentTarget.value || "");
+  renderSearchShell();
+});
+
+drawerCloseBtn?.addEventListener("click", () => {
+  closeDrawerShell();
+});
+
+drawerRoot?.addEventListener("click", (event) => {
+  if (event.target === drawerRoot) {
+    closeDrawerShell();
+  }
+});
+
+drawerTabRoot?.querySelectorAll("[data-drawer-tab]").forEach((button) => {
+  button.addEventListener("click", () => {
+    state.ui.drawer.tab = button.dataset.drawerTab || "overview";
+    renderDrawerShell();
+  });
 });
 
 saveTokenBtn.addEventListener("click", () => {
@@ -335,6 +402,10 @@ async function refreshAll() {
   renderPolicies();
   renderEvents();
   renderUsageLogs();
+  renderDashboardShell();
+  renderDrawerShell();
+  renderSearchShell();
+  renderTheme();
 }
 
 function buildUsageLogQuery() {
@@ -466,6 +537,79 @@ function activatePage(id) {
     pageTitle.textContent = activePage.dataset.pageTitle || "透明代理控制台";
     pageBreadcrumb.textContent = activePage.dataset.pageBreadcrumb || "Dashboard";
   }
+}
+
+function renderTheme() {
+  if (!appShell) {
+    return;
+  }
+  appShell.dataset.theme = state.ui.theme;
+  if (themeToggleBtn) {
+    themeToggleBtn.textContent = state.ui.theme === "light" ? "Light" : "Dark";
+  }
+}
+
+function renderDashboardShell() {
+  if (!dashboardRoot) {
+    return;
+  }
+  dashboardRoot.dataset.theme = state.ui.theme;
+}
+
+function renderDrawerShell() {
+  if (!drawerRoot) {
+    return;
+  }
+  const isOpen = Boolean(state.ui.drawer.open);
+  drawerRoot.classList.toggle("hidden", !isOpen);
+  drawerRoot.setAttribute("aria-hidden", String(!isOpen));
+  if (drawerTitle) {
+    drawerTitle.textContent = state.ui.drawer.kind ? `${state.ui.drawer.kind} Detail` : "Detail Drawer";
+  }
+  if (drawerBodyRoot) {
+    drawerBodyRoot.innerHTML = `
+      <p class="muted-text">
+        Drawer shell placeholder for ${escapeHTML(state.ui.drawer.kind || "resource")} #${escapeHTML(
+          state.ui.drawer.id == null ? "-" : String(state.ui.drawer.id),
+        )}, tab ${escapeHTML(state.ui.drawer.tab)}.
+      </p>
+    `;
+  }
+  drawerTabRoot?.querySelectorAll("[data-drawer-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.drawerTab === state.ui.drawer.tab);
+  });
+}
+
+function closeDrawerShell() {
+  state.ui.drawer.open = false;
+  state.ui.drawer.kind = "";
+  state.ui.drawer.id = null;
+  state.ui.drawer.tab = "overview";
+  renderDrawerShell();
+}
+
+function renderSearchShell() {
+  if (!searchModalRoot) {
+    return;
+  }
+  const isOpen = Boolean(state.ui.search.open);
+  searchModalRoot.classList.toggle("hidden", !isOpen);
+  searchModalRoot.setAttribute("aria-hidden", String(!isOpen));
+  if (searchInput && searchInput.value !== state.ui.search.query) {
+    searchInput.value = state.ui.search.query;
+  }
+  if (searchResultsRoot) {
+    searchResultsRoot.innerHTML = `
+      <p class="muted-text">
+        Search shell placeholder${state.ui.search.query ? ` for “${escapeHTML(state.ui.search.query)}”` : ""}.
+      </p>
+    `;
+  }
+}
+
+function closeSearchShell() {
+  state.ui.search.open = false;
+  renderSearchShell();
 }
 
 function renderProxies() {

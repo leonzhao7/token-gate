@@ -7,8 +7,13 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="app-shell">
-      <aside class="sidebar">
+    <div class="app-shell premium-shell" data-theme="light">
+      <aside class="sidebar shell-sidebar" id="sidebarRoot">
+        <div class="sidebar-top">
+          <button class="icon-button sidebar-toggle" id="sidebarToggleBtn" type="button" aria-label="切换侧边栏">
+            ☰
+          </button>
+        </div>
         <a class="brand" href="#overview" aria-label="Token Gate Overview">
           <span class="brand-mark">TG</span>
           <span class="brand-copy">
@@ -49,21 +54,27 @@
         </nav>
       </aside>
 
-      <div class="main-area">
-        <header class="topbar">
+      <div class="main-area shell-main">
+        <header class="topbar shell-header">
           <div class="topbar-title">
             <span class="breadcrumb" id="pageBreadcrumb">Dashboard / Overview</span>
             <h1 id="pageTitle">透明代理控制台</h1>
+          </div>
+          <div class="shell-searchbar">
+            <button class="ghost-button shell-search-trigger" id="searchOpenBtn" type="button">
+              搜索资源、日志、事件
+            </button>
           </div>
           <div class="admin-access">
             <label for="adminToken" class="field-label">Admin Token</label>
             <input id="adminToken" type="password" placeholder="输入 TG_ADMIN_TOKEN" />
             <button id="saveTokenBtn" type="button">保存</button>
             <button class="ghost-button" id="refreshBtn" type="button">刷新数据</button>
+            <button class="ghost-button" id="themeToggleBtn" type="button" aria-label="切换主题">Light</button>
           </div>
         </header>
 
-        <main class="workspace">
+        <main class="workspace shell-workspace">
           <section class="page overview-page" id="overview" data-page-title="运行概览" data-page-breadcrumb="Dashboard / Overview">
             <div class="page-head">
               <div>
@@ -79,6 +90,25 @@
                 <a href="#model-policies">调整策略</a>
               </div>
             </div>
+            <section class="dashboard-root" id="dashboardRoot" aria-label="Dashboard shell placeholders">
+              <div class="dashboard-shell-cards">
+                <article class="dashboard-shell-card">
+                  <span class="section-label">Card</span>
+                  <strong>Summary Card</strong>
+                  <p>Placeholder for premium dashboard KPI surface.</p>
+                </article>
+                <article class="dashboard-shell-card">
+                  <span class="section-label">Card</span>
+                  <strong>Usage Card</strong>
+                  <p>Placeholder for time-series and trend modules.</p>
+                </article>
+                <article class="dashboard-shell-card">
+                  <span class="section-label">Card</span>
+                  <strong>Activity Card</strong>
+                  <p>Placeholder for recent events and request activity.</p>
+                </article>
+              </div>
+            </section>
             <div class="stats-grid" id="stats"></div>
           </section>
 
@@ -422,6 +452,42 @@
         </main>
       </div>
     </div>
+
+    <div class="search-modal hidden" id="searchModalRoot" aria-hidden="true">
+      <div class="search-modal-panel">
+        <div class="search-modal-head">
+          <strong>Global Search</strong>
+          <button class="icon-button" id="searchCloseBtn" type="button" aria-label="关闭搜索">×</button>
+        </div>
+        <label class="field search-shell-field">
+          <span>Search</span>
+          <input id="searchInput" type="search" placeholder="搜索 backend、client、policy、log…" />
+        </label>
+        <div class="search-modal-results" id="searchResultsRoot">
+          <p class="muted-text">Search shell placeholder. Results will land here in later tasks.</p>
+        </div>
+      </div>
+    </div>
+
+    <aside class="drawer-shell hidden" id="drawerRoot" aria-hidden="true">
+      <div class="drawer-shell-panel">
+        <div class="drawer-shell-head">
+          <div>
+            <span class="section-label">Drawer</span>
+            <h3 id="drawerTitle">Detail Drawer</h3>
+          </div>
+          <button class="icon-button" id="drawerCloseBtn" type="button" aria-label="关闭详情抽屉">×</button>
+        </div>
+        <div class="drawer-shell-tabs" id="drawerTabRoot">
+          <button class="ghost-button active" type="button" data-drawer-tab="overview">Overview</button>
+          <button class="ghost-button" type="button" data-drawer-tab="activity">Activity</button>
+          <button class="ghost-button" type="button" data-drawer-tab="raw">Raw</button>
+        </div>
+        <div class="drawer-shell-body" id="drawerBodyRoot">
+          <p class="muted-text">Drawer shell placeholder. Resource details arrive in later tasks.</p>
+        </div>
+      </div>
+    </aside>
 
     <script src="./app.js" type="module"></script>
   </body>
