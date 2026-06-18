@@ -10,6 +10,8 @@ const {
   createEventTimelineItems,
   createUsageLogRows,
   createUsageStatsCards,
+  formatUsageLogRequestLine,
+  normalizeUsageLogStatus,
   statusTone,
   toAPIDateTime,
 } = require("./observability.js");
@@ -102,11 +104,33 @@ test("buildUsageLogQueryParams uses the shared filter set for list, stats, and d
   assert.equal(params.get("backend"), "alpha");
   assert.equal(params.get("model"), "gpt-5.4");
   assert.equal(params.get("client_key"), "web-prod");
-   assert.equal(params.get("policy"), "gpt-*");
-   assert.equal(params.get("proxy"), "tokyo");
+  assert.equal(params.get("policy"), "gpt-*");
+  assert.equal(params.get("proxy"), "tokyo");
   assert.equal(params.get("status"), "4xx");
   assert.match(params.get("date_from") || "", /T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   assert.match(params.get("date_to") || "", /T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+});
+
+test("buildUsageLogQueryParams drops invalid status filters", () => {
+  const params = new URLSearchParams(buildUsageLogQueryParams({
+    q: "trace-9",
+    status: "warning",
+  }));
+  assert.equal(params.get("q"), "trace-9");
+  assert.equal(params.has("status"), false);
+  assert.equal(normalizeUsageLogStatus("5XX"), "5xx");
+  assert.equal(normalizeUsageLogStatus("warning"), "");
+});
+
+test("formatUsageLogRequestLine keeps method and path separated", () => {
+  assert.equal(
+    formatUsageLogRequestLine({ method: "POST", path: "/v1/responses", query: "stream=true" }),
+    "POST /v1/responses?stream=true",
+  );
+  assert.equal(
+    formatUsageLogRequestLine({}, { method: "GET", path: "/v1/models", query: "" }),
+    "GET /v1/models",
+  );
 });
 
 test("createEventSummaryModel normalizes counters and keeps common categories", () => {

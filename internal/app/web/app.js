@@ -2923,14 +2923,12 @@ function renderUsageLogInlineDetail(row) {
   const requestHeaders = request.headers || row.headersPreview || "-";
   const requestPayload = request.body_preview || row.payloadPreview || "-";
   const responsePreview = response.body_preview || row.responsePreview || "-";
-  const requestMetadata = [
-    request.method || row.method,
-    request.path || row.path,
-    request.query ? `?${request.query}` : "",
-  ].join("").trim() || row.requestMetadata || "-";
+  const requestMetadata = typeof ObservabilityUtils.formatUsageLogRequestLine === "function"
+    ? ObservabilityUtils.formatUsageLogRequestLine(request, row)
+    : row.requestMetadata;
   return `
     <span>Trace ID: ${escapeHTML(row.traceId || "-")}</span>
-    <span>Request: ${escapeHTML(requestMetadata)}</span>
+    <span>Request: ${escapeHTML(requestMetadata || row.requestMetadata || "-")}</span>
     <span>Headers: ${escapeHTML(formatInlinePreview(requestHeaders))}</span>
     <span>Payload: ${escapeHTML(formatInlinePreview(requestPayload))}</span>
     <span>Response: ${escapeHTML(formatInlinePreview(responsePreview))}</span>

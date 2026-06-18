@@ -1974,8 +1974,8 @@ func usageLogFilterClause(filter UsageLogFilter) (string, []any) {
 	}
 	if value := strings.TrimSpace(filter.Query); value != "" {
 		like := "%" + strings.ToLower(value) + "%"
-		clauses = append(clauses, `(lower(request_id) LIKE ? OR lower(client_name) LIKE ? OR lower(model) LIKE ? OR lower(backend_name) LIKE ? OR lower(error_message) LIKE ?)`)
-		args = append(args, like, like, like, like, like)
+		clauses = append(clauses, `(lower(request_id) LIKE ? OR lower(trace_id) LIKE ? OR lower(path) LIKE ? OR lower(client_name) LIKE ? OR lower(model) LIKE ? OR lower(backend_name) LIKE ? OR lower(error_message) LIKE ?)`)
+		args = append(args, like, like, like, like, like, like, like)
 	}
 	if !filter.DateFrom.IsZero() {
 		clauses = append(clauses, `created_at >= ?`)

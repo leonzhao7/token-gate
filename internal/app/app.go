@@ -1490,7 +1490,11 @@ func (a *App) handleEventDetail(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleListUsageLogs(w http.ResponseWriter, r *http.Request) {
 	page, limit := parsePageQuery(r)
-	filter := usageLogFilterFromRequest(r)
+	filter, err := usageLogFilterFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	total, err := a.store.CountUsageLogsFiltered(r.Context(), filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -1505,7 +1509,12 @@ func (a *App) handleListUsageLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleUsageLogStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := a.store.UsageLogStats(r.Context(), usageLogFilterFromRequest(r))
+	filter, err := usageLogFilterFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	stats, err := a.store.UsageLogStats(r.Context(), filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -1550,6 +1559,9 @@ func (a *App) handleGetUsageLog(w http.ResponseWriter, r *http.Request) {
 			"bytes":        entry.RequestBytes,
 			"body_preview": entry.RequestBodyPreview,
 			"headers_json": entry.RequestHeadersJSON,
+			"method":       entry.Method,
+			"path":         entry.Path,
+			"query":        entry.Query,
 		},
 		"response": map[string]any{
 			"bytes":         entry.ResponseBytes,
@@ -1586,18 +1598,22 @@ func (a *App) handleUsageLogOptions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleClearUsageLogs(w http.ResponseWriter, r *http.Request) {
-	filter := usageLogFilterFromRequest(r)
+	filter, err := usageLogFilterFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	var (
-		deleted int64
-		err     error
+		deleted  int64
+		storeErr error
 	)
 	if filter == (store.UsageLogFilter{}) {
-		err = a.store.ClearUsageLogs(r.Context())
+		storeErr = a.store.ClearUsageLogs(r.Context())
 	} else {
-		deleted, err = a.store.DeleteUsageLogsFiltered(r.Context(), filter)
+		deleted, storeErr = a.store.DeleteUsageLogsFiltered(r.Context(), filter)
 	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+	if storeErr != nil {
+		writeError(w, http.StatusInternalServerError, storeErr.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -1631,7 +1647,7 @@ func (a *App) adminAuth(next http.Handler) http.Handler {
 	})
 }
 
-func usageLogFilterFromRequest(r *http.Request) store.UsageLogFilter {
+func usageLogFilterFromRequest(r *http.Request) (store.UsageLogFilter, error) {
 	filter := store.UsageLogFilter{
 		BackendName: strings.TrimSpace(r.URL.Query().Get("backend")),
 		Model:       strings.TrimSpace(r.URL.Query().Get("model")),
@@ -1639,11 +1655,28 @@ func usageLogFilterFromRequest(r *http.Request) store.UsageLogFilter {
 		PolicyName:  strings.TrimSpace(r.URL.Query().Get("policy")),
 		ProxyName:   strings.TrimSpace(r.URL.Query().Get("proxy")),
 	}
-	filter.Status = strings.TrimSpace(r.URL.Query().Get("status"))
+	status, err := normalizeUsageLogStatusFilter(r.URL.Query().Get("status"))
+	if err != nil {
+		return store.UsageLogFilter{}, err
+	}
+	filter.Status = status
 	filter.Query = strings.TrimSpace(r.URL.Query().Get("q"))
 	filter.DateFrom = parseTimeQuery(r.URL.Query().Get("date_from"))
 	filter.DateTo = parseTimeQuery(r.URL.Query().Get("date_to"))
-	return filter
+	return filter, nil
+}
+
+func normalizeUsageLogStatusFilter(value string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" {
+		return "", nil
+	}
+	switch normalized {
+	case "2xx", "3xx", "4xx", "5xx":
+		return normalized, nil
+	default:
+		return "", fmt.Errorf("invalid usage log status filter %q", value)
+	}
 }
 
 func eventFilterFromRequest(r *http.Request) store.EventFilter {

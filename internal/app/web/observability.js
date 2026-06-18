@@ -13,6 +13,7 @@
     { key: "warning", label: "Warnings", tone: "warning" },
     { key: "info", label: "Info", tone: "primary" },
   ];
+  const USAGE_LOG_STATUS_FAMILIES = new Set(["2xx", "3xx", "4xx", "5xx"]);
 
   function buildUsageLogQueryParams(filters) {
     const params = new URLSearchParams();
@@ -25,7 +26,7 @@
     appendParam(params, "client_key", normalized.clientKey);
     appendParam(params, "policy", normalized.policy);
     appendParam(params, "proxy", normalized.proxy);
-    appendParam(params, "status", normalized.status);
+    appendParam(params, "status", normalizeUsageLogStatus(normalized.status));
     return params.toString();
   }
 
@@ -171,6 +172,20 @@
     return Number.isNaN(date.getTime()) ? "" : date.toISOString();
   }
 
+  function normalizeUsageLogStatus(value) {
+    const normalized = stringValue(value).toLowerCase();
+    return USAGE_LOG_STATUS_FAMILIES.has(normalized) ? normalized : "";
+  }
+
+  function formatUsageLogRequestLine(request, fallback = {}) {
+    const method = stringValue(request?.method || fallback?.method);
+    const path = requestPath({
+      path: request?.path || fallback?.path,
+      query: request?.query || fallback?.query,
+    });
+    return [method, path].filter(Boolean).join(" ").trim();
+  }
+
   function eventTone(severity, category) {
     const normalized = normalizeEventSeverity(severity);
     if (normalized === "error") {
@@ -269,6 +284,8 @@
     createEventTimelineItems,
     createUsageLogRows,
     createUsageStatsCards,
+    formatUsageLogRequestLine,
+    normalizeUsageLogStatus,
     statusTone,
     toAPIDateTime,
   };

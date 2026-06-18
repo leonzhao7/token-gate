@@ -1243,6 +1243,58 @@ func TestUsageLogPersistsAfterClientWriteFailure(t *testing.T) {
 	}
 }
 
+func TestUsageLogsRejectInvalidStatusFilter(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "invalid-status-1",
+		ClientID:          1,
+		ClientName:        "client-a",
+		ClientTokenPrefix: "sk-a",
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "gpt-4o",
+		BackendID:         11,
+		BackendName:       "alpha",
+		Attempts:          1,
+		StatusCode:        http.StatusTooManyRequests,
+		DurationMS:        120,
+		TraceID:           "trace-invalid-status",
+	}); err != nil {
+		t.Fatalf("append usage log: %v", err)
+	}
+
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/admin/api/usage-logs?status=warning"},
+		{method: http.MethodGet, path: "/admin/api/usage-logs/stats?status=warning"},
+		{method: http.MethodDelete, path: "/admin/api/usage-logs?status=warning"},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		req.Header.Set("Authorization", "Bearer test-admin")
+		recorder := httptest.NewRecorder()
+		application.Handler().ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("%s %s expected status 400, got %d body=%s", tc.method, tc.path, recorder.Code, recorder.Body.String())
+		}
+		if !strings.Contains(recorder.Body.String(), "invalid usage log status filter") {
+			t.Fatalf("%s %s expected invalid status error, got %s", tc.method, tc.path, recorder.Body.String())
+		}
+	}
+
+	total, err := application.store.CountUsageLogs(ctx)
+	if err != nil {
+		t.Fatalf("count usage logs: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected invalid delete filter to preserve usage logs, got %d entries", total)
+	}
+}
+
 func TestUsageLogStatsReturnsFilteredMetrics(t *testing.T) {
 	application := newTestApp(t)
 	ctx := context.Background()
@@ -1323,6 +1375,81 @@ func TestUsageLogStatsReturnsFilteredMetrics(t *testing.T) {
 	}
 }
 
+func TestUsageLogsQueryMatchesTraceIDAndPath(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	for _, entry := range []domain.UsageLog{
+		{
+			RequestID:         "query-1",
+			ClientID:          1,
+			ClientName:        "client-a",
+			ClientTokenPrefix: "sk-a",
+			Method:            http.MethodPost,
+			Path:              "/v1/responses",
+			Endpoint:          domain.EndpointResponses,
+			Model:             "gpt-4o",
+			BackendID:         11,
+			BackendName:       "alpha",
+			Attempts:          1,
+			StatusCode:        http.StatusOK,
+			DurationMS:        100,
+			TraceID:           "trace-needle",
+		},
+		{
+			RequestID:         "query-2",
+			ClientID:          2,
+			ClientName:        "client-b",
+			ClientTokenPrefix: "sk-b",
+			Method:            http.MethodPost,
+			Path:              "/v1/chat/completions",
+			Endpoint:          domain.EndpointChat,
+			Model:             "gpt-4.1",
+			BackendID:         22,
+			BackendName:       "beta",
+			Attempts:          1,
+			StatusCode:        http.StatusBadGateway,
+			DurationMS:        300,
+			TraceID:           "trace-other",
+		},
+	} {
+		if err := application.store.AppendUsageLog(ctx, entry); err != nil {
+			t.Fatalf("append usage log %q: %v", entry.RequestID, err)
+		}
+	}
+
+	for _, tc := range []struct {
+		name      string
+		query     string
+		requestID string
+	}{
+		{name: "trace-id", query: "trace-needle", requestID: "query-1"},
+		{name: "path", query: "/v1/chat/completions", requestID: "query-2"},
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/admin/api/usage-logs?q="+url.QueryEscape(tc.query), nil)
+		req.Header.Set("Authorization", "Bearer test-admin")
+		recorder := httptest.NewRecorder()
+		application.Handler().ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("%s expected status 200, got %d body=%s", tc.name, recorder.Code, recorder.Body.String())
+		}
+
+		var payload struct {
+			Items []domain.UsageLog `json:"items"`
+			Total int               `json:"total"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("%s unmarshal usage logs: %v", tc.name, err)
+		}
+		if payload.Total != 1 || len(payload.Items) != 1 {
+			t.Fatalf("%s expected exactly one usage log, got total=%d items=%d", tc.name, payload.Total, len(payload.Items))
+		}
+		if payload.Items[0].RequestID != tc.requestID {
+			t.Fatalf("%s expected request %q, got %#v", tc.name, tc.requestID, payload.Items[0])
+		}
+	}
+}
+
 func TestUsageLogDetailReturnsPreviewData(t *testing.T) {
 	application := newTestApp(t)
 	client := createTestClient(t, application, "detail-client-secret")
@@ -1383,6 +1510,9 @@ func TestUsageLogDetailReturnsPreviewData(t *testing.T) {
 			TraceID string `json:"trace_id"`
 		} `json:"metadata"`
 		Request struct {
+			Method      string `json:"method"`
+			Path        string `json:"path"`
+			Query       string `json:"query"`
 			Bytes       int64  `json:"bytes"`
 			BodyPreview string `json:"body_preview"`
 		} `json:"request"`
@@ -1407,6 +1537,9 @@ func TestUsageLogDetailReturnsPreviewData(t *testing.T) {
 	}
 	if payload.Request.Bytes <= 0 || !strings.Contains(payload.Request.BodyPreview, "hello detail") {
 		t.Fatalf("unexpected request preview payload: %#v", payload.Request)
+	}
+	if payload.Request.Method != http.MethodPost || payload.Request.Path != "/v1/responses" || payload.Request.Query != "" {
+		t.Fatalf("unexpected request metadata payload: %#v", payload.Request)
 	}
 	if payload.Response.Bytes <= 0 || payload.Response.StatusFamily != "2xx" || !strings.Contains(payload.Response.BodyPreview, backend.Name) {
 		t.Fatalf("unexpected response preview payload: %#v", payload.Response)
@@ -1563,8 +1696,8 @@ func TestEventDetailReturnsDrawerPayload(t *testing.T) {
 	}
 
 	var payload struct {
-		Overview map[string]any   `json:"overview"`
-		Metadata map[string]any   `json:"metadata"`
+		Overview map[string]any    `json:"overview"`
+		Metadata map[string]any    `json:"metadata"`
 		Raw      domain.AuditEvent `json:"raw"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
