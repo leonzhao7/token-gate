@@ -191,10 +191,7 @@ func WriteResponse(w http.ResponseWriter, resp *http.Response) error {
 }
 
 func RetryableStatus(status int) bool {
-	if status == http.StatusTooManyRequests {
-		return true
-	}
-	return status >= 500 && status != http.StatusNotImplemented
+	return domain.IsBackendFailureStatus(status)
 }
 
 type flushWriter struct {

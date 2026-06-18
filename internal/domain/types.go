@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"net/http"
 	"strings"
 	"time"
 )
@@ -118,4 +119,11 @@ func NormalizeBackendProtocol(value string) string {
 	default:
 		return BackendProtocolOpenAI
 	}
+}
+
+func IsBackendFailureStatus(status int) bool {
+	if status >= http.StatusInternalServerError {
+		return true
+	}
+	return status >= http.StatusBadRequest && status < http.StatusInternalServerError && status != http.StatusBadRequest
 }

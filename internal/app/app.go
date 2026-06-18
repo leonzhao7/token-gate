@@ -391,7 +391,7 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests {
+		if domain.IsBackendFailureStatus(resp.StatusCode) {
 			a.scheduler.MarkFailure(backend.ID, errors.New(resp.Status))
 		} else {
 			a.scheduler.MarkSuccess(backend.ID)

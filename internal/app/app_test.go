@@ -127,6 +127,62 @@ func TestProxyFailsOverAndKeepsTransparentRequest(t *testing.T) {
 	}
 }
 
+func TestProxyFailsOverOnUnauthorizedBackendResponse(t *testing.T) {
+	const requestBody = `{"model":"gpt-4o","messages":[{"role":"user","content":"hello"}]}`
+
+	application := newTestApp(t)
+	client := createTestClient(t, application, "client-secret")
+	backends := []domain.Backend{
+		createTestBackend(t, application, domain.Backend{
+			Name:      "alpha",
+			BaseURL:   "https://alpha.local/root/v1",
+			APIKey:    "alpha-key",
+			Enabled:   true,
+			Weight:    1,
+			Models:    []string{"gpt-4o"},
+			Endpoints: []string{domain.EndpointChat},
+		}),
+		createTestBackend(t, application, domain.Backend{
+			Name:      "beta",
+			BaseURL:   "https://beta.local/root/v1",
+			APIKey:    "beta-key",
+			Enabled:   true,
+			Weight:    1,
+			Models:    []string{"gpt-4o"},
+			Endpoints: []string{domain.EndpointChat},
+		}),
+	}
+	createTestPolicy(t, application, domain.ModelPolicy{
+		Pattern:         "gpt-*",
+		Endpoint:        domain.EndpointChat,
+		PlacementPolicy: domain.PlacementSticky,
+		FailoverEnabled: true,
+		Priority:        10,
+	})
+
+	selection, err := application.scheduler.SelectBackend(context.Background(), client, domain.EndpointChat, "gpt-4o")
+	if err != nil {
+		t.Fatalf("select backend: %v", err)
+	}
+	fixture := newFailoverFixture(t, backends)
+	fixture.statusByName[selection.Candidates[0].Name] = http.StatusUnauthorized
+	fixture.statusByName[selection.Candidates[1].Name] = http.StatusOK
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected failover response status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	records := fixture.recordsSnapshot()
+	if len(records) != 2 {
+		t.Fatalf("expected two upstream attempts, got %d", len(records))
+	}
+}
+
 func TestProxyRewritesBackendModelByMapping(t *testing.T) {
 	const (
 		clientToken = "client-secret"
@@ -714,6 +770,67 @@ func TestBackendListIncludesRecentRequestStats(t *testing.T) {
 	}
 	if payload.Items[0].RecentStats.WindowMinutes != 30 || payload.Items[0].RecentStats.Successes != 1 || payload.Items[0].RecentStats.Failures != 1 {
 		t.Fatalf("unexpected recent stats: %#v", payload.Items[0].RecentStats)
+	}
+}
+
+func TestBackendListExcludesBadRequestFromFailureStats(t *testing.T) {
+	application := newTestApp(t)
+	client := createTestClient(t, application, "client-secret")
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "alpha",
+		BaseURL:   "https://alpha.local/v1",
+		APIKey:    "alpha-key",
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+	createTestPolicy(t, application, domain.ModelPolicy{
+		Pattern:         "gpt-*",
+		Endpoint:        domain.EndpointChat,
+		PlacementPolicy: domain.PlacementSticky,
+		FailoverEnabled: true,
+		Priority:        10,
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.statusByName[backend.Name] = http.StatusBadRequest
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-4o","messages":[{"role":"user","content":"bad"}]}`))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected proxy response 400, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/api/backends", nil)
+	listReq.Header.Set("Authorization", "Bearer test-admin")
+	listRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(listRecorder, listReq)
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("expected backend list status 200, got %d body=%s", listRecorder.Code, listRecorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID          int64 `json:"id"`
+			RecentStats struct {
+				WindowMinutes int `json:"window_minutes"`
+				Successes     int `json:"successes"`
+				Failures      int `json:"failures"`
+			} `json:"recent_stats"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(listRecorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal backend list: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one backend item, got %d", len(payload.Items))
+	}
+	if payload.Items[0].RecentStats.Failures != 0 {
+		t.Fatalf("expected 400 not to count as backend failure, got %#v", payload.Items[0].RecentStats)
 	}
 }
 
