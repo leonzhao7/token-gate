@@ -21,6 +21,7 @@ const drawerTitle = document.querySelector("#drawerTitle");
 const drawerCloseBtn = document.querySelector("#drawerCloseBtn");
 const drawerBodyRoot = document.querySelector("#drawerBodyRoot");
 const drawerTabRoot = document.querySelector("#drawerTabRoot");
+const drawerFooterRoot = document.querySelector("#drawerFooterRoot");
 const searchModalRoot = document.querySelector("#searchModalRoot");
 const searchModalPanel = document.querySelector(".search-modal-panel");
 const searchOpenBtn = document.querySelector("#searchOpenBtn");
@@ -85,10 +86,65 @@ const THEME_PREFERENCE_KEY = "token-gate-theme-preference";
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const SEARCH_LIMIT = 8;
 const SEARCH_DEBOUNCE_MS = 220;
+const RESOURCE_VIEW_CONFIG = {
+  proxies: {
+    searchPlaceholder: "Search proxies by name or address",
+    filterOptions: [
+      { value: "all", label: "All status" },
+      { value: "enabled", label: "Enabled" },
+      { value: "disabled", label: "Disabled" },
+    ],
+    sortOptions: [
+      { value: "updated_desc", label: "Updated" },
+      { value: "name_asc", label: "Name" },
+    ],
+  },
+  backends: {
+    searchPlaceholder: "Search backends, base URL, models",
+    filterOptions: [
+      { value: "all", label: "All status" },
+      { value: "enabled", label: "Enabled" },
+      { value: "disabled", label: "Disabled" },
+    ],
+    sortOptions: [
+      { value: "updated_desc", label: "Updated" },
+      { value: "name_asc", label: "Name" },
+      { value: "weight_desc", label: "Weight" },
+    ],
+  },
+  clients: {
+    searchPlaceholder: "Search client keys, groups, routes",
+    filterOptions: [
+      { value: "all", label: "All status" },
+      { value: "enabled", label: "Enabled" },
+      { value: "disabled", label: "Disabled" },
+    ],
+    sortOptions: [
+      { value: "updated_desc", label: "Updated" },
+      { value: "name_asc", label: "Name" },
+      { value: "group_asc", label: "Route group" },
+    ],
+  },
+  policies: {
+    searchPlaceholder: "Search patterns, endpoints, pools",
+    filterOptions: [
+      { value: "all", label: "All failover" },
+      { value: "enabled", label: "Failover on" },
+      { value: "disabled", label: "Failover off" },
+    ],
+    sortOptions: [
+      { value: "priority_asc", label: "Priority" },
+      { value: "updated_desc", label: "Updated" },
+      { value: "pattern_asc", label: "Pattern" },
+    ],
+  },
+};
 const ThemeUtils = globalThis.ThemeUtils || {};
 const SearchUtils = globalThis.SearchUtils || {};
 const DashboardUtils = globalThis.DashboardUtils || {};
 const ChartsUtils = globalThis.ChartsUtils || {};
+const DrawerUtils = globalThis.DrawerUtils || {};
+const RendererUtils = globalThis.RendererUtils || {};
 const systemThemeQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 const searchDebounce = typeof SearchUtils.createDebouncedTask === "function"
   ? SearchUtils.createDebouncedTask((query) => {
@@ -143,6 +199,12 @@ const state = {
     model: "",
     clientKey: "",
   },
+  resourceViews: {
+    proxies: { query: "", filter: "all", sort: "updated_desc" },
+    backends: { query: "", filter: "all", sort: "updated_desc" },
+    clients: { query: "", filter: "all", sort: "updated_desc" },
+    policies: { query: "", filter: "all", sort: "priority_asc" },
+  },
   pagination: {
     proxies: { page: 1, size: 10 },
     backends: { page: 1, size: 10 },
@@ -154,7 +216,7 @@ const state = {
   ui: {
     theme: "light",
     themePreference: "system",
-    drawer: { open: false, kind: "", id: null, title: "", tab: "overview" },
+    drawer: { open: false, kind: "", id: null, title: "", tab: "overview", loading: false, data: null, error: "", detailPath: "", deletePath: "", page: "", triggerElement: null },
     search: {
       open: false,
       query: "",
@@ -474,27 +536,23 @@ async function refreshAll() {
   renderDashboardShell();
   const dashboardRefresh = refreshDashboardData().catch(reportError);
 
-  const proxyPage = state.pagination.proxies;
-  const backendPage = state.pagination.backends;
-  const clientPage = state.pagination.clients;
-  const policyPage = state.pagination.policies;
   const eventPage = state.pagination.events;
   const usageLogPage = state.pagination.usageLogs;
   const usageLogQuery = buildUsageLogQuery();
   const [proxies, backends, clients, policies, events, usageLogs, usageLogOptions] = await Promise.all([
-    api(`/admin/api/socks-proxies?page=${proxyPage.page}&limit=${proxyPage.size}`),
-    api(`/admin/api/backends?page=${backendPage.page}&limit=${backendPage.size}`),
-    api(`/admin/api/client-keys?page=${clientPage.page}&limit=${clientPage.size}`),
-    api(`/admin/api/model-policies?page=${policyPage.page}&limit=${policyPage.size}`),
+    fetchAllCollectionPages("/admin/api/socks-proxies"),
+    fetchAllCollectionPages("/admin/api/backends"),
+    fetchAllCollectionPages("/admin/api/client-keys"),
+    fetchAllCollectionPages("/admin/api/model-policies"),
     api(`/admin/api/events?page=${eventPage.page}&limit=${eventPage.size}`),
     api(`/admin/api/usage-logs?page=${usageLogPage.page}&limit=${usageLogPage.size}${usageLogQuery}`),
     api("/admin/api/usage-log-options"),
   ]);
 
-  applyPagedResponse("proxies", proxies);
-  applyPagedResponse("backends", backends);
-  applyPagedResponse("clients", clients);
-  applyPagedResponse("policies", policies);
+  state.proxies = ensureArray(proxies);
+  state.backends = ensureArray(backends);
+  state.clients = ensureArray(clients);
+  state.policies = ensureArray(policies);
   applyPagedResponse("events", events);
   applyPagedResponse("usageLogs", usageLogs);
   state.usageLogOptions.backends = ensureArray(usageLogOptions?.backends);
@@ -822,32 +880,31 @@ function renderDrawerShell() {
   drawerRoot.classList.toggle("hidden", !isOpen);
   drawerRoot.setAttribute("aria-hidden", String(!isOpen));
   if (drawerTitle) {
-    const detailTitle = state.ui.drawer.title || state.ui.drawer.kind;
+    const detailTitle = state.ui.drawer.title || drawerDisplayTitle(state.ui.drawer.kind);
     drawerTitle.textContent = detailTitle ? `${detailTitle} Detail` : "Detail Drawer";
   }
-  if (drawerBodyRoot) {
-    drawerBodyRoot.innerHTML = `
-      <p class="muted-text">
-        Drawer shell placeholder for ${escapeHTML(state.ui.drawer.kind || "resource")} #${escapeHTML(
-          state.ui.drawer.id == null ? "-" : String(state.ui.drawer.id),
-        )}, tab ${escapeHTML(state.ui.drawer.tab)}.
-      </p>
-    `;
-  }
-  drawerTabRoot?.querySelectorAll("[data-drawer-tab]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.drawerTab === state.ui.drawer.tab);
-  });
+  renderDrawerTabs();
+  renderDrawerBody();
+  renderDrawerFooter();
 }
 
 function closeDrawerShell() {
+  const previousTrigger = state.ui.drawer.triggerElement;
   state.ui.drawer.open = false;
   state.ui.drawer.kind = "";
   state.ui.drawer.id = null;
   state.ui.drawer.title = "";
   state.ui.drawer.tab = "overview";
+  state.ui.drawer.loading = false;
+  state.ui.drawer.data = null;
+  state.ui.drawer.error = "";
+  state.ui.drawer.detailPath = "";
+  state.ui.drawer.deletePath = "";
+  state.ui.drawer.page = "";
+  state.ui.drawer.triggerElement = null;
   renderDrawerShell();
-  if (state.ui.search.triggerElement instanceof HTMLElement) {
-    state.ui.search.triggerElement.focus();
+  if (previousTrigger instanceof HTMLElement) {
+    previousTrigger.focus();
   }
 }
 
@@ -1491,6 +1548,49 @@ function renderSearchResults() {
   `).join("");
 }
 
+async function fetchAllCollectionPages(basePath) {
+  const firstPage = await api(`${basePath}?page=1&limit=50`);
+  const items = ensureArray(firstPage?.items);
+  const total = Number(firstPage?.total) || items.length;
+  const limit = PAGE_SIZE_OPTIONS.includes(Number(firstPage?.limit)) ? Number(firstPage.limit) : 50;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  if (totalPages === 1) {
+    return items;
+  }
+
+  const remaining = [];
+  for (let page = 2; page <= totalPages; page += 1) {
+    remaining.push(api(`${basePath}?page=${page}&limit=${limit}`));
+  }
+  const pages = await Promise.all(remaining);
+  pages.forEach((payload) => {
+    items.push(...ensureArray(payload?.items));
+  });
+  return items;
+}
+
+async function refreshResourceList(resourceKey) {
+  if (resourceKey === "proxies") {
+    state.proxies = await fetchAllCollectionPages("/admin/api/socks-proxies");
+    renderProxies();
+    return;
+  }
+  if (resourceKey === "backends") {
+    state.backends = await fetchAllCollectionPages("/admin/api/backends");
+    renderBackends();
+    return;
+  }
+  if (resourceKey === "clients") {
+    state.clients = await fetchAllCollectionPages("/admin/api/client-keys");
+    renderClients();
+    return;
+  }
+  if (resourceKey === "policies") {
+    state.policies = await fetchAllCollectionPages("/admin/api/model-policies");
+    renderPolicies();
+  }
+}
+
 function navigateToSearchResult(payload) {
   const normalized = typeof SearchUtils.getSearchResultTarget === "function"
     ? SearchUtils.getSearchResultTarget(payload)
@@ -1501,14 +1601,250 @@ function navigateToSearchResult(payload) {
 
   window.location.hash = `#${normalized.page}`;
   activatePage(normalized.page);
-  state.ui.drawer.open = true;
-  state.ui.drawer.kind = normalized.drawer.kind || payload.group || "resource";
-  state.ui.drawer.id = normalized.drawer.id || payload.targetId || payload.id || null;
-  state.ui.drawer.title = normalized.drawer.title || payload.title || "";
-  state.ui.drawer.tab = "overview";
   closeSearchShell();
+  openResourceDrawer({
+    kind: normalized.drawer.kind || payload.group || "",
+    page: normalized.page,
+    id: normalized.drawer.id || payload.targetId || payload.id || null,
+    title: normalized.drawer.title || payload.title || "",
+  }).catch(reportError);
+}
+
+async function openResourceDrawer(target) {
+  const normalized = typeof DrawerUtils.buildDrawerTarget === "function"
+    ? DrawerUtils.buildDrawerTarget(target)
+    : null;
+  if (!normalized) {
+    return;
+  }
+
+  state.ui.drawer.open = true;
+  state.ui.drawer.kind = normalized.kind;
+  state.ui.drawer.id = normalized.id;
+  state.ui.drawer.title = normalized.title;
+  state.ui.drawer.page = normalized.page;
+  state.ui.drawer.detailPath = normalized.detailPath;
+  state.ui.drawer.deletePath = normalized.deletePath;
+  state.ui.drawer.triggerElement = target?.triggerElement instanceof HTMLElement ? target.triggerElement : document.activeElement;
+  state.ui.drawer.tab = "overview";
+  state.ui.drawer.loading = true;
+  state.ui.drawer.data = null;
+  state.ui.drawer.error = "";
   renderDrawerShell();
   drawerPanel?.focus();
+
+  try {
+    const payload = await api(normalized.detailPath);
+    state.ui.drawer.data = typeof DrawerUtils.normalizeDrawerPayload === "function"
+      ? DrawerUtils.normalizeDrawerPayload(payload)
+      : payload;
+    state.ui.drawer.error = "";
+  } catch (error) {
+    state.ui.drawer.error = error?.message || "Failed to load detail";
+    state.ui.drawer.data = null;
+  } finally {
+    state.ui.drawer.loading = false;
+    renderDrawerShell();
+  }
+}
+
+function renderDrawerTabs() {
+  if (!drawerTabRoot) {
+    return;
+  }
+  const tabs = typeof DrawerUtils.drawerTabsForResource === "function"
+    ? DrawerUtils.drawerTabsForResource(state.ui.drawer.kind)
+    : [];
+  drawerTabRoot.innerHTML = tabs.map((tab) => `
+    <button class="ghost-button ${tab.key === state.ui.drawer.tab ? "active" : ""}" type="button" data-drawer-tab="${escapeHTML(tab.key)}">
+      ${escapeHTML(tab.label)}
+    </button>
+  `).join("");
+  drawerTabRoot.querySelectorAll("[data-drawer-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.ui.drawer.tab = button.dataset.drawerTab || "overview";
+      renderDrawerShell();
+    });
+  });
+}
+
+function renderDrawerBody() {
+  if (!drawerBodyRoot) {
+    return;
+  }
+  if (state.ui.drawer.loading) {
+    drawerBodyRoot.innerHTML = `
+      <div class="drawer-state">
+        <strong>Loading detail</strong>
+        <p class="muted-text">Fetching ${escapeHTML(drawerDisplayTitle(state.ui.drawer.kind))} detail.</p>
+      </div>
+    `;
+    return;
+  }
+  if (state.ui.drawer.error) {
+    drawerBodyRoot.innerHTML = `
+      <div class="drawer-state drawer-state-error">
+        <strong>Drawer unavailable</strong>
+        <p class="muted-text">${escapeHTML(state.ui.drawer.error)}</p>
+      </div>
+    `;
+    return;
+  }
+  const data = state.ui.drawer.data || {};
+  const activeTab = state.ui.drawer.tab || "overview";
+  drawerBodyRoot.innerHTML = renderDrawerTabPanel(activeTab, data[activeTab]);
+}
+
+function renderDrawerTabPanel(tab, value) {
+  if (tab === "raw") {
+    const raw = value == null ? {} : value;
+    return `
+      <div class="drawer-code-block">
+        <pre>${escapeHTML(JSON.stringify(raw, null, 2))}</pre>
+      </div>
+    `;
+  }
+
+  if (tab === "activity") {
+    const activity = value && typeof value === "object" ? value : {};
+    const sections = [
+      renderDrawerActivityList("Events", ensureArray(activity.events).map((item) => item.message || item.type || "-")),
+      renderDrawerActivityList("Usage", ensureArray(activity.usage).map((item) => item.request_id || item.requestId || item.model || "-")),
+      renderDrawerActivityList("Backends", ensureArray(activity.backends).map((item) => item.name || "-")),
+    ].filter(Boolean);
+    if (!sections.length) {
+      return `<div class="drawer-state"><strong>No activity</strong><p class="muted-text">No related activity for this resource yet.</p></div>`;
+    }
+    return `<div class="drawer-section-stack">${sections.join("")}</div>`;
+  }
+
+  const objectValue = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const entries = Object.entries(objectValue);
+  if (!entries.length) {
+    return `<div class="drawer-state"><strong>No ${escapeHTML(tab)}</strong><p class="muted-text">This tab has no data yet.</p></div>`;
+  }
+
+  return `
+    <div class="drawer-kv-grid">
+      ${entries.map(([key, entryValue]) => `
+        <article class="drawer-kv-card">
+          <small>${escapeHTML(humanizeKey(key))}</small>
+          <strong>${escapeHTML(formatDrawerValue(entryValue))}</strong>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderDrawerActivityList(title, items) {
+  if (!items.length) {
+    return "";
+  }
+  return `
+    <section class="drawer-activity-section">
+      <header><strong>${escapeHTML(title)}</strong></header>
+      <ul>
+        ${items.slice(0, 8).map((item) => `<li>${escapeHTML(item)}</li>`).join("")}
+      </ul>
+    </section>
+  `;
+}
+
+function renderDrawerFooter() {
+  if (!drawerFooterRoot) {
+    return;
+  }
+  if (!state.ui.drawer.open) {
+    drawerFooterRoot.innerHTML = "";
+    return;
+  }
+  const actions = typeof DrawerUtils.drawerFooterActions === "function"
+    ? DrawerUtils.drawerFooterActions()
+    : [
+      { key: "edit", label: "Edit", tone: "ghost", disabled: false },
+      { key: "delete", label: "Delete", tone: "danger", disabled: false },
+      { key: "save", label: "Save", tone: "primary", disabled: true },
+    ];
+  drawerFooterRoot.innerHTML = actions.map((action) => `
+    <button
+      class="${action.tone === "ghost" ? "ghost-button" : action.tone === "danger" ? "danger-button" : ""}"
+      type="button"
+      data-drawer-footer="${escapeHTML(action.key)}"
+      ${action.disabled ? "disabled aria-disabled=\"true\" title=\"Read-only detail drawer\"" : ""}
+    >
+      ${escapeHTML(action.label)}
+    </button>
+  `).join("");
+  drawerFooterRoot.querySelector('[data-drawer-footer="edit"]')?.addEventListener("click", () => {
+    openDrawerEditor();
+  });
+  drawerFooterRoot.querySelector('[data-drawer-footer="delete"]')?.addEventListener("click", () => {
+    deleteDrawerResource().catch(reportError);
+  });
+}
+
+function openDrawerEditor() {
+  const drawer = state.ui.drawer;
+  if (drawer.kind === "backends") {
+    closeDrawerShell();
+    startEditBackend(drawer.id);
+    return;
+  }
+  if (drawer.kind === "clients") {
+    closeDrawerShell();
+    startEditClient(drawer.id);
+    return;
+  }
+  if (drawer.kind === "policies") {
+    closeDrawerShell();
+    startEditPolicy(drawer.id);
+    return;
+  }
+  if (drawer.kind === "proxies") {
+    closeDrawerShell();
+    startEditProxy(drawer.id);
+  }
+}
+
+async function deleteDrawerResource() {
+  if (!state.ui.drawer.deletePath) {
+    return;
+  }
+  if (!confirm(`确认删除 ${drawerDisplayTitle(state.ui.drawer.kind)}？`)) {
+    return;
+  }
+  await api(state.ui.drawer.deletePath, "DELETE");
+  closeDrawerShell();
+  await refreshAll();
+}
+
+function drawerDisplayTitle(kind) {
+  const titles = {
+    backends: "Backend",
+    clients: "Client Key",
+    policies: "Policy",
+    proxies: "Proxy",
+  };
+  return titles[kind] || "Resource";
+}
+
+function formatDrawerValue(value) {
+  if (Array.isArray(value)) {
+    return value.join(", ") || "-";
+  }
+  if (value && typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  if (value === null || typeof value === "undefined" || value === "") {
+    return "-";
+  }
+  return String(value);
+}
+
+function humanizeKey(value) {
+  return String(value || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function trapFocusWithin(container, event) {
@@ -1547,33 +1883,38 @@ function trapFocusWithin(container, event) {
 
 function renderProxies() {
   const proxies = state.proxies;
-  if (proxies.length === 0) {
-    proxyList.innerHTML = emptyState(
-      "还没有 SOCKS5 Proxy",
-      "如果某些 Backend 需要固定出口代理，先在这里添加 SOCKS5 节点，再回到 Backend 里绑定。",
-    );
-    return;
-  }
-  const pageData = currentPageData("proxies", proxies);
+  const filtered = applyResourceView("proxies", proxies);
+  const pageData = currentLocalPageData("proxies", filtered);
+  const toolbar = renderResourceToolbar({
+    resourceKey: "proxies",
+    searchPlaceholder: "Search proxies",
+    count: pageData.total,
+  });
 
   proxyList.innerHTML = `
-    <div class="table-shell">
-      <table class="resource-table">
-        <thead>
-          <tr>
-            <th>Proxy</th>
-            <th>Status</th>
-            <th>Address</th>
-            <th>Auth</th>
-            <th>Updated</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${pageData.items.map(renderProxyRow).join("")}
-        </tbody>
-      </table>
-    </div>
+    ${toolbar}
+    ${filtered.length === 0 ? emptyState(
+      "还没有 SOCKS5 Proxy",
+      "如果某些 Backend 需要固定出口代理，先在这里添加 SOCKS5 节点，再回到 Backend 里绑定。",
+    ) : `
+      <div class="table-shell">
+        <table class="resource-table">
+          <thead>
+            <tr>
+              <th>Proxy</th>
+              <th>Status</th>
+              <th>Address</th>
+              <th>Auth</th>
+              <th>Updated</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${pageData.items.map(renderProxyRow).join("")}
+          </tbody>
+        </table>
+      </div>
+    `}
     ${renderPagination("proxies", pageData)}
   `;
 
@@ -1589,6 +1930,7 @@ function renderProxies() {
       startEditProxy(button.dataset.editProxy);
     });
   });
+  bindResourceRowOpen(proxyList, "proxy");
 
   proxyList.querySelectorAll("[data-delete-proxy]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -1608,40 +1950,46 @@ function renderProxies() {
     });
   });
 
-  bindPagination(proxyList, "proxies", refreshAll);
+  bindPagination(proxyList, "proxies", renderProxies);
+  bindResourceToolbar(proxyList, "proxies", { create: startCreateProxy });
 }
 
 function renderBackends() {
   const backends = state.backends;
-  if (backends.length === 0) {
-    backendList.innerHTML = emptyState(
-      "还没有 Backend",
-      "先配置至少一个 OpenAI 或 Claude/Anthropic 上游节点，之后模型路由和故障切换才会生效。",
-    );
-    return;
-  }
-  const pageData = currentPageData("backends", backends);
+  const filtered = applyResourceView("backends", backends);
+  const pageData = currentLocalPageData("backends", filtered);
+  const toolbar = renderResourceToolbar({
+    resourceKey: "backends",
+    searchPlaceholder: "Search backends",
+    count: pageData.total,
+  });
 
   backendList.innerHTML = `
-    <div class="table-shell">
-      <table class="resource-table">
-        <thead>
-          <tr>
-            <th>Backend</th>
-            <th>Status</th>
-            <th>Protocol</th>
-            <th>Pool</th>
-            <th>Proxy</th>
-            <th>Models</th>
-            <th>Recent 30m</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${pageData.items.map(renderBackendRow).join("")}
-        </tbody>
-      </table>
-    </div>
+    ${toolbar}
+    ${filtered.length === 0 ? emptyState(
+      "还没有 Backend",
+      "先配置至少一个 OpenAI 或 Claude/Anthropic 上游节点，之后模型路由和故障切换才会生效。",
+    ) : `
+      <div class="table-shell">
+        <table class="resource-table">
+          <thead>
+            <tr>
+              <th>Backend</th>
+              <th>Status</th>
+              <th>Protocol</th>
+              <th>Pool</th>
+              <th>Proxy</th>
+              <th>Models</th>
+              <th>Recent 30m</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${pageData.items.map(renderBackendRow).join("")}
+          </tbody>
+        </table>
+      </div>
+    `}
     ${renderPagination("backends", pageData)}
   `;
 
@@ -1657,6 +2005,7 @@ function renderBackends() {
       startEditBackend(button.dataset.editBackend);
     });
   });
+  bindResourceRowOpen(backendList, "backend");
 
   backendList.querySelectorAll("[data-delete-backend]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -1676,39 +2025,45 @@ function renderBackends() {
     });
   });
 
-  bindPagination(backendList, "backends", refreshAll);
+  bindPagination(backendList, "backends", renderBackends);
+  bindResourceToolbar(backendList, "backends", { create: startCreateBackend });
 }
 
 function renderClients() {
   const clients = state.clients;
-  if (clients.length === 0) {
-    clientList.innerHTML = emptyState(
-      "还没有 Client Key",
-      "创建一个客户端 key 后，外部 SDK 或 AI 客户端才能通过 Token Gate 访问后端模型。",
-    );
-    return;
-  }
-  const pageData = currentPageData("clients", clients);
+  const filtered = applyResourceView("clients", clients);
+  const pageData = currentLocalPageData("clients", filtered);
+  const toolbar = renderResourceToolbar({
+    resourceKey: "clients",
+    searchPlaceholder: "Search client keys",
+    count: pageData.total,
+  });
 
   clientList.innerHTML = `
-    <div class="table-shell">
-      <table class="resource-table">
-        <thead>
-          <tr>
-            <th>Client</th>
-            <th>Status</th>
-            <th>Client Key</th>
-            <th>Route Mode</th>
-            <th>Route Group</th>
-            <th>Updated</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${pageData.items.map(renderClientRow).join("")}
-        </tbody>
-      </table>
-    </div>
+    ${toolbar}
+    ${filtered.length === 0 ? emptyState(
+      "还没有 Client Key",
+      "创建一个客户端 key 后，外部 SDK 或 AI 客户端才能通过 Token Gate 访问后端模型。",
+    ) : `
+      <div class="table-shell">
+        <table class="resource-table">
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>Status</th>
+              <th>Client Key</th>
+              <th>Route Mode</th>
+              <th>Route Group</th>
+              <th>Updated</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${pageData.items.map(renderClientRow).join("")}
+          </tbody>
+        </table>
+      </div>
+    `}
     ${renderPagination("clients", pageData)}
   `;
 
@@ -1724,6 +2079,7 @@ function renderClients() {
       startEditClient(button.dataset.editClient);
     });
   });
+  bindResourceRowOpen(clientList, "client");
 
   clientList.querySelectorAll("[data-delete-client]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -1743,39 +2099,45 @@ function renderClients() {
     });
   });
 
-  bindPagination(clientList, "clients", refreshAll);
+  bindPagination(clientList, "clients", renderClients);
+  bindResourceToolbar(clientList, "clients", { create: startCreateClient });
 }
 
 function renderPolicies() {
   const policies = state.policies;
-  if (policies.length === 0) {
-    policyList.innerHTML = emptyState(
-      "还没有 Model Policy",
-      "定义模型模式、端点和 placement 策略后，路由行为才会按业务意图收敛。",
-    );
-    return;
-  }
-  const pageData = currentPageData("policies", policies);
+  const filtered = applyResourceView("policies", policies);
+  const pageData = currentLocalPageData("policies", filtered);
+  const toolbar = renderResourceToolbar({
+    resourceKey: "policies",
+    searchPlaceholder: "Search policies",
+    count: pageData.total,
+  });
 
   policyList.innerHTML = `
-    <div class="table-shell">
-      <table class="resource-table">
-        <thead>
-          <tr>
-            <th>Pattern</th>
-            <th>Endpoint</th>
-            <th>Placement</th>
-            <th>Pool</th>
-            <th>Priority</th>
-            <th>Failover</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${pageData.items.map(renderPolicyRow).join("")}
-        </tbody>
-      </table>
-    </div>
+    ${toolbar}
+    ${filtered.length === 0 ? emptyState(
+      "还没有 Model Policy",
+      "定义模型模式、端点和 placement 策略后，路由行为才会按业务意图收敛。",
+    ) : `
+      <div class="table-shell">
+        <table class="resource-table">
+          <thead>
+            <tr>
+              <th>Pattern</th>
+              <th>Endpoint</th>
+              <th>Placement</th>
+              <th>Pool</th>
+              <th>Priority</th>
+              <th>Failover</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${pageData.items.map(renderPolicyRow).join("")}
+          </tbody>
+        </table>
+      </div>
+    `}
     ${renderPagination("policies", pageData)}
   `;
 
@@ -1791,6 +2153,7 @@ function renderPolicies() {
       startEditPolicy(button.dataset.editPolicy);
     });
   });
+  bindResourceRowOpen(policyList, "policy");
 
   policyList.querySelectorAll("[data-delete-policy]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -1810,15 +2173,17 @@ function renderPolicies() {
     });
   });
 
-  bindPagination(policyList, "policies", refreshAll);
+  bindPagination(policyList, "policies", renderPolicies);
+  bindResourceToolbar(policyList, "policies", { create: startCreatePolicy });
 }
 
 function renderProxyRow(proxy) {
   const id = String(proxy.id);
   const expanded = state.expandedProxies.has(id);
   const editing = String(state.editingProxyID) === id;
+  const quickDetails = createQuickDetailMarkup("proxies", proxy);
   return `
-    <tr class="${editing ? "is-editing" : ""}">
+    <tr class="${editing ? "is-editing" : ""} clickable-row" data-row-open="proxy" data-row-id="${escapeHTML(proxy.id)}" data-row-title="${escapeHTML(proxy.name)}">
       <td>
         <button class="row-title" data-toggle-proxy="${proxy.id}" type="button">
           <span class="chevron">${expanded ? "收起" : "展开"}</span>
@@ -1834,16 +2199,7 @@ function renderProxyRow(proxy) {
     ${expanded ? `
       <tr class="detail-row">
         <td colspan="6">
-          <div class="detail-panel">
-            <div class="detail-grid">
-              <div><strong>Name</strong><span>${escapeHTML(proxy.name)}</span></div>
-              <div><strong>Address</strong><span>${escapeHTML(proxy.address)}</span></div>
-              <div><strong>Username</strong><span>${escapeHTML(proxy.username || "-")}</span></div>
-              <div><strong>Password</strong><span>${escapeHTML(proxy.password || "-")}</span></div>
-              <div><strong>Created</strong><span>${escapeHTML(formatDateTime(proxy.created_at))}</span></div>
-              <div><strong>Updated</strong><span>${escapeHTML(formatDateTime(proxy.updated_at))}</span></div>
-            </div>
-          </div>
+          ${quickDetails}
         </td>
       </tr>
     ` : ""}
@@ -1855,8 +2211,9 @@ function renderBackendRow(backend) {
   const expanded = state.expandedBackends.has(id);
   const editing = String(state.editingBackendID) === id;
   const recentStats = backend.recent_stats || {};
+  const quickDetails = createQuickDetailMarkup("backends", backend);
   return `
-    <tr class="${editing ? "is-editing" : ""}">
+    <tr class="${editing ? "is-editing" : ""} clickable-row" data-row-open="backend" data-row-id="${escapeHTML(backend.id)}" data-row-title="${escapeHTML(backend.name)}">
       <td>
         <button class="row-title" data-toggle-backend="${backend.id}" type="button">
           <span class="chevron">${expanded ? "收起" : "展开"}</span>
@@ -1875,29 +2232,7 @@ function renderBackendRow(backend) {
     ${expanded ? `
       <tr class="detail-row">
         <td colspan="8">
-          <div class="detail-panel">
-            <div class="detail-grid">
-              <div><strong>Protocol</strong><span>${escapeHTML(backendProtocolLabel(backend.protocol))}</span></div>
-              <div><strong>Base URL</strong><span>${escapeHTML(backend.base_url)}</span></div>
-              <div><strong>API Key</strong><span>${escapeHTML(backend.api_key || "-")}</span></div>
-              <div><strong>SOCKS5 Proxy</strong><span>${escapeHTML(proxyLabel(backend.proxy_id, backend.proxy))}</span></div>
-              <div><strong>Proxy Address</strong><span>${escapeHTML(backend.proxy?.address || "-")}</span></div>
-              <div><strong>Pool</strong><span>${escapeHTML(backend.pool || "-")}</span></div>
-              <div><strong>Weight</strong><span>${backend.weight}</span></div>
-              <div><strong>Model Mapping</strong><span>${escapeHTML(formatModelMapping(backend.model_mapping))}</span></div>
-              <div><strong>Recent 30m</strong><span>${escapeHTML(formatBackendRecentStats(recentStats))}</span></div>
-              <div><strong>Created</strong><span>${escapeHTML(formatDateTime(backend.created_at))}</span></div>
-              <div><strong>Updated</strong><span>${escapeHTML(formatDateTime(backend.updated_at))}</span></div>
-            </div>
-            <div class="detail-section">
-              <strong>Models</strong>
-              <div class="chip-row">${chipList(backend.models)}</div>
-            </div>
-            <div class="detail-section">
-              <strong>Endpoints</strong>
-              <div class="chip-row">${chipList(backend.endpoints, "alt")}</div>
-            </div>
-          </div>
+          ${quickDetails}
         </td>
       </tr>
     ` : ""}
@@ -1908,8 +2243,9 @@ function renderClientRow(client) {
   const id = String(client.id);
   const expanded = state.expandedClients.has(id);
   const editing = String(state.editingClientID) === id;
+  const quickDetails = createQuickDetailMarkup("clients", client);
   return `
-    <tr class="${editing ? "is-editing" : ""}">
+    <tr class="${editing ? "is-editing" : ""} clickable-row" data-row-open="client" data-row-id="${escapeHTML(client.id)}" data-row-title="${escapeHTML(client.name)}">
       <td>
         <button class="row-title" data-toggle-client="${client.id}" type="button">
           <span class="chevron">${expanded ? "收起" : "展开"}</span>
@@ -1926,17 +2262,7 @@ function renderClientRow(client) {
     ${expanded ? `
       <tr class="detail-row">
         <td colspan="7">
-          <div class="detail-panel">
-            <div class="detail-grid">
-              <div><strong>Name</strong><span>${escapeHTML(client.name)}</span></div>
-              <div><strong>Client Key</strong><span>${escapeHTML(clientTokenDisplay(client))}</span></div>
-              <div><strong>Token Prefix</strong><span>${escapeHTML(client.token_prefix || "-")}</span></div>
-              <div><strong>Route Override</strong><span>${escapeHTML(client.route_mode_override || "policy default")}</span></div>
-              <div><strong>Route Group</strong><span>${escapeHTML(client.route_group || "-")}</span></div>
-              <div><strong>Created</strong><span>${escapeHTML(formatDateTime(client.created_at))}</span></div>
-              <div><strong>Updated</strong><span>${escapeHTML(formatDateTime(client.updated_at))}</span></div>
-            </div>
-          </div>
+          ${quickDetails}
         </td>
       </tr>
     ` : ""}
@@ -1947,8 +2273,9 @@ function renderPolicyRow(policy) {
   const id = String(policy.id);
   const expanded = state.expandedPolicies.has(id);
   const editing = String(state.editingPolicyID) === id;
+  const quickDetails = createQuickDetailMarkup("policies", policy);
   return `
-    <tr class="${editing ? "is-editing" : ""}">
+    <tr class="${editing ? "is-editing" : ""} clickable-row" data-row-open="policy" data-row-id="${escapeHTML(policy.id)}" data-row-title="${escapeHTML(policy.pattern)}">
       <td>
         <button class="row-title" data-toggle-policy="${policy.id}" type="button">
           <span class="chevron">${expanded ? "收起" : "展开"}</span>
@@ -1965,21 +2292,203 @@ function renderPolicyRow(policy) {
     ${expanded ? `
       <tr class="detail-row">
         <td colspan="7">
-          <div class="detail-panel">
-            <div class="detail-grid">
-              <div><strong>Pattern</strong><span>${escapeHTML(policy.pattern)}</span></div>
-              <div><strong>Endpoint</strong><span>${escapeHTML(policy.endpoint)}</span></div>
-              <div><strong>Placement</strong><span>${escapeHTML(policy.placement_policy)}</span></div>
-              <div><strong>Backend Pool</strong><span>${escapeHTML(policy.backend_pool || "-")}</span></div>
-              <div><strong>Priority</strong><span>${policy.priority}</span></div>
-              <div><strong>Failover</strong><span>${policy.failover_enabled ? "enabled" : "disabled"}</span></div>
-              <div><strong>Created</strong><span>${escapeHTML(formatDateTime(policy.created_at))}</span></div>
-              <div><strong>Updated</strong><span>${escapeHTML(formatDateTime(policy.updated_at))}</span></div>
-            </div>
-          </div>
+          ${quickDetails}
         </td>
       </tr>
     ` : ""}
+  `;
+}
+
+function bindResourceRowOpen(container, kind) {
+  container.querySelectorAll("[data-row-open]").forEach((row) => {
+    row.setAttribute("tabindex", "0");
+    row.setAttribute("aria-label", `Open ${row.dataset.rowTitle || drawerDisplayTitle(kind)} detail`);
+    row.setAttribute("aria-haspopup", "dialog");
+    row.setAttribute("aria-controls", "drawerRoot");
+    row.addEventListener("click", (event) => {
+      if (event.target.closest("button")) {
+        return;
+      }
+      openResourceDrawer({
+        kind,
+        page: row.closest(".page")?.id || "",
+        id: row.dataset.rowId || "",
+        title: row.dataset.rowTitle || "",
+        triggerElement: row,
+      }).catch(reportError);
+    });
+    row.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      if (event.target.closest("button")) {
+        return;
+      }
+      event.preventDefault();
+      openResourceDrawer({
+        kind,
+        page: row.closest(".page")?.id || "",
+        id: row.dataset.rowId || "",
+        title: row.dataset.rowTitle || "",
+        triggerElement: row,
+      }).catch(reportError);
+    });
+  });
+}
+
+function renderResourceToolbar({ resourceKey, searchPlaceholder, count }) {
+  const model = typeof RendererUtils.createResourceToolbarModel === "function"
+    ? RendererUtils.createResourceToolbarModel({ resourceKey, searchPlaceholder })
+    : { searchPlaceholder, actions: ["search", "filters", "sort", "refresh", "create"] };
+  const viewState = state.resourceViews[resourceKey] || { query: "", filter: "all", sort: "updated_desc" };
+  const config = RESOURCE_VIEW_CONFIG[resourceKey] || { filterOptions: [], sortOptions: [] };
+  return `
+    <div class="resource-toolbar" data-resource-toolbar="${escapeHTML(resourceKey)}">
+      <label class="resource-toolbar-search">
+        <span class="field-label">Search</span>
+        <input type="search" data-toolbar-search="${escapeHTML(resourceKey)}" placeholder="${escapeHTML(model.searchPlaceholder || "")}" value="${escapeHTML(viewState.query || "")}" />
+      </label>
+      <div class="resource-toolbar-actions">
+        <span class="toolbar-pill">${escapeHTML(String(count || 0))} items</span>
+        <select data-toolbar-filter="${escapeHTML(resourceKey)}">
+          ${config.filterOptions.map((option) => `<option value="${escapeHTML(option.value)}" ${option.value === viewState.filter ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")}
+        </select>
+        <select data-toolbar-sort="${escapeHTML(resourceKey)}">
+          ${config.sortOptions.map((option) => `<option value="${escapeHTML(option.value)}" ${option.value === viewState.sort ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")}
+        </select>
+        <button class="ghost-button small-button" type="button" data-toolbar-refresh="${escapeHTML(resourceKey)}">Refresh</button>
+        <button class="ghost-button small-button" type="button" data-toolbar-create="${escapeHTML(resourceKey)}">Create</button>
+      </div>
+    </div>
+  `;
+}
+
+function bindResourceToolbar(container, resourceKey, actions) {
+  container.querySelector(`[data-toolbar-search="${resourceKey}"]`)?.addEventListener("input", (event) => {
+    state.resourceViews[resourceKey].query = String(event.currentTarget.value || "");
+    state.pagination[resourceKey].page = 1;
+    renderResourceListByKey(resourceKey);
+  });
+  container.querySelector(`[data-toolbar-filter="${resourceKey}"]`)?.addEventListener("change", (event) => {
+    state.resourceViews[resourceKey].filter = String(event.currentTarget.value || "all");
+    state.pagination[resourceKey].page = 1;
+    renderResourceListByKey(resourceKey);
+  });
+  container.querySelector(`[data-toolbar-sort="${resourceKey}"]`)?.addEventListener("change", (event) => {
+    state.resourceViews[resourceKey].sort = String(event.currentTarget.value || "");
+    state.pagination[resourceKey].page = 1;
+    renderResourceListByKey(resourceKey);
+  });
+  container.querySelector(`[data-toolbar-refresh="${resourceKey}"]`)?.addEventListener("click", () => {
+    refreshResourceList(resourceKey).catch(reportError);
+  });
+  container.querySelector(`[data-toolbar-create="${resourceKey}"]`)?.addEventListener("click", () => {
+    actions.create();
+  });
+}
+
+function renderResourceListByKey(resourceKey) {
+  if (resourceKey === "proxies") {
+    renderProxies();
+    return;
+  }
+  if (resourceKey === "backends") {
+    renderBackends();
+    return;
+  }
+  if (resourceKey === "clients") {
+    renderClients();
+    return;
+  }
+  if (resourceKey === "policies") {
+    renderPolicies();
+  }
+}
+
+function applyResourceView(resourceKey, items) {
+  const source = ensureArray(items).slice();
+  const viewState = state.resourceViews[resourceKey] || { query: "", filter: "all", sort: "updated_desc" };
+  const query = String(viewState.query || "").trim().toLowerCase();
+  let filtered = source.filter((item) => resourceFilterPredicate(resourceKey, item, viewState.filter));
+  if (query) {
+    filtered = filtered.filter((item) => resourceSearchText(resourceKey, item).includes(query));
+  }
+  filtered.sort(resourceSorter(resourceKey, viewState.sort));
+  return filtered;
+}
+
+function resourceFilterPredicate(resourceKey, item, filter) {
+  if (filter === "all" || !filter) {
+    return true;
+  }
+  if (resourceKey === "policies") {
+    return filter === "enabled" ? Boolean(item.failover_enabled) : !item.failover_enabled;
+  }
+  return filter === "enabled" ? Boolean(item.enabled) : !item.enabled;
+}
+
+function resourceSearchText(resourceKey, item) {
+  const parts = [];
+  if (resourceKey === "proxies") {
+    parts.push(item.name, item.address, item.username);
+  }
+  if (resourceKey === "backends") {
+    parts.push(item.name, item.base_url, item.pool, ...(item.models || []), ...(item.endpoints || []));
+  }
+  if (resourceKey === "clients") {
+    parts.push(item.name, item.route_group, item.route_mode_override, item.token_prefix);
+  }
+  if (resourceKey === "policies") {
+    parts.push(item.pattern, item.endpoint, item.placement_policy, item.backend_pool);
+  }
+  return parts.filter(Boolean).join(" ").toLowerCase();
+}
+
+function resourceSorter(resourceKey, sortKey) {
+  return (left, right) => {
+    if (sortKey === "name_asc") {
+      return String(left.name || "").localeCompare(String(right.name || ""));
+    }
+    if (sortKey === "group_asc") {
+      return String(left.route_group || "").localeCompare(String(right.route_group || ""));
+    }
+    if (sortKey === "weight_desc") {
+      return Number(right.weight || 0) - Number(left.weight || 0);
+    }
+    if (sortKey === "pattern_asc") {
+      return String(left.pattern || "").localeCompare(String(right.pattern || ""));
+    }
+    if (sortKey === "priority_asc") {
+      return Number(left.priority || 0) - Number(right.priority || 0);
+    }
+    return String(right.updated_at || "").localeCompare(String(left.updated_at || ""));
+  };
+}
+
+function createQuickDetailMarkup(resourceKey, record) {
+  const sections = typeof RendererUtils.createQuickDetailSections === "function"
+    ? RendererUtils.createQuickDetailSections(resourceKey, record)
+    : [];
+  if (!sections.length) {
+    return `
+      <div class="detail-panel">
+        <p class="muted-text">No quick details.</p>
+      </div>
+    `;
+  }
+  return `
+    <div class="detail-panel compact-detail-panel">
+      <div class="quick-detail-grid">
+        ${sections.map((section) => `
+          <section class="quick-detail-card">
+            <strong>${escapeHTML(section.title)}</strong>
+            <ul>
+              ${ensureArray(section.items).map((item) => `<li>${escapeHTML(item)}</li>`).join("")}
+            </ul>
+          </section>
+        `).join("")}
+      </div>
+    </div>
   `;
 }
 
@@ -1992,7 +2501,7 @@ function renderEvents() {
     );
     return;
   }
-  const pageData = currentPageData("events", events);
+  const pageData = currentRemotePageData("events", events);
 
   eventList.innerHTML = `
     <div class="event-table-shell">
@@ -2038,7 +2547,7 @@ function renderUsageLogs() {
     );
     return;
   }
-  const pageData = currentPageData("usageLogs", logs);
+  const pageData = currentRemotePageData("usageLogs", logs);
 
   usageLogList.innerHTML = `
     <div class="event-table-shell">
@@ -2077,28 +2586,45 @@ function bindPagination(container, key, rerender) {
   container.querySelector(`[data-page-size="${key}"]`)?.addEventListener("change", async (event) => {
     state.pagination[key].size = Number(event.currentTarget.value || 10);
     state.pagination[key].page = 1;
-    await rerender().catch(reportError);
+    await Promise.resolve(rerender()).catch(reportError);
   });
 
   container.querySelector(`[data-page-prev="${key}"]`)?.addEventListener("click", async () => {
     state.pagination[key].page = Math.max(1, state.pagination[key].page - 1);
-    await rerender().catch(reportError);
+    await Promise.resolve(rerender()).catch(reportError);
   });
 
   container.querySelector(`[data-page-next="${key}"]`)?.addEventListener("click", async () => {
     state.pagination[key].page += 1;
-    await rerender().catch(reportError);
+    await Promise.resolve(rerender()).catch(reportError);
   });
 
   container.querySelectorAll(`[data-page-number="${key}"]`).forEach((button) => {
     button.addEventListener("click", async () => {
       state.pagination[key].page = Number(button.dataset.pageValue || 1);
-      await rerender().catch(reportError);
+      await Promise.resolve(rerender()).catch(reportError);
     });
   });
 }
 
-function currentPageData(key, items) {
+function currentLocalPageData(key, items) {
+  const normalized = ensureArray(items);
+  const pageState = state.pagination[key];
+  const paginated = typeof RendererUtils.paginateResourceRows === "function"
+    ? RendererUtils.paginateResourceRows(normalized, pageState)
+    : {
+      items: normalized,
+      page: 1,
+      size: PAGE_SIZE_OPTIONS.includes(Number(pageState?.size)) ? Number(pageState.size) : 10,
+      total: normalized.length,
+      totalPages: 1,
+    };
+  state.pagination[key].page = paginated.page;
+  state.pagination[key].size = paginated.size;
+  return paginated;
+}
+
+function currentRemotePageData(key, items) {
   const normalized = ensureArray(items);
   const pageState = state.pagination[key];
   const meta = state.paginationMeta[key];
