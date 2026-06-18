@@ -19,7 +19,8 @@ test("normalizeResourceKind maps aliases and page ids to canonical resource keys
   assert.equal(normalizeResourceKind("model-policies"), "policies");
   assert.equal(normalizeResourceKind("proxy"), "proxies");
   assert.equal(normalizeResourceKind("socks-proxies"), "proxies");
-  assert.equal(normalizeResourceKind("usage_log"), "");
+  assert.equal(normalizeResourceKind("usage_log"), "usage_logs");
+  assert.equal(normalizeResourceKind("events"), "events");
 });
 
 test("buildDrawerTarget returns detail and delete endpoints for supported resources", () => {
@@ -40,6 +41,34 @@ test("buildDrawerTarget returns detail and delete endpoints for supported resour
     deletePath: "/admin/api/client-keys/12",
     page: "client-keys",
   });
+
+  assert.deepEqual(buildDrawerTarget({ kind: "usage_log", page: "usage-logs", id: "9" }), {
+    kind: "usage_logs",
+    id: "9",
+    title: "Usage Log",
+    detailPath: "/admin/api/usage-logs/9",
+    deletePath: "",
+    page: "usage-logs",
+  });
+
+  assert.deepEqual(buildDrawerTarget({ kind: "event", page: "events", id: "13" }), {
+    kind: "events",
+    id: "13",
+    title: "Event",
+    detailPath: "/admin/api/events/13",
+    deletePath: "",
+    page: "events",
+  });
+});
+
+test("drawerTabsForResource keeps events on the standard drawer layout", () => {
+  assert.deepEqual(drawerTabsForResource("events"), [
+    { key: "overview", label: "Overview" },
+    { key: "configuration", label: "Configuration" },
+    { key: "metadata", label: "Metadata" },
+    { key: "raw", label: "Raw JSON" },
+    { key: "activity", label: "Activity" },
+  ]);
 });
 
 test("drawerTabsForResource returns the premium drawer tab order", () => {
@@ -49,6 +78,13 @@ test("drawerTabsForResource returns the premium drawer tab order", () => {
     { key: "metadata", label: "Metadata" },
     { key: "raw", label: "Raw JSON" },
     { key: "activity", label: "Activity" },
+  ]);
+  assert.deepEqual(drawerTabsForResource("usage_logs"), [
+    { key: "overview", label: "Overview" },
+    { key: "request", label: "Request" },
+    { key: "response", label: "Response" },
+    { key: "metadata", label: "Metadata" },
+    { key: "raw", label: "Raw JSON" },
   ]);
 });
 
@@ -61,6 +97,8 @@ test("normalizeDrawerPayload guarantees all tab payload buckets", () => {
     configuration: {},
     metadata: {},
     raw: { id: 7 },
+    request: {},
+    response: {},
     activity: {},
   });
 });

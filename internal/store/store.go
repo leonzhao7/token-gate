@@ -30,6 +30,8 @@ type UsageLogFilter struct {
 	BackendName string
 	Model       string
 	ClientName  string
+	PolicyName  string
+	ProxyName   string
 	Status      string
 	Query       string
 	DateFrom    time.Time
@@ -40,6 +42,8 @@ type UsageLogOptions struct {
 	Backends   []string
 	Models     []string
 	ClientKeys []string
+	Policies   []string
+	Proxies    []string
 }
 
 type EventFilter struct {
@@ -1603,6 +1607,15 @@ func (s *Store) ListAuditEventsPageFiltered(ctx context.Context, filter EventFil
 	return events, rows.Err()
 }
 
+func (s *Store) GetAuditEvent(ctx context.Context, id int64) (domain.AuditEvent, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, level, type, category, severity, actor, resource_type, resource_id, message, client_name, model, endpoint, backend_name, created_at
+		FROM audit_events
+		WHERE id = ?
+	`, id)
+	return scanAuditEvent(row)
+}
+
 func (s *Store) EventSummary(ctx context.Context, filter EventFilter) (EventSummary, error) {
 	where, args := eventFilterClause(filter)
 	rows, err := s.db.QueryContext(ctx, `
@@ -1633,7 +1646,7 @@ func (s *Store) EventSummary(ctx context.Context, filter EventFilter) (EventSumm
 		}
 		total++
 		category := nonEmpty(strings.TrimSpace(event.Category), nonEmpty(strings.TrimSpace(event.Type), "system"))
-		severity := nonEmpty(strings.TrimSpace(event.Severity), nonEmpty(strings.TrimSpace(event.Level), "info"))
+		severity := normalizeEventSeverity(nonEmpty(strings.TrimSpace(event.Severity), nonEmpty(strings.TrimSpace(event.Level), "info")))
 		actor := nonEmpty(strings.TrimSpace(event.Actor), nonEmpty(strings.TrimSpace(event.ClientName), "system"))
 		if _, ok := categoryCounts[category]; !ok {
 			categoryOrder = append(categoryOrder, category)
@@ -1869,10 +1882,20 @@ func (s *Store) UsageLogOptions(ctx context.Context) (UsageLogOptions, error) {
 	if err != nil {
 		return UsageLogOptions{}, err
 	}
+	policies, err := s.ListModelPolicies(ctx)
+	if err != nil {
+		return UsageLogOptions{}, err
+	}
+	proxies, err := s.ListSocksProxies(ctx)
+	if err != nil {
+		return UsageLogOptions{}, err
+	}
 
 	backendSet := make(map[string]struct{})
 	modelSet := make(map[string]struct{})
 	clientSet := make(map[string]struct{})
+	policySet := make(map[string]struct{})
+	proxySet := make(map[string]struct{})
 
 	for _, backend := range backends {
 		if name := strings.TrimSpace(backend.Name); name != "" {
@@ -1897,11 +1920,23 @@ func (s *Store) UsageLogOptions(ctx context.Context) (UsageLogOptions, error) {
 			clientSet[name] = struct{}{}
 		}
 	}
+	for _, policy := range policies {
+		if pattern := strings.TrimSpace(policy.Pattern); pattern != "" {
+			policySet[pattern] = struct{}{}
+		}
+	}
+	for _, proxy := range proxies {
+		if name := strings.TrimSpace(proxy.Name); name != "" {
+			proxySet[name] = struct{}{}
+		}
+	}
 
 	return UsageLogOptions{
 		Backends:   sortedKeys(backendSet),
 		Models:     sortedKeys(modelSet),
 		ClientKeys: sortedKeys(clientSet),
+		Policies:   sortedKeys(policySet),
+		Proxies:    sortedKeys(proxySet),
 	}, nil
 }
 
@@ -1920,6 +1955,14 @@ func usageLogFilterClause(filter UsageLogFilter) (string, []any) {
 	}
 	if value := strings.TrimSpace(filter.ClientName); value != "" {
 		clauses = append(clauses, `client_name = ?`)
+		args = append(args, value)
+	}
+	if value := strings.TrimSpace(filter.PolicyName); value != "" {
+		clauses = append(clauses, `policy_name = ?`)
+		args = append(args, value)
+	}
+	if value := strings.TrimSpace(filter.ProxyName); value != "" {
+		clauses = append(clauses, `proxy_name = ?`)
 		args = append(args, value)
 	}
 	if value := strings.TrimSpace(filter.Status); value != "" {
@@ -1958,8 +2001,21 @@ func eventFilterClause(filter EventFilter) (string, []any) {
 		args = append(args, value, value)
 	}
 	if value := strings.TrimSpace(filter.Severity); value != "" {
-		clauses = append(clauses, `(severity = ? OR level = ?)`)
-		args = append(args, value, value)
+		normalized := normalizeEventSeverity(value)
+		alternatives := []string{normalized}
+		if normalized == "warning" {
+			alternatives = append(alternatives, "warn")
+		}
+		if normalized == "warn" {
+			alternatives = append(alternatives, "warning")
+		}
+		clauses = append(clauses, `(severity IN (`+strings.TrimSuffix(strings.Repeat("?,", len(alternatives)), ",")+`) OR level IN (`+strings.TrimSuffix(strings.Repeat("?,", len(alternatives)), ",")+`))`)
+		for _, item := range alternatives {
+			args = append(args, item)
+		}
+		for _, item := range alternatives {
+			args = append(args, item)
+		}
 	}
 	if value := strings.TrimSpace(filter.Actor); value != "" {
 		clauses = append(clauses, `(actor = ? OR client_name = ?)`)
@@ -1986,6 +2042,15 @@ func eventFilterClause(filter EventFilter) (string, []any) {
 		return "", nil
 	}
 	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func normalizeEventSeverity(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "warn", "warning":
+		return "warning"
+	default:
+		return strings.ToLower(strings.TrimSpace(value))
+	}
 }
 
 func sortedKeys(set map[string]struct{}) []string {

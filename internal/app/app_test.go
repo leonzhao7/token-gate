@@ -1023,6 +1023,16 @@ func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) 
 	application := newTestApp(t)
 	ctx := context.Background()
 
+	proxyItem, err := application.store.CreateSocksProxy(ctx, domain.SocksProxy{
+		Name:     "tokyo",
+		Address:  "127.0.0.1:1080",
+		Username: "proxy-user",
+		Password: "proxy-pass",
+		Enabled:  true,
+	})
+	if err != nil {
+		t.Fatalf("create socks proxy: %v", err)
+	}
 	if _, err := application.store.CreateClientKey(ctx, domain.ClientKey{
 		Name:        "client-a",
 		TokenHash:   store.HashToken("client-a-token"),
@@ -1045,6 +1055,7 @@ func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) 
 		Name:         "alpha",
 		BaseURL:      "https://alpha.local/v1",
 		APIKey:       "alpha-key",
+		ProxyID:      proxyItem.ID,
 		Enabled:      true,
 		Weight:       1,
 		Models:       []string{"gpt-4o", "gpt-image-*"},
@@ -1064,6 +1075,16 @@ func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) 
 	}); err != nil {
 		t.Fatalf("create backend beta: %v", err)
 	}
+	if _, err := application.store.CreateModelPolicy(ctx, domain.ModelPolicy{
+		Pattern:         "gpt-*",
+		Endpoint:        domain.EndpointResponses,
+		PlacementPolicy: domain.PlacementSticky,
+		BackendPool:     "default",
+		FailoverEnabled: true,
+		Priority:        10,
+	}); err != nil {
+		t.Fatalf("create model policy: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/api/usage-log-options", nil)
 	req.Header.Set("Authorization", "Bearer test-admin")
@@ -1078,6 +1099,8 @@ func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) 
 		Backends   []string `json:"backends"`
 		Models     []string `json:"models"`
 		ClientKeys []string `json:"client_keys"`
+		Policies   []string `json:"policies"`
+		Proxies    []string `json:"proxies"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal usage log options: %v", err)
@@ -1100,6 +1123,8 @@ func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) 
 	assertHas(payload.Models, "gpt-5.4")
 	assertHas(payload.ClientKeys, "client-a")
 	assertHas(payload.ClientKeys, "client-b")
+	assertHas(payload.Policies, "gpt-*")
+	assertHas(payload.Proxies, "tokyo")
 }
 
 func TestUsageLogDeleteFilteredAndClear(t *testing.T) {
@@ -1442,7 +1467,7 @@ func TestEventSummaryReturnsCategoryCounts(t *testing.T) {
 	for _, item := range payload.Severities {
 		severityCounts[item.Severity] = item.Count
 	}
-	if severityCounts["warn"] != 2 || severityCounts["info"] != 1 {
+	if severityCounts["warning"] != 2 || severityCounts["info"] != 1 {
 		t.Fatalf("unexpected severity counts: %#v", payload.Severities)
 	}
 }
@@ -1495,6 +1520,64 @@ func TestEventsFilterByCategoryAndDateRange(t *testing.T) {
 	}
 	if payload.Total != 0 || len(payload.Items) != 0 {
 		t.Fatalf("expected empty filtered events, got %#v", payload)
+	}
+}
+
+func TestEventDetailReturnsDrawerPayload(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	event := domain.AuditEvent{
+		Level:        "warn",
+		Type:         "backend.failover",
+		Category:     "backend",
+		Severity:     "warning",
+		Actor:        "system",
+		ResourceType: "backend",
+		ResourceID:   42,
+		Message:      "switched to backup backend",
+		ClientName:   "web-prod",
+		Model:        "gpt-4o",
+		Endpoint:     domain.EndpointResponses,
+		BackendName:  "alpha",
+	}
+	if err := application.store.AppendAuditEvent(ctx, event); err != nil {
+		t.Fatalf("append audit event: %v", err)
+	}
+
+	events, err := application.store.ListAuditEvents(ctx, 10)
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected one event, got %d", len(events))
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/events/"+strconv.FormatInt(events[0].ID, 10), nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Overview map[string]any   `json:"overview"`
+		Metadata map[string]any   `json:"metadata"`
+		Raw      domain.AuditEvent `json:"raw"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal event detail: %v", err)
+	}
+	if payload.Raw.ID != events[0].ID || payload.Raw.Type != "backend.failover" {
+		t.Fatalf("unexpected raw event payload: %#v", payload.Raw)
+	}
+	if payload.Overview["message"] != "switched to backup backend" {
+		t.Fatalf("unexpected overview payload: %#v", payload.Overview)
+	}
+	if payload.Metadata["resource_type"] != "backend" {
+		t.Fatalf("unexpected metadata payload: %#v", payload.Metadata)
 	}
 }
 

@@ -24,6 +24,18 @@
       deletePath: (id) => `/admin/api/socks-proxies/${id}`,
       page: "socks-proxies",
     },
+    events: {
+      title: "Event",
+      detailPath: (id) => `/admin/api/events/${id}`,
+      deletePath: () => "",
+      page: "events",
+    },
+    usage_logs: {
+      title: "Usage Log",
+      detailPath: (id) => `/admin/api/usage-logs/${id}`,
+      deletePath: () => "",
+      page: "usage-logs",
+    },
   };
 
   const RESOURCE_ALIASES = {
@@ -44,6 +56,12 @@
     socks_proxy: "proxies",
     "socks-proxy": "proxies",
     "socks-proxies": "proxies",
+    event: "events",
+    events: "events",
+    usage_log: "usage_logs",
+    usage_logs: "usage_logs",
+    "usage-log": "usage_logs",
+    "usage-logs": "usage_logs",
   };
 
   const DRAWER_TABS = [
@@ -52,6 +70,14 @@
     { key: "metadata", label: "Metadata" },
     { key: "raw", label: "Raw JSON" },
     { key: "activity", label: "Activity" },
+  ];
+
+  const USAGE_LOG_TABS = [
+    { key: "overview", label: "Overview" },
+    { key: "request", label: "Request" },
+    { key: "response", label: "Response" },
+    { key: "metadata", label: "Metadata" },
+    { key: "raw", label: "Raw JSON" },
   ];
 
   const DRAWER_FOOTER_ACTIONS = [
@@ -83,7 +109,11 @@
   }
 
   function drawerTabsForResource(resourceKey) {
-    return normalizeResourceKind(resourceKey) ? DRAWER_TABS.slice() : [];
+    const normalized = normalizeResourceKind(resourceKey);
+    if (normalized === "usage_logs") {
+      return USAGE_LOG_TABS.slice();
+    }
+    return normalized ? DRAWER_TABS.slice() : [];
   }
 
   function normalizeDrawerPayload(payload) {
@@ -93,6 +123,8 @@
       configuration: plainObject(normalized.configuration),
       metadata: plainObject(normalized.metadata),
       raw: normalized.raw ?? {},
+      request: plainObject(normalized.request),
+      response: plainObject(normalized.response),
       activity: plainObject(normalized.activity),
     };
   }

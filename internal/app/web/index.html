@@ -470,6 +470,41 @@
                 <p>展示最近的配置变更、failover 记录和上游异常事件。</p>
               </div>
             </div>
+            <div class="filter-bar">
+              <label class="field">
+                <span>Search</span>
+                <input id="eventQueryFilter" placeholder="search message / model / request id" />
+              </label>
+              <label class="field">
+                <span>Actor</span>
+                <input id="eventActorFilter" placeholder="system / admin" />
+              </label>
+              <label class="field">
+                <span>Backend</span>
+                <input id="eventBackendFilter" placeholder="backend name" />
+              </label>
+              <label class="field">
+                <span>Category</span>
+                <input id="eventCategoryFilter" placeholder="backend / policy / security" />
+              </label>
+              <label class="field">
+                <span>Severity</span>
+                <input id="eventSeverityFilter" placeholder="info / warning / error" />
+              </label>
+              <label class="field">
+                <span>Date From</span>
+                <input id="eventDateFromFilter" type="date" />
+              </label>
+              <label class="field">
+                <span>Date To</span>
+                <input id="eventDateToFilter" type="date" />
+              </label>
+              <div class="button-row compact">
+                <button class="ghost-button" id="refreshEventsBtn" type="button">刷新</button>
+                <button id="applyEventFiltersBtn" type="button">查询</button>
+                <button class="ghost-button" id="resetEventFiltersBtn" type="button">重置</button>
+              </div>
+            </div>
             <div class="resource-layout list-only">
               <div id="eventList" class="resource-list"></div>
             </div>
@@ -489,6 +524,18 @@
             </div>
             <div class="filter-bar">
               <label class="field">
+                <span>Search</span>
+                <input id="usageLogQueryFilter" placeholder="search request / trace / path" />
+              </label>
+              <label class="field">
+                <span>Date From</span>
+                <input id="usageLogDateFromFilter" type="date" />
+              </label>
+              <label class="field">
+                <span>Date To</span>
+                <input id="usageLogDateToFilter" type="date" />
+              </label>
+              <label class="field">
                 <span>Backend</span>
                 <input id="usageLogBackendFilter" list="usageLogBackendOptions" placeholder="backend name" />
               </label>
@@ -500,7 +547,20 @@
                 <span>Client Key</span>
                 <input id="usageLogClientKeyFilter" list="usageLogClientKeyOptions" placeholder="client key name" />
               </label>
+              <label class="field">
+                <span>Policy</span>
+                <input id="usageLogPolicyFilter" list="usageLogPolicyOptions" placeholder="policy pattern" />
+              </label>
+              <label class="field">
+                <span>Proxy</span>
+                <input id="usageLogProxyFilter" list="usageLogProxyOptions" placeholder="proxy name" />
+              </label>
+              <label class="field">
+                <span>Status</span>
+                <input id="usageLogStatusFilter" placeholder="2xx / 4xx / 5xx" />
+              </label>
               <div class="button-row compact">
+                <button class="ghost-button" id="refreshUsageLogsBtn" type="button">刷新</button>
                 <button id="applyUsageLogFiltersBtn" type="button">查询</button>
                 <button class="ghost-button" id="resetUsageLogFiltersBtn" type="button">重置</button>
               </div>
@@ -508,6 +568,8 @@
             <datalist id="usageLogBackendOptions"></datalist>
             <datalist id="usageLogModelOptions"></datalist>
             <datalist id="usageLogClientKeyOptions"></datalist>
+            <datalist id="usageLogPolicyOptions"></datalist>
+            <datalist id="usageLogProxyOptions"></datalist>
             <div class="resource-layout list-only">
               <div id="usageLogList" class="resource-list"></div>
             </div>
@@ -561,6 +623,7 @@
     <script src="./charts.js"></script>
     <script src="./dashboard.js"></script>
     <script src="./drawer.js"></script>
+    <script src="./observability.js"></script>
     <script src="./renderers.js"></script>
     <script src="./app.js" type="module"></script>
   </body>

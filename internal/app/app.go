@@ -249,6 +249,7 @@ func (a *App) routes() {
 	a.mux.Handle("DELETE /admin/api/model-policies/{id}", a.adminAuth(http.HandlerFunc(a.handleDeletePolicy)))
 	a.mux.Handle("GET /admin/api/events", a.adminAuth(http.HandlerFunc(a.handleListEvents)))
 	a.mux.Handle("GET /admin/api/events/summary", a.adminAuth(http.HandlerFunc(a.handleEventSummary)))
+	a.mux.Handle("GET /admin/api/events/{id}", a.adminAuth(http.HandlerFunc(a.handleEventDetail)))
 	a.mux.Handle("GET /admin/api/usage-logs", a.adminAuth(http.HandlerFunc(a.handleListUsageLogs)))
 	a.mux.Handle("GET /admin/api/usage-logs/stats", a.adminAuth(http.HandlerFunc(a.handleUsageLogStats)))
 	a.mux.Handle("GET /admin/api/usage-logs/{id}", a.adminAuth(http.HandlerFunc(a.handleGetUsageLog)))
@@ -1452,6 +1453,41 @@ func (a *App) handleEventSummary(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *App) handleEventDetail(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	event, err := a.store.GetAuditEvent(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "event not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"overview": map[string]any{
+			"type":        event.Type,
+			"message":     event.Message,
+			"category":    event.Category,
+			"severity":    nonEmpty(event.Severity, event.Level),
+			"actor":       nonEmpty(event.Actor, "system"),
+			"backend":     event.BackendName,
+			"client_name": event.ClientName,
+			"model":       event.Model,
+			"endpoint":    event.Endpoint,
+		},
+		"configuration": map[string]any{},
+		"metadata": map[string]any{
+			"id":            event.ID,
+			"created_at":    event.CreatedAt,
+			"resource_type": event.ResourceType,
+			"resource_id":   event.ResourceID,
+		},
+		"raw":      event,
+		"activity": map[string]any{},
+	})
+}
+
 func (a *App) handleListUsageLogs(w http.ResponseWriter, r *http.Request) {
 	page, limit := parsePageQuery(r)
 	filter := usageLogFilterFromRequest(r)
@@ -1544,6 +1580,8 @@ func (a *App) handleUsageLogOptions(w http.ResponseWriter, r *http.Request) {
 		"backends":    options.Backends,
 		"models":      options.Models,
 		"client_keys": options.ClientKeys,
+		"policies":    options.Policies,
+		"proxies":     options.Proxies,
 	})
 }
 
@@ -1598,6 +1636,8 @@ func usageLogFilterFromRequest(r *http.Request) store.UsageLogFilter {
 		BackendName: strings.TrimSpace(r.URL.Query().Get("backend")),
 		Model:       strings.TrimSpace(r.URL.Query().Get("model")),
 		ClientName:  strings.TrimSpace(r.URL.Query().Get("client_key")),
+		PolicyName:  strings.TrimSpace(r.URL.Query().Get("policy")),
+		ProxyName:   strings.TrimSpace(r.URL.Query().Get("proxy")),
 	}
 	filter.Status = strings.TrimSpace(r.URL.Query().Get("status"))
 	filter.Query = strings.TrimSpace(r.URL.Query().Get("q"))

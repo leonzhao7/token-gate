@@ -1900,6 +1900,139 @@ button:hover {
   overflow-x: auto;
 }
 
+.observability-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.75fr);
+  gap: 20px;
+}
+
+.observability-main,
+.observability-side {
+  min-width: 0;
+}
+
+.observability-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.observability-stat-card,
+.observability-summary-card,
+.timeline-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.observability-stat-card strong,
+.observability-summary-card strong {
+  display: block;
+  margin: 6px 0 4px;
+  font-size: 1.4rem;
+  letter-spacing: -0.03em;
+}
+
+.observability-stat-card p,
+.observability-summary-card p {
+  margin: 0;
+}
+
+.timeline-list,
+.summary-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.timeline-item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.timeline-rail {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.timeline-rail::after {
+  content: "";
+  position: absolute;
+  top: 42px;
+  bottom: -12px;
+  width: 1px;
+  background: var(--line);
+}
+
+.timeline-item:last-child .timeline-rail::after {
+  display: none;
+}
+
+.timeline-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.timeline-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.timeline-card-head strong,
+.timeline-card-head p,
+.timeline-meta {
+  margin: 0;
+}
+
+.timeline-card-head p {
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.timeline-stamp {
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.timeline-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.summary-row:last-child {
+  border-bottom: 0;
+}
+
 .event-table {
   min-width: 1120px;
   border: 1px solid var(--line);
@@ -1961,12 +2094,53 @@ button:hover {
 }
 
 .usage-log-table {
-  min-width: 1300px;
+  min-width: 1440px;
 }
 
 .usage-log-head,
 .usage-log-row {
-  grid-template-columns: 180px 150px 180px 180px 170px 140px minmax(300px, 1fr);
+  grid-template-columns: 190px 100px 220px 120px 120px 160px 160px 140px minmax(180px, 1fr);
+}
+
+.usage-log-row-button {
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.usage-log-row-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.inline-row-toggle {
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 0;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.inline-row-toggle:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.usage-log-inline-detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  padding: 14px 16px 16px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-muted) 76%, var(--surface) 24%);
+  color: var(--muted);
+  font-size: 0.84rem;
 }
 
 .hidden {
@@ -2020,6 +2194,8 @@ button:hover {
 @media (max-width: 1120px) {
   .topbar,
   .resource-layout,
+  .observability-shell,
+  .observability-stats-grid,
   .dashboard-main-grid,
   .dashboard-detail-grid {
     grid-template-columns: 1fr;

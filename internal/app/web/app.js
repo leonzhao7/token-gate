@@ -33,15 +33,34 @@ const backendList = document.querySelector("#backendList");
 const clientList = document.querySelector("#clientList");
 const policyList = document.querySelector("#policyList");
 const eventList = document.querySelector("#eventList");
+const eventQueryFilter = document.querySelector("#eventQueryFilter");
+const eventActorFilter = document.querySelector("#eventActorFilter");
+const eventBackendFilter = document.querySelector("#eventBackendFilter");
+const eventCategoryFilter = document.querySelector("#eventCategoryFilter");
+const eventSeverityFilter = document.querySelector("#eventSeverityFilter");
+const eventDateFromFilter = document.querySelector("#eventDateFromFilter");
+const eventDateToFilter = document.querySelector("#eventDateToFilter");
+const refreshEventsBtn = document.querySelector("#refreshEventsBtn");
+const applyEventFiltersBtn = document.querySelector("#applyEventFiltersBtn");
+const resetEventFiltersBtn = document.querySelector("#resetEventFiltersBtn");
 const usageLogList = document.querySelector("#usageLogList");
 const deleteUsageLogsBtn = document.querySelector("#deleteUsageLogsBtn");
 const clearUsageLogsBtn = document.querySelector("#clearUsageLogsBtn");
+const usageLogQueryFilter = document.querySelector("#usageLogQueryFilter");
+const usageLogDateFromFilter = document.querySelector("#usageLogDateFromFilter");
+const usageLogDateToFilter = document.querySelector("#usageLogDateToFilter");
 const usageLogBackendFilter = document.querySelector("#usageLogBackendFilter");
 const usageLogModelFilter = document.querySelector("#usageLogModelFilter");
 const usageLogClientKeyFilter = document.querySelector("#usageLogClientKeyFilter");
+const usageLogPolicyFilter = document.querySelector("#usageLogPolicyFilter");
+const usageLogProxyFilter = document.querySelector("#usageLogProxyFilter");
+const usageLogStatusFilter = document.querySelector("#usageLogStatusFilter");
 const usageLogBackendOptions = document.querySelector("#usageLogBackendOptions");
 const usageLogModelOptions = document.querySelector("#usageLogModelOptions");
 const usageLogClientKeyOptions = document.querySelector("#usageLogClientKeyOptions");
+const usageLogPolicyOptions = document.querySelector("#usageLogPolicyOptions");
+const usageLogProxyOptions = document.querySelector("#usageLogProxyOptions");
+const refreshUsageLogsBtn = document.querySelector("#refreshUsageLogsBtn");
 const applyUsageLogFiltersBtn = document.querySelector("#applyUsageLogFiltersBtn");
 const resetUsageLogFiltersBtn = document.querySelector("#resetUsageLogFiltersBtn");
 const pages = Array.from(document.querySelectorAll(".page"));
@@ -144,6 +163,7 @@ const SearchUtils = globalThis.SearchUtils || {};
 const DashboardUtils = globalThis.DashboardUtils || {};
 const ChartsUtils = globalThis.ChartsUtils || {};
 const DrawerUtils = globalThis.DrawerUtils || {};
+const ObservabilityUtils = globalThis.ObservabilityUtils || {};
 const RendererUtils = globalThis.RendererUtils || {};
 const systemThemeQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 const searchDebounce = typeof SearchUtils.createDebouncedTask === "function"
@@ -173,10 +193,15 @@ const state = {
   policies: [],
   events: [],
   usageLogs: [],
+  usageLogStats: null,
+  eventSummary: null,
+  usageLogDetailCache: new Map(),
   usageLogOptions: {
     backends: [],
     models: [],
     clientKeys: [],
+    policies: [],
+    proxies: [],
   },
   paginationMeta: {
     proxies: { total: 0, page: 1, limit: 10 },
@@ -194,10 +219,26 @@ const state = {
   expandedBackends: new Set(),
   expandedClients: new Set(),
   expandedPolicies: new Set(),
+  expandedUsageLogs: new Set(),
   usageLogFilters: {
+    q: "",
+    dateFrom: "",
+    dateTo: "",
     backend: "",
     model: "",
     clientKey: "",
+    policy: "",
+    proxy: "",
+    status: "",
+  },
+  eventFilters: {
+    q: "",
+    actor: "",
+    backend: "",
+    category: "",
+    severity: "",
+    dateFrom: "",
+    dateTo: "",
   },
   resourceViews: {
     proxies: { query: "", filter: "all", sort: "updated_desc" },
@@ -390,6 +431,22 @@ resetUsageLogFiltersBtn.addEventListener("click", () => {
   resetUsageLogFilters().catch(reportError);
 });
 
+refreshUsageLogsBtn?.addEventListener("click", () => {
+  refreshUsageLogs().catch(reportError);
+});
+
+applyEventFiltersBtn?.addEventListener("click", () => {
+  applyEventFilters().catch(reportError);
+});
+
+resetEventFiltersBtn?.addEventListener("click", () => {
+  resetEventFilters().catch(reportError);
+});
+
+refreshEventsBtn?.addEventListener("click", () => {
+  refreshEvents().catch(reportError);
+});
+
 clearUsageLogsBtn.addEventListener("click", () => {
   clearUsageLogs().catch(reportError);
 });
@@ -440,11 +497,20 @@ if (systemThemeQuery) {
   }
 }
 
-[usageLogBackendFilter, usageLogModelFilter, usageLogClientKeyFilter].forEach((input) => {
-  input.addEventListener("keydown", (event) => {
+[usageLogQueryFilter, usageLogDateFromFilter, usageLogDateToFilter, usageLogBackendFilter, usageLogModelFilter, usageLogClientKeyFilter, usageLogPolicyFilter, usageLogProxyFilter, usageLogStatusFilter].forEach((input) => {
+  input?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
       applyUsageLogFilters().catch(reportError);
+    }
+  });
+});
+
+[eventQueryFilter, eventActorFilter, eventBackendFilter, eventCategoryFilter, eventSeverityFilter, eventDateFromFilter, eventDateToFilter].forEach((input) => {
+  input?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      applyEventFilters().catch(reportError);
     }
   });
 });
@@ -539,13 +605,16 @@ async function refreshAll() {
   const eventPage = state.pagination.events;
   const usageLogPage = state.pagination.usageLogs;
   const usageLogQuery = buildUsageLogQuery();
-  const [proxies, backends, clients, policies, events, usageLogs, usageLogOptions] = await Promise.all([
+  const eventQuery = buildEventQuery();
+  const [proxies, backends, clients, policies, events, eventSummary, usageLogs, usageLogStats, usageLogOptions] = await Promise.all([
     fetchAllCollectionPages("/admin/api/socks-proxies"),
     fetchAllCollectionPages("/admin/api/backends"),
     fetchAllCollectionPages("/admin/api/client-keys"),
     fetchAllCollectionPages("/admin/api/model-policies"),
-    api(`/admin/api/events?page=${eventPage.page}&limit=${eventPage.size}`),
+    api(`/admin/api/events?page=${eventPage.page}&limit=${eventPage.size}${eventQuery}`),
+    api(`/admin/api/events/summary?${buildEventSummaryQuery()}`),
     api(`/admin/api/usage-logs?page=${usageLogPage.page}&limit=${usageLogPage.size}${usageLogQuery}`),
+    api(`/admin/api/usage-logs/stats?${buildUsageLogStatsQuery()}`),
     api("/admin/api/usage-log-options"),
   ]);
 
@@ -555,9 +624,13 @@ async function refreshAll() {
   state.policies = ensureArray(policies);
   applyPagedResponse("events", events);
   applyPagedResponse("usageLogs", usageLogs);
+  state.eventSummary = eventSummary;
+  state.usageLogStats = usageLogStats;
   state.usageLogOptions.backends = ensureArray(usageLogOptions?.backends);
   state.usageLogOptions.models = ensureArray(usageLogOptions?.models);
   state.usageLogOptions.clientKeys = ensureArray(usageLogOptions?.client_keys);
+  state.usageLogOptions.policies = ensureArray(usageLogOptions?.policies);
+  state.usageLogOptions.proxies = ensureArray(usageLogOptions?.proxies);
 
   renderProxyOptions();
   renderUsageLogFilterOptions();
@@ -575,40 +648,137 @@ async function refreshAll() {
 }
 
 function buildUsageLogQuery() {
-  const params = new URLSearchParams();
-  if (state.usageLogFilters.backend) {
-    params.set("backend", state.usageLogFilters.backend);
-  }
-  if (state.usageLogFilters.model) {
-    params.set("model", state.usageLogFilters.model);
-  }
-  if (state.usageLogFilters.clientKey) {
-    params.set("client_key", state.usageLogFilters.clientKey);
-  }
-  const query = params.toString();
+  const query = typeof ObservabilityUtils.buildUsageLogQueryParams === "function"
+    ? ObservabilityUtils.buildUsageLogQueryParams(state.usageLogFilters)
+    : "";
   return query ? `&${query}` : "";
 }
 
+function buildUsageLogStatsQuery() {
+  return typeof ObservabilityUtils.buildUsageLogQueryParams === "function"
+    ? ObservabilityUtils.buildUsageLogQueryParams(state.usageLogFilters)
+    : "";
+}
+
+function buildEventQuery() {
+  const query = typeof ObservabilityUtils.buildEventQueryParams === "function"
+    ? ObservabilityUtils.buildEventQueryParams(state.eventFilters)
+    : "";
+  return query ? `&${query}` : "";
+}
+
+function buildEventSummaryQuery() {
+  const query = buildEventQuery();
+  return query.startsWith("&") ? query.slice(1) : query;
+}
+
+function syncEventFilterInputs() {
+  if (eventQueryFilter) {
+    eventQueryFilter.value = state.eventFilters.q;
+  }
+  if (eventActorFilter) {
+    eventActorFilter.value = state.eventFilters.actor;
+  }
+  if (eventBackendFilter) {
+    eventBackendFilter.value = state.eventFilters.backend;
+  }
+  if (eventCategoryFilter) {
+    eventCategoryFilter.value = state.eventFilters.category;
+  }
+  if (eventSeverityFilter) {
+    eventSeverityFilter.value = state.eventFilters.severity;
+  }
+  if (eventDateFromFilter) {
+    eventDateFromFilter.value = state.eventFilters.dateFrom;
+  }
+  if (eventDateToFilter) {
+    eventDateToFilter.value = state.eventFilters.dateTo;
+  }
+}
+
+async function applyEventFilters() {
+  state.eventFilters.q = String(eventQueryFilter?.value || "").trim();
+  state.eventFilters.actor = String(eventActorFilter?.value || "").trim();
+  state.eventFilters.backend = String(eventBackendFilter?.value || "").trim();
+  state.eventFilters.category = String(eventCategoryFilter?.value || "").trim();
+  state.eventFilters.severity = String(eventSeverityFilter?.value || "").trim();
+  state.eventFilters.dateFrom = String(eventDateFromFilter?.value || "").trim();
+  state.eventFilters.dateTo = String(eventDateToFilter?.value || "").trim();
+  state.pagination.events.page = 1;
+  await refreshAll();
+}
+
+async function resetEventFilters() {
+  state.eventFilters.q = "";
+  state.eventFilters.actor = "";
+  state.eventFilters.backend = "";
+  state.eventFilters.category = "";
+  state.eventFilters.severity = "";
+  state.eventFilters.dateFrom = "";
+  state.eventFilters.dateTo = "";
+  syncEventFilterInputs();
+  state.pagination.events.page = 1;
+  await refreshAll();
+}
+
+async function refreshEvents() {
+  await refreshAll();
+}
+
 function syncUsageLogFilterInputs() {
+  if (usageLogQueryFilter) {
+    usageLogQueryFilter.value = state.usageLogFilters.q;
+  }
+  if (usageLogDateFromFilter) {
+    usageLogDateFromFilter.value = state.usageLogFilters.dateFrom;
+  }
+  if (usageLogDateToFilter) {
+    usageLogDateToFilter.value = state.usageLogFilters.dateTo;
+  }
   usageLogBackendFilter.value = state.usageLogFilters.backend;
   usageLogModelFilter.value = state.usageLogFilters.model;
   usageLogClientKeyFilter.value = state.usageLogFilters.clientKey;
+  if (usageLogPolicyFilter) {
+    usageLogPolicyFilter.value = state.usageLogFilters.policy;
+  }
+  if (usageLogProxyFilter) {
+    usageLogProxyFilter.value = state.usageLogFilters.proxy;
+  }
+  if (usageLogStatusFilter) {
+    usageLogStatusFilter.value = state.usageLogFilters.status;
+  }
 }
 
 async function applyUsageLogFilters() {
+  state.usageLogFilters.q = String(usageLogQueryFilter?.value || "").trim();
+  state.usageLogFilters.dateFrom = String(usageLogDateFromFilter?.value || "").trim();
+  state.usageLogFilters.dateTo = String(usageLogDateToFilter?.value || "").trim();
   state.usageLogFilters.backend = String(usageLogBackendFilter.value || "").trim();
   state.usageLogFilters.model = String(usageLogModelFilter.value || "").trim();
   state.usageLogFilters.clientKey = String(usageLogClientKeyFilter.value || "").trim();
+  state.usageLogFilters.policy = String(usageLogPolicyFilter?.value || "").trim();
+  state.usageLogFilters.proxy = String(usageLogProxyFilter?.value || "").trim();
+  state.usageLogFilters.status = String(usageLogStatusFilter?.value || "").trim();
   state.pagination.usageLogs.page = 1;
   await refreshAll();
 }
 
 async function resetUsageLogFilters() {
+  state.usageLogFilters.q = "";
+  state.usageLogFilters.dateFrom = "";
+  state.usageLogFilters.dateTo = "";
   state.usageLogFilters.backend = "";
   state.usageLogFilters.model = "";
   state.usageLogFilters.clientKey = "";
+  state.usageLogFilters.policy = "";
+  state.usageLogFilters.proxy = "";
+  state.usageLogFilters.status = "";
   syncUsageLogFilterInputs();
   state.pagination.usageLogs.page = 1;
+  await refreshAll();
+}
+
+async function refreshUsageLogs() {
   await refreshAll();
 }
 
@@ -622,7 +792,7 @@ async function clearUsageLogs() {
 }
 
 async function deleteFilteredUsageLogs() {
-  if (!state.usageLogFilters.backend && !state.usageLogFilters.model && !state.usageLogFilters.clientKey) {
+  if (!buildUsageLogStatsQuery()) {
     throw new Error("请先设置查询条件，再删除查询结果");
   }
   if (!confirm("确认删除当前查询条件命中的使用日志？")) {
@@ -634,23 +804,15 @@ async function deleteFilteredUsageLogs() {
 }
 
 function buildUsageLogDeleteQuery() {
-  const params = new URLSearchParams();
-  if (state.usageLogFilters.backend) {
-    params.set("backend", state.usageLogFilters.backend);
-  }
-  if (state.usageLogFilters.model) {
-    params.set("model", state.usageLogFilters.model);
-  }
-  if (state.usageLogFilters.clientKey) {
-    params.set("client_key", state.usageLogFilters.clientKey);
-  }
-  return params.toString();
+  return buildUsageLogStatsQuery();
 }
 
 function renderUsageLogFilterOptions() {
   renderDatalist(usageLogBackendOptions, state.usageLogOptions.backends);
   renderDatalist(usageLogModelOptions, state.usageLogOptions.models);
   renderDatalist(usageLogClientKeyOptions, state.usageLogOptions.clientKeys);
+  renderDatalist(usageLogPolicyOptions, state.usageLogOptions.policies);
+  renderDatalist(usageLogProxyOptions, state.usageLogOptions.proxies);
 }
 
 async function refreshDashboardData() {
@@ -1705,6 +1867,24 @@ function renderDrawerTabPanel(tab, value) {
     `;
   }
 
+  if (tab === "request" || tab === "response") {
+    const objectValue = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    const entries = Object.entries(objectValue);
+    if (!entries.length) {
+      return `<div class="drawer-state"><strong>No ${escapeHTML(tab)}</strong><p class="muted-text">This tab has no data yet.</p></div>`;
+    }
+    return `
+      <div class="drawer-kv-grid">
+        ${entries.map(([key, entryValue]) => `
+          <article class="drawer-kv-card">
+            <small>${escapeHTML(humanizeKey(key))}</small>
+            <strong>${escapeHTML(formatDrawerValue(entryValue))}</strong>
+          </article>
+        `).join("")}
+      </div>
+    `;
+  }
+
   if (tab === "activity") {
     const activity = value && typeof value === "object" ? value : {};
     const sections = [
@@ -1765,7 +1945,10 @@ function renderDrawerFooter() {
       { key: "delete", label: "Delete", tone: "danger", disabled: false },
       { key: "save", label: "Save", tone: "primary", disabled: true },
     ];
-  drawerFooterRoot.innerHTML = actions.map((action) => `
+  const visibleActions = state.ui.drawer.kind === "usage_logs"
+    ? [{ key: "save", label: "Save", tone: "primary", disabled: true }]
+    : actions;
+  drawerFooterRoot.innerHTML = visibleActions.map((action) => `
     <button
       class="${action.tone === "ghost" ? "ghost-button" : action.tone === "danger" ? "danger-button" : ""}"
       type="button"
@@ -2494,7 +2677,14 @@ function createQuickDetailMarkup(resourceKey, record) {
 
 function renderEvents() {
   const events = state.events;
-  if (events.length === 0) {
+  syncEventFilterInputs();
+  const timelineItems = typeof ObservabilityUtils.createEventTimelineItems === "function"
+    ? ObservabilityUtils.createEventTimelineItems(events)
+    : [];
+  const summary = typeof ObservabilityUtils.createEventSummaryModel === "function"
+    ? ObservabilityUtils.createEventSummaryModel(state.eventSummary)
+    : { total: 0, categories: [], severities: [] };
+  if (timelineItems.length === 0) {
     eventList.innerHTML = emptyState(
       "还没有事件",
       "配置变更、backend failover 或上游异常会出现在这里。",
@@ -2502,76 +2692,152 @@ function renderEvents() {
     return;
   }
   const pageData = currentRemotePageData("events", events);
+  const pageTimeline = typeof ObservabilityUtils.createEventTimelineItems === "function"
+    ? ObservabilityUtils.createEventTimelineItems(pageData.items)
+    : [];
 
   eventList.innerHTML = `
-    <div class="event-table-shell">
-      <div class="event-table">
-        <div class="event-table-head">
-          <span>Time</span>
-          <span>Type</span>
-          <span>Client</span>
-          <span>Backend</span>
-          <span>Endpoint</span>
-          <span>Model</span>
-          <span>Message</span>
-        </div>
-        <div class="event-table-body">
-          ${pageData.items.map((event) => `
-            <div class="event-row">
-              <span>${escapeHTML(formatDateTime(event.created_at))}</span>
-              <span>${escapeHTML(event.type)}</span>
-              <span>${escapeHTML(event.client_name || "-")}</span>
-              <span>${escapeHTML(event.backend_name || "-")}</span>
-              <span>${escapeHTML(event.endpoint || "-")}</span>
-              <span>${escapeHTML(event.model || "-")}</span>
-              <span>${escapeHTML(event.message)}</span>
-            </div>
+    <div class="observability-shell">
+      <section class="observability-main">
+        <div class="timeline-list">
+          ${pageTimeline.map((item) => `
+            <article class="timeline-item tone-${escapeHTML(item.tone)}">
+              <div class="timeline-rail">
+                <span class="timeline-icon">${escapeHTML(item.icon)}</span>
+              </div>
+              <div
+                class="timeline-card"
+                tabindex="0"
+                role="button"
+                data-event-row="${escapeHTML(item.id)}"
+                data-event-title="${escapeHTML(item.title || "Event")}"
+              >
+                <div class="timeline-card-head">
+                  <div>
+                    <strong>${escapeHTML(item.title)}</strong>
+                    <p>${escapeHTML(item.description)}</p>
+                  </div>
+                  <span class="timeline-stamp">${escapeHTML(formatDateTime(item.timestamp))}</span>
+                </div>
+                <div class="timeline-meta">
+                  <span class="status-pill ${feedToneClass(item.tone)}">${escapeHTML(item.category)}</span>
+                  <span>${escapeHTML(item.meta)}</span>
+                  <span>${escapeHTML(item.actor)}</span>
+                </div>
+              </div>
+            </article>
           `).join("")}
         </div>
-      </div>
+      </section>
+      <aside class="observability-side">
+        <section class="observability-summary-card">
+          <header>
+            <span class="section-label">Event Summary</span>
+            <strong>${escapeHTML(String(summary.total || 0))} events</strong>
+          </header>
+          <div class="summary-stack">
+            ${summary.categories.map((item) => `
+              <div class="summary-row">
+                <span>${escapeHTML(item.label)}</span>
+                <strong class="tone-${escapeHTML(item.tone)}">${escapeHTML(String(item.count))}</strong>
+              </div>
+            `).join("")}
+          </div>
+          <div class="summary-stack">
+            ${summary.severities.map((item) => `
+              <div class="summary-row">
+                <span>${escapeHTML(item.label)}</span>
+                <strong class="tone-${escapeHTML(item.tone)}">${escapeHTML(String(item.count))}</strong>
+              </div>
+            `).join("")}
+          </div>
+        </section>
+      </aside>
     </div>
     ${renderPagination("events", pageData)}
   `;
 
   bindPagination(eventList, "events", refreshAll);
+  eventList.querySelectorAll("[data-event-row]").forEach((row) => {
+    const openEventDrawer = () => {
+      openResourceDrawer({
+        kind: "event",
+        page: "events",
+        id: row.dataset.eventRow || "",
+        title: row.dataset.eventTitle || "Event",
+        triggerElement: row,
+      }).catch(reportError);
+    };
+    row.addEventListener("click", openEventDrawer);
+    row.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      openEventDrawer();
+    });
+  });
 }
 
 function renderUsageLogs() {
   const logs = state.usageLogs;
   syncUsageLogFilterInputs();
   deleteUsageLogsBtn.disabled = logs.length === 0;
+  const statsCards = typeof ObservabilityUtils.createUsageStatsCards === "function"
+    ? ObservabilityUtils.createUsageStatsCards(state.usageLogStats)
+    : [];
+  const rows = typeof ObservabilityUtils.createUsageLogRows === "function"
+    ? ObservabilityUtils.createUsageLogRows(logs)
+    : [];
   if (logs.length === 0) {
-    usageLogList.innerHTML = emptyState(
-      "还没有使用日志",
-      "有客户端通过 Token Gate 发起请求后，这里会按请求维度记录一条 usage log。",
-    );
+    usageLogList.innerHTML = `
+      <div class="observability-stats-grid">
+        ${statsCards.map((card) => `
+          <article class="observability-stat-card">
+            <span class="section-label">${escapeHTML(card.label)}</span>
+            <strong>${escapeHTML(card.value)}</strong>
+            <p class="tone-${escapeHTML(card.tone)}">${escapeHTML(card.detail)}</p>
+          </article>
+        `).join("")}
+      </div>
+      ${emptyState(
+        "还没有使用日志",
+        "有客户端通过 Token Gate 发起请求后，这里会按请求维度记录一条 usage log。",
+      )}
+    `;
     return;
   }
   const pageData = currentRemotePageData("usageLogs", logs);
+  const pageRows = typeof ObservabilityUtils.createUsageLogRows === "function"
+    ? ObservabilityUtils.createUsageLogRows(pageData.items)
+    : [];
 
   usageLogList.innerHTML = `
+    <div class="observability-stats-grid">
+      ${statsCards.map((card) => `
+        <article class="observability-stat-card">
+          <span class="section-label">${escapeHTML(card.label)}</span>
+          <strong>${escapeHTML(card.value)}</strong>
+          <p class="tone-${escapeHTML(card.tone)}">${escapeHTML(card.detail)}</p>
+        </article>
+      `).join("")}
+    </div>
     <div class="event-table-shell">
       <div class="event-table usage-log-table">
         <div class="event-table-head usage-log-head">
-          <span>Time</span>
-          <span>Client Key</span>
-          <span>Client</span>
-          <span>Model</span>
-          <span>Backend</span>
+          <span>Timestamp</span>
+          <span>Method</span>
+          <span>Path</span>
           <span>Status</span>
-          <span>Detail</span>
+          <span>Latency</span>
+          <span>Client Key</span>
+          <span>Backend</span>
+          <span>Proxy</span>
+          <span>Trace ID</span>
         </div>
         <div class="event-table-body">
-          ${pageData.items.map((log) => `
-            <div class="event-row usage-log-row">
-              <span>${escapeHTML(formatDateTime(log.created_at))}</span>
-              <span>${escapeHTML(log.client_name || "-")}</span>
-              <span>${escapeHTML(log.client_ip || "-")}</span>
-              <span>${escapeHTML(log.model || "-")}</span>
-              <span>${escapeHTML(log.backend_name || "-")}</span>
-              <span>${escapeHTML(formatUsageStatus(log))}</span>
-              <span>${escapeHTML(formatUsageDetail(log))}</span>
-            </div>
+          ${pageRows.map((row) => `
+            ${renderUsageLogRow(row)}
           `).join("")}
         </div>
       </div>
@@ -2580,6 +2846,122 @@ function renderUsageLogs() {
   `;
 
   bindPagination(usageLogList, "usageLogs", refreshAll);
+  usageLogList.querySelectorAll("[data-toggle-usage-log]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleExpanded(state.expandedUsageLogs, button.dataset.toggleUsageLog);
+      renderUsageLogs();
+    });
+  });
+  usageLogList.querySelectorAll("[data-usage-log-row]").forEach((row) => {
+    row.addEventListener("click", () => {
+      openResourceDrawer({
+        kind: "usage_log",
+        page: "usage-logs",
+        id: row.dataset.usageLogRow || "",
+        title: row.dataset.usageLogTitle || "Usage Log",
+        triggerElement: row,
+      }).catch(reportError);
+    });
+    row.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      openResourceDrawer({
+        kind: "usage_log",
+        page: "usage-logs",
+        id: row.dataset.usageLogRow || "",
+        title: row.dataset.usageLogTitle || "Usage Log",
+        triggerElement: row,
+      }).catch(reportError);
+    });
+  });
+}
+
+function renderUsageLogRow(row) {
+  const expanded = state.expandedUsageLogs.has(String(row.id));
+  return `
+    <div class="usage-log-block ${expanded ? "is-expanded" : ""}">
+      <div
+        class="event-row usage-log-row usage-log-row-button"
+        tabindex="0"
+        data-usage-log-row="${escapeHTML(row.id)}"
+        data-usage-log-title="${escapeHTML(row.requestId || row.model || "Usage Log")}"
+      >
+        <span>
+          <button class="row-title inline-row-toggle" data-toggle-usage-log="${escapeHTML(row.id)}" type="button">
+            <span class="chevron">${expanded ? "收起" : "展开"}</span>
+            <span>${escapeHTML(formatDateTime(row.timestamp))}</span>
+          </button>
+        </span>
+        <span>${escapeHTML(row.method)}</span>
+        <span>${escapeHTML(row.path)}</span>
+        <span><em class="search-status-pill tone-${escapeHTML(row.tone)}">${escapeHTML(row.status)}</em></span>
+        <span>${escapeHTML(row.latency)}</span>
+        <span>${escapeHTML(row.clientKey)}</span>
+        <span>${escapeHTML(row.backend)}</span>
+        <span>${escapeHTML(row.proxy)}</span>
+        <span>${escapeHTML(row.traceId)}</span>
+      </div>
+      ${expanded ? `
+        <div class="usage-log-inline-detail">
+          ${renderUsageLogInlineDetail(row)}
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+function renderUsageLogInlineDetail(row) {
+  const detail = state.usageLogDetailCache.get(String(row.id));
+  if (!detail) {
+    primeUsageLogDetail(row.id);
+  }
+  const request = detail?.request && typeof detail.request === "object" ? detail.request : {};
+  const response = detail?.response && typeof detail.response === "object" ? detail.response : {};
+  const requestHeaders = request.headers || row.headersPreview || "-";
+  const requestPayload = request.body_preview || row.payloadPreview || "-";
+  const responsePreview = response.body_preview || row.responsePreview || "-";
+  const requestMetadata = [
+    request.method || row.method,
+    request.path || row.path,
+    request.query ? `?${request.query}` : "",
+  ].join("").trim() || row.requestMetadata || "-";
+  return `
+    <span>Trace ID: ${escapeHTML(row.traceId || "-")}</span>
+    <span>Request: ${escapeHTML(requestMetadata)}</span>
+    <span>Headers: ${escapeHTML(formatInlinePreview(requestHeaders))}</span>
+    <span>Payload: ${escapeHTML(formatInlinePreview(requestPayload))}</span>
+    <span>Response: ${escapeHTML(formatInlinePreview(responsePreview))}</span>
+  `;
+}
+
+function formatInlinePreview(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return "-";
+  }
+  return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
+}
+
+async function primeUsageLogDetail(id) {
+  const key = String(id || "").trim();
+  if (!key || state.usageLogDetailCache.has(key)) {
+    return;
+  }
+  try {
+    const payload = await api(`/admin/api/usage-logs/${encodeURIComponent(key)}`);
+    state.usageLogDetailCache.set(key, payload && typeof payload === "object" ? payload : {});
+    if (state.expandedUsageLogs.has(key)) {
+      renderUsageLogs();
+    }
+  } catch (error) {
+    state.usageLogDetailCache.set(key, { error: error?.message || "Failed to load usage log detail" });
+    if (state.expandedUsageLogs.has(key)) {
+      renderUsageLogs();
+    }
+  }
 }
 
 function bindPagination(container, key, rerender) {
