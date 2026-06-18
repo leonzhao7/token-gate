@@ -4,9 +4,11 @@ const refreshBtn = document.querySelector("#refreshBtn");
 const pageTitle = document.querySelector("#pageTitle");
 const pageBreadcrumb = document.querySelector("#pageBreadcrumb");
 const appShell = document.querySelector(".app-shell");
+const rootElement = document.documentElement;
 const sidebarRoot = document.querySelector("#sidebarRoot");
 const sidebarToggleBtn = document.querySelector("#sidebarToggleBtn");
 const themeToggleBtn = document.querySelector("#themeToggleBtn");
+const themeToggleLabel = document.querySelector("#themeToggleLabel");
 const dashboardRoot = document.querySelector("#dashboardRoot");
 const drawerRoot = document.querySelector("#drawerRoot");
 const drawerTitle = document.querySelector("#drawerTitle");
@@ -73,7 +75,18 @@ const policyCancelBtn = document.querySelector("#policyCancelBtn");
 const policyEditBanner = document.querySelector("#policyEditBanner");
 
 const ADMIN_TOKEN_KEY = "token-gate-admin-token";
+const THEME_PREFERENCE_KEY = "token-gate-theme-preference";
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
+const SEARCH_LIMIT = 8;
+const SEARCH_DEBOUNCE_MS = 220;
+const ThemeUtils = globalThis.ThemeUtils || {};
+const SearchUtils = globalThis.SearchUtils || {};
+const systemThemeQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+const searchDebounce = typeof SearchUtils.createDebouncedTask === "function"
+  ? SearchUtils.createDebouncedTask((query) => {
+    executeSearch(query).catch(reportError);
+  }, SEARCH_DEBOUNCE_MS)
+  : null;
 const state = {
   proxies: [],
   backends: [],
@@ -117,12 +130,20 @@ const state = {
   },
   ui: {
     theme: "light",
-    drawer: { open: false, kind: "", id: null, tab: "overview" },
-    search: { open: false, query: "", results: null },
+    themePreference: "system",
+    drawer: { open: false, kind: "", id: null, title: "", tab: "overview" },
+    search: {
+      open: false,
+      query: "",
+      loading: false,
+      results: { query: "", total: 0, groups: [] },
+      requestSequence: 0,
+    },
   },
 };
 
 tokenInput.value = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
+initializeThemeState();
 
 window.addEventListener("hashchange", () => {
   activatePage(pageIDFromHash());
@@ -134,13 +155,17 @@ sidebarToggleBtn?.addEventListener("click", () => {
 });
 
 themeToggleBtn?.addEventListener("click", () => {
-  state.ui.theme = state.ui.theme === "light" ? "dark" : "light";
+  const nextPreference = typeof ThemeUtils.nextThemePreference === "function"
+    ? ThemeUtils.nextThemePreference(state.ui.themePreference)
+    : "light";
+  state.ui.themePreference = nextPreference;
+  persistThemePreference(nextPreference);
+  applyResolvedTheme();
   renderTheme();
 });
 
 searchOpenBtn?.addEventListener("click", () => {
-  state.ui.search.open = true;
-  renderSearchShell();
+  openSearchShell();
 });
 
 searchCloseBtn?.addEventListener("click", () => {
@@ -154,8 +179,22 @@ searchModalRoot?.addEventListener("click", (event) => {
 });
 
 searchInput?.addEventListener("input", (event) => {
-  state.ui.search.query = String(event.currentTarget.value || "");
+  updateSearchQuery(String(event.currentTarget.value || ""));
   renderSearchShell();
+});
+
+searchResultsRoot?.addEventListener("click", (event) => {
+  const target = event.target.closest("[data-search-result]");
+  if (!target) {
+    return;
+  }
+
+  const group = target.dataset.searchGroup || "";
+  const kind = target.dataset.searchKind || "";
+  const title = target.dataset.searchTitle || "";
+  const targetPage = target.dataset.searchPage || "";
+  const targetID = target.dataset.searchId || "";
+  navigateToSearchResult({ group, kind, title, targetPage, targetId: targetID });
 });
 
 drawerCloseBtn?.addEventListener("click", () => {
@@ -270,6 +309,39 @@ clearUsageLogsBtn.addEventListener("click", () => {
 deleteUsageLogsBtn.addEventListener("click", () => {
   deleteFilteredUsageLogs().catch(reportError);
 });
+
+document.addEventListener("keydown", (event) => {
+  if (typeof SearchUtils.isSearchShortcut === "function" && SearchUtils.isSearchShortcut(event)) {
+    event.preventDefault();
+    openSearchShell();
+    return;
+  }
+
+  if (typeof SearchUtils.isSearchDismissKey === "function" && SearchUtils.isSearchDismissKey(event)) {
+    if (state.ui.search.open) {
+      event.preventDefault();
+      closeSearchShell();
+      return;
+    }
+    if (state.ui.drawer.open) {
+      closeDrawerShell();
+    }
+  }
+});
+
+if (systemThemeQuery) {
+  const handleSystemThemeChange = () => {
+    if (state.ui.themePreference === "system") {
+      applyResolvedTheme();
+      renderTheme();
+    }
+  };
+  if (typeof systemThemeQuery.addEventListener === "function") {
+    systemThemeQuery.addEventListener("change", handleSystemThemeChange);
+  } else if (typeof systemThemeQuery.addListener === "function") {
+    systemThemeQuery.addListener(handleSystemThemeChange);
+  }
+}
 
 [usageLogBackendFilter, usageLogModelFilter, usageLogClientKeyFilter].forEach((input) => {
   input.addEventListener("keydown", (event) => {
@@ -539,13 +611,69 @@ function activatePage(id) {
   }
 }
 
-function renderTheme() {
-  if (!appShell) {
+function initializeThemeState() {
+  const storedPreference = localStorage.getItem(THEME_PREFERENCE_KEY);
+  const resolved = resolveThemeState(storedPreference);
+  state.ui.themePreference = resolved.preference;
+  state.ui.theme = resolved.theme;
+  rootElement.dataset.themePreference = resolved.preference;
+  rootElement.dataset.theme = resolved.theme;
+}
+
+function resolveThemeState(storedPreference) {
+  if (typeof ThemeUtils.resolveThemeState === "function") {
+    return ThemeUtils.resolveThemeState({
+      storedPreference,
+      systemPrefersDark: Boolean(systemThemeQuery?.matches),
+    });
+  }
+  return {
+    preference: "system",
+    theme: systemThemeQuery?.matches ? "dark" : "light",
+    isAuto: true,
+  };
+}
+
+function persistThemePreference(preference) {
+  if (preference === "system") {
+    localStorage.removeItem(THEME_PREFERENCE_KEY);
     return;
   }
-  appShell.dataset.theme = state.ui.theme;
+  localStorage.setItem(THEME_PREFERENCE_KEY, preference);
+}
+
+function applyResolvedTheme() {
+  const resolved = resolveThemeState(state.ui.themePreference);
+  state.ui.themePreference = resolved.preference;
+  state.ui.theme = resolved.theme;
+}
+
+function renderTheme() {
+  rootElement.dataset.theme = state.ui.theme;
+  rootElement.dataset.themePreference = state.ui.themePreference;
+  appShell?.setAttribute("data-theme", state.ui.theme);
   if (themeToggleBtn) {
-    themeToggleBtn.textContent = state.ui.theme === "light" ? "Light" : "Dark";
+    const buttonState = typeof ThemeUtils.getThemeToggleState === "function"
+      ? ThemeUtils.getThemeToggleState({
+        preference: state.ui.themePreference,
+        theme: state.ui.theme,
+      })
+      : {
+        label: state.ui.theme,
+        hint: "Switch theme mode",
+        pressed: state.ui.theme === "dark",
+      };
+    if (themeToggleLabel) {
+      themeToggleLabel.textContent = buttonState.label;
+    } else {
+      themeToggleBtn.textContent = buttonState.label;
+    }
+    themeToggleBtn.title = buttonState.hint;
+    if (buttonState.pressed === "mixed") {
+      themeToggleBtn.setAttribute("aria-pressed", "mixed");
+    } else {
+      themeToggleBtn.setAttribute("aria-pressed", String(Boolean(buttonState.pressed)));
+    }
   }
 }
 
@@ -564,7 +692,8 @@ function renderDrawerShell() {
   drawerRoot.classList.toggle("hidden", !isOpen);
   drawerRoot.setAttribute("aria-hidden", String(!isOpen));
   if (drawerTitle) {
-    drawerTitle.textContent = state.ui.drawer.kind ? `${state.ui.drawer.kind} Detail` : "Detail Drawer";
+    const detailTitle = state.ui.drawer.title || state.ui.drawer.kind;
+    drawerTitle.textContent = detailTitle ? `${detailTitle} Detail` : "Detail Drawer";
   }
   if (drawerBodyRoot) {
     drawerBodyRoot.innerHTML = `
@@ -584,6 +713,7 @@ function closeDrawerShell() {
   state.ui.drawer.open = false;
   state.ui.drawer.kind = "";
   state.ui.drawer.id = null;
+  state.ui.drawer.title = "";
   state.ui.drawer.tab = "overview";
   renderDrawerShell();
 }
@@ -595,21 +725,174 @@ function renderSearchShell() {
   const isOpen = Boolean(state.ui.search.open);
   searchModalRoot.classList.toggle("hidden", !isOpen);
   searchModalRoot.setAttribute("aria-hidden", String(!isOpen));
+  searchOpenBtn?.setAttribute("aria-expanded", String(isOpen));
   if (searchInput && searchInput.value !== state.ui.search.query) {
     searchInput.value = state.ui.search.query;
   }
   if (searchResultsRoot) {
-    searchResultsRoot.innerHTML = `
-      <p class="muted-text">
-        Search shell placeholder${state.ui.search.query ? ` for “${escapeHTML(state.ui.search.query)}”` : ""}.
-      </p>
-    `;
+    searchResultsRoot.innerHTML = renderSearchResults();
   }
 }
 
 function closeSearchShell() {
   state.ui.search.open = false;
+  searchDebounce?.cancel?.();
   renderSearchShell();
+}
+
+function openSearchShell() {
+  state.ui.search.open = true;
+  renderSearchShell();
+  searchInput?.focus();
+  if (state.ui.search.query.trim()) {
+    searchInput?.select();
+    if (!state.ui.search.results.total && !state.ui.search.loading) {
+      triggerSearch();
+    }
+  }
+}
+
+function updateSearchQuery(value) {
+  state.ui.search.query = String(value || "");
+  if (!state.ui.search.query.trim()) {
+    searchDebounce?.cancel?.();
+    state.ui.search.loading = false;
+    state.ui.search.results = {
+      query: "",
+      total: 0,
+      groups: [],
+    };
+    return;
+  }
+  triggerSearch();
+}
+
+function triggerSearch() {
+  if (!searchDebounce) {
+    executeSearch(state.ui.search.query).catch(reportError);
+    return;
+  }
+  state.ui.search.loading = true;
+  renderSearchShell();
+  searchDebounce(state.ui.search.query);
+}
+
+async function executeSearch(query) {
+  const trimmedQuery = String(query || "").trim();
+  if (!trimmedQuery) {
+    state.ui.search.loading = false;
+    state.ui.search.results = {
+      query: "",
+      total: 0,
+      groups: [],
+    };
+    renderSearchShell();
+    return;
+  }
+
+  const requestID = ++state.ui.search.requestSequence;
+  state.ui.search.loading = true;
+  renderSearchShell();
+  const path = typeof SearchUtils.buildSearchRequestPath === "function"
+    ? SearchUtils.buildSearchRequestPath(trimmedQuery, SEARCH_LIMIT)
+    : `/admin/api/search?q=${encodeURIComponent(trimmedQuery)}&limit=${SEARCH_LIMIT}`;
+  try {
+    const response = await api(path);
+    if (requestID !== state.ui.search.requestSequence) {
+      return;
+    }
+    state.ui.search.results = typeof SearchUtils.normalizeSearchResponse === "function"
+      ? SearchUtils.normalizeSearchResponse(response)
+      : { query: trimmedQuery, total: 0, groups: [] };
+  } finally {
+    if (requestID === state.ui.search.requestSequence) {
+      state.ui.search.loading = false;
+      renderSearchShell();
+    }
+  }
+}
+
+function renderSearchResults() {
+  const query = state.ui.search.query.trim();
+  const results = state.ui.search.results || { total: 0, groups: [] };
+
+  if (!query) {
+    return `
+      <div class="search-empty-state">
+        <strong>Search everything</strong>
+        <p class="muted-text">按 <kbd>Ctrl</kbd> + <kbd>K</kbd> 或 <kbd>⌘</kbd> + <kbd>K</kbd> 快速打开，支持资源与观测数据统一搜索。</p>
+      </div>
+    `;
+  }
+
+  if (state.ui.search.loading) {
+    return `
+      <div class="search-empty-state">
+        <strong>Searching “${escapeHTML(query)}”</strong>
+        <p class="muted-text">正在查询 backends、keys、policies、proxies、usage logs 与 events。</p>
+      </div>
+    `;
+  }
+
+  if (!results.total) {
+    return `
+      <div class="search-empty-state">
+        <strong>No results</strong>
+        <p class="muted-text">没有找到与 “${escapeHTML(query)}” 相关的结果。</p>
+      </div>
+    `;
+  }
+
+  return results.groups.map((group) => `
+    <section class="search-result-group">
+      <header class="search-result-group-head">
+        <span>${escapeHTML(group.label)}</span>
+        <small>${group.items.length}</small>
+      </header>
+      <div class="search-result-list">
+        ${group.items.map((item) => `
+          <button
+            class="search-result-item"
+            type="button"
+            data-search-result="true"
+            data-search-group="${escapeHTML(group.key)}"
+            data-search-kind="${escapeHTML(item.kind)}"
+            data-search-page="${escapeHTML(item.targetPage)}"
+            data-search-id="${escapeHTML(item.targetId)}"
+            data-search-title="${escapeHTML(item.title)}"
+          >
+            <span class="search-result-copy">
+              <strong>${escapeHTML(item.title)}</strong>
+              ${item.subtitle ? `<span>${escapeHTML(item.subtitle)}</span>` : ""}
+            </span>
+            <span class="search-result-meta">
+              ${item.status ? `<em class="search-status-pill">${escapeHTML(item.status)}</em>` : ""}
+              ${item.meta ? `<small>${escapeHTML(item.meta)}</small>` : ""}
+            </span>
+          </button>
+        `).join("")}
+      </div>
+    </section>
+  `).join("");
+}
+
+function navigateToSearchResult(payload) {
+  const normalized = typeof SearchUtils.getSearchResultTarget === "function"
+    ? SearchUtils.getSearchResultTarget(payload)
+    : null;
+  if (!normalized?.page) {
+    return;
+  }
+
+  window.location.hash = `#${normalized.page}`;
+  activatePage(normalized.page);
+  state.ui.drawer.open = true;
+  state.ui.drawer.kind = normalized.drawer.kind || payload.group || "resource";
+  state.ui.drawer.id = normalized.drawer.id || payload.targetId || payload.id || null;
+  state.ui.drawer.title = normalized.drawer.title || payload.title || "";
+  state.ui.drawer.tab = "overview";
+  closeSearchShell();
+  renderDrawerShell();
 }
 
 function renderProxies() {

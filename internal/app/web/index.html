@@ -4,73 +4,145 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Token Gate Console</title>
+    <script>
+      (() => {
+        const storageKey = "token-gate-theme-preference";
+        const saved = String(localStorage.getItem(storageKey) || "").trim().toLowerCase();
+        const preference = saved === "light" || saved === "dark" ? saved : "system";
+        const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const theme = preference === "system" ? (prefersDark ? "dark" : "light") : preference;
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.dataset.themePreference = preference;
+      })();
+    </script>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="app-shell premium-shell" data-theme="light">
+    <div class="app-shell premium-shell">
       <aside class="sidebar shell-sidebar" id="sidebarRoot">
-        <div class="sidebar-top">
-          <button class="icon-button sidebar-toggle" id="sidebarToggleBtn" type="button" aria-label="切换侧边栏">
-            ☰
-          </button>
-        </div>
-        <a class="brand" href="#overview" aria-label="Token Gate Overview">
-          <span class="brand-mark">TG</span>
-          <span class="brand-copy">
-            <strong>Token Gate</strong>
-            <small>AI Proxy Console</small>
-          </span>
-        </a>
+        <div class="sidebar-frame">
+          <div class="sidebar-top">
+            <a class="brand" href="#overview" aria-label="Token Gate Overview">
+              <span class="brand-mark">TG</span>
+              <span class="brand-copy">
+                <strong>Token Gate</strong>
+                <small>AI Proxy Center</small>
+              </span>
+            </a>
+            <button class="icon-button sidebar-toggle" id="sidebarToggleBtn" type="button" aria-label="切换侧边栏">
+              ☰
+            </button>
+          </div>
 
-        <nav class="nav-list" aria-label="Console sections">
-          <a href="#overview" class="nav-item" data-page-link="overview">
-            <span class="nav-dot"></span>
-            Overview
-          </a>
-          <a href="#socks-proxies" class="nav-item" data-page-link="socks-proxies">
-            <span class="nav-dot"></span>
-            SOCKS5 Proxies
-          </a>
-          <a href="#backends" class="nav-item" data-page-link="backends">
-            <span class="nav-dot"></span>
-            Backends
-          </a>
-          <a href="#client-keys" class="nav-item" data-page-link="client-keys">
-            <span class="nav-dot"></span>
-            Client Keys
-          </a>
-          <a href="#model-policies" class="nav-item" data-page-link="model-policies">
-            <span class="nav-dot"></span>
-            Model Policies
-          </a>
-          <a href="#events" class="nav-item" data-page-link="events">
-            <span class="nav-dot"></span>
-            Events
-          </a>
-          <a href="#usage-logs" class="nav-item" data-page-link="usage-logs">
-            <span class="nav-dot"></span>
-            Usage Logs
-          </a>
-        </nav>
+          <nav class="sidebar-nav" aria-label="Console sections">
+            <section class="nav-group">
+              <span class="nav-group-label">Overview</span>
+              <div class="nav-list">
+                <a href="#overview" class="nav-item" data-page-link="overview">
+                  <span class="nav-dot"></span>
+                  <span>Dashboard</span>
+                </a>
+              </div>
+            </section>
+
+            <section class="nav-group">
+              <span class="nav-group-label">Resources</span>
+              <div class="nav-list">
+                <a href="#socks-proxies" class="nav-item" data-page-link="socks-proxies">
+                  <span class="nav-dot"></span>
+                  <span>Proxies</span>
+                </a>
+                <a href="#backends" class="nav-item" data-page-link="backends">
+                  <span class="nav-dot"></span>
+                  <span>Backends</span>
+                </a>
+                <a href="#client-keys" class="nav-item" data-page-link="client-keys">
+                  <span class="nav-dot"></span>
+                  <span>Client Keys</span>
+                </a>
+                <a href="#model-policies" class="nav-item" data-page-link="model-policies">
+                  <span class="nav-dot"></span>
+                  <span>Policies</span>
+                </a>
+              </div>
+            </section>
+
+            <section class="nav-group">
+              <span class="nav-group-label">Observability</span>
+              <div class="nav-list">
+                <a href="#usage-logs" class="nav-item" data-page-link="usage-logs">
+                  <span class="nav-dot"></span>
+                  <span>Usage Logs</span>
+                </a>
+                <a href="#events" class="nav-item" data-page-link="events">
+                  <span class="nav-dot"></span>
+                  <span>Events</span>
+                </a>
+              </div>
+            </section>
+
+            <section class="nav-group">
+              <span class="nav-group-label">Settings</span>
+              <div class="nav-list">
+                <button class="nav-item nav-item-static" type="button">
+                  <span class="nav-dot"></span>
+                  <span>Access Control</span>
+                </button>
+              </div>
+            </section>
+          </nav>
+
+          <section class="sidebar-card sidebar-control-card">
+            <div class="section-heading compact">
+              <span class="section-label">Console Access</span>
+              <h3>Admin Session</h3>
+              <p>保存管理 Token，并按需刷新当前控制台数据。</p>
+            </div>
+            <div class="admin-access">
+              <label class="field" for="adminToken">
+                <span>Admin Token</span>
+                <input id="adminToken" type="password" placeholder="输入 TG_ADMIN_TOKEN" />
+              </label>
+              <div class="button-row compact">
+                <button id="saveTokenBtn" type="button">保存</button>
+                <button class="ghost-button" id="refreshBtn" type="button">刷新数据</button>
+              </div>
+            </div>
+          </section>
+        </div>
       </aside>
 
       <div class="main-area shell-main">
         <header class="topbar shell-header">
-          <div class="topbar-title">
+          <div class="topbar-title shell-breadcrumbs">
+            <span class="eyebrow">AI Proxy Center</span>
             <span class="breadcrumb" id="pageBreadcrumb">Dashboard / Overview</span>
             <h1 id="pageTitle">透明代理控制台</h1>
           </div>
-          <div class="shell-searchbar">
-            <button class="ghost-button shell-search-trigger" id="searchOpenBtn" type="button">
-              搜索资源、日志、事件
+          <div class="shell-searchbar shell-searchbar-center">
+            <button class="ghost-button shell-search-trigger" id="searchOpenBtn" type="button" aria-haspopup="dialog" aria-controls="searchModalRoot">
+              <span class="search-trigger-copy">
+                <strong>Search backends, keys, policies...</strong>
+                <small>Global search across resources and activity</small>
+              </span>
+              <span class="search-shortcut">⌘K</span>
             </button>
           </div>
-          <div class="admin-access">
-            <label for="adminToken" class="field-label">Admin Token</label>
-            <input id="adminToken" type="password" placeholder="输入 TG_ADMIN_TOKEN" />
-            <button id="saveTokenBtn" type="button">保存</button>
-            <button class="ghost-button" id="refreshBtn" type="button">刷新数据</button>
-            <button class="ghost-button" id="themeToggleBtn" type="button" aria-label="切换主题">Light</button>
+          <div class="shell-utilities">
+            <button class="icon-button theme-toggle" id="themeToggleBtn" type="button" aria-label="切换主题">
+              <span class="theme-toggle-icon" aria-hidden="true">◐</span>
+              <span id="themeToggleLabel">Auto</span>
+            </button>
+            <button class="icon-button utility-pill" type="button" aria-label="通知">
+              <span aria-hidden="true">🔔</span>
+            </button>
+            <button class="profile-chip" type="button" aria-label="当前用户">
+              <span class="profile-avatar" aria-hidden="true">AP</span>
+              <span class="profile-copy">
+                <strong>Admin</strong>
+                <small>Proxy Ops</small>
+              </span>
+            </button>
           </div>
         </header>
 
@@ -456,15 +528,18 @@
     <div class="search-modal hidden" id="searchModalRoot" aria-hidden="true">
       <div class="search-modal-panel">
         <div class="search-modal-head">
-          <strong>Global Search</strong>
+          <div>
+            <span class="section-label">Command Menu</span>
+            <strong>Global Search</strong>
+          </div>
           <button class="icon-button" id="searchCloseBtn" type="button" aria-label="关闭搜索">×</button>
         </div>
         <label class="field search-shell-field">
           <span>Search</span>
-          <input id="searchInput" type="search" placeholder="搜索 backend、client、policy、log…" />
+          <input id="searchInput" type="search" placeholder="搜索 backend、client key、policy、proxy、log、event…" />
         </label>
         <div class="search-modal-results" id="searchResultsRoot">
-          <p class="muted-text">Search shell placeholder. Results will land here in later tasks.</p>
+          <p class="muted-text">输入关键字后会按分组返回结果，支持键盘快捷键打开。</p>
         </div>
       </div>
     </div>
@@ -489,6 +564,8 @@
       </div>
     </aside>
 
+    <script src="./theme.js"></script>
+    <script src="./search.js"></script>
     <script src="./app.js" type="module"></script>
   </body>
 </html>
