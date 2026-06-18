@@ -2,3 +2,4 @@
 token-gate.db
 token-gate.db-*
 /token-gate
+.worktrees/
