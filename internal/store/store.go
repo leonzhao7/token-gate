@@ -19,6 +19,11 @@ type Store struct {
 	db *sql.DB
 }
 
+type BackendRequestStats struct {
+	Successes int
+	Failures  int
+}
+
 func Open(ctx context.Context, path string) (*Store, error) {
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
@@ -473,6 +478,35 @@ func (s *Store) ListBackends(ctx context.Context) ([]domain.Backend, error) {
 
 func (s *Store) CountBackends(ctx context.Context) (int, error) {
 	return countRows(ctx, s.db, "backends")
+}
+
+func (s *Store) BackendRequestStatsSince(ctx context.Context, since time.Time) (map[int64]BackendRequestStats, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			backend_id,
+			SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END) AS successes,
+			SUM(CASE WHEN status_code < 200 OR status_code >= 400 THEN 1 ELSE 0 END) AS failures
+		FROM usage_logs
+		WHERE backend_id > 0 AND created_at >= ?
+		GROUP BY backend_id
+	`, formatTime(since.UTC()))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[int64]BackendRequestStats)
+	for rows.Next() {
+		var (
+			backendID int64
+			stats     BackendRequestStats
+		)
+		if err := rows.Scan(&backendID, &stats.Successes, &stats.Failures); err != nil {
+			return nil, err
+		}
+		out[backendID] = stats
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) ListBackendsPage(ctx context.Context, limit, offset int) ([]domain.Backend, error) {

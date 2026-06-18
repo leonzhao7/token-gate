@@ -287,8 +287,7 @@ async function refreshAll() {
 }
 
 function renderStats(overview) {
-  const ready = overview.backends.filter((backend) => backend.enabled && !isCoolingDown(backend.runtime)).length;
-  const active = overview.backends.reduce((sum, backend) => sum + (backend.runtime.active_requests || 0), 0);
+  const enabled = overview.backends.filter((backend) => backend.enabled).length;
   stats.innerHTML = `
     <article class="metric-card">
       <strong>${overview.backends.length}</strong>
@@ -296,9 +295,9 @@ function renderStats(overview) {
       <span class="metric-copy">已登记的真实上游节点数量。</span>
     </article>
     <article class="metric-card">
-      <strong>${ready}</strong>
-      <span>Ready</span>
-      <span class="metric-copy">已启用且当前不在请求失败冷却期的节点。</span>
+      <strong>${enabled}</strong>
+      <span>Enabled</span>
+      <span class="metric-copy">当前处于启用状态的上游节点数量。</span>
     </article>
     <article class="metric-card">
       <strong>${overview.socks_proxies || 0}</strong>
@@ -311,9 +310,9 @@ function renderStats(overview) {
       <span class="metric-copy">当前可管理的客户端身份数量。</span>
     </article>
     <article class="metric-card">
-      <strong>${active}</strong>
-      <span>Active Requests</span>
-      <span class="metric-copy">正在转发中的活动请求数。</span>
+      <strong>${overview.model_policies || 0}</strong>
+      <span>Policies</span>
+      <span class="metric-copy">正在生效的模型调度规则数量。</span>
     </article>
   `;
 }
@@ -427,8 +426,7 @@ function renderBackends() {
             <th>Pool</th>
             <th>Proxy</th>
             <th>Models</th>
-            <th>Runtime</th>
-            <th>State</th>
+            <th>Recent 30m</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -649,8 +647,7 @@ function renderBackendRow(backend) {
   const id = String(backend.id);
   const expanded = state.expandedBackends.has(id);
   const editing = String(state.editingBackendID) === id;
-  const runtime = backend.runtime || {};
-  const runtimeState = backendRuntimeLabel(runtime);
+  const recentStats = backend.recent_stats || {};
   return `
     <tr class="${editing ? "is-editing" : ""}">
       <td>
@@ -665,13 +662,12 @@ function renderBackendRow(backend) {
       <td>${escapeHTML(backend.pool || "-")}</td>
       <td>${escapeHTML(proxyLabel(backend.proxy_id, backend.proxy))}</td>
       <td>${compactList(backend.models)}</td>
-      <td>${runtime.active_requests || 0} active / ${runtime.consecutive_failures || 0} fails</td>
-      <td>${escapeHTML(runtimeState)}</td>
+      <td>${escapeHTML(formatBackendRecentStats(recentStats))}</td>
       <td>${tableActions("backend", backend.id)}</td>
     </tr>
     ${expanded ? `
       <tr class="detail-row">
-        <td colspan="9">
+        <td colspan="8">
           <div class="detail-panel">
             <div class="detail-grid">
               <div><strong>Protocol</strong><span>${escapeHTML(backendProtocolLabel(backend.protocol))}</span></div>
@@ -682,8 +678,7 @@ function renderBackendRow(backend) {
               <div><strong>Pool</strong><span>${escapeHTML(backend.pool || "-")}</span></div>
               <div><strong>Weight</strong><span>${backend.weight}</span></div>
               <div><strong>Model Mapping</strong><span>${escapeHTML(formatModelMapping(backend.model_mapping))}</span></div>
-              <div><strong>Cooldown Until</strong><span>${escapeHTML(formatDateTime(runtime.cooldown_until))}</span></div>
-              <div><strong>Last Error</strong><span>${escapeHTML(runtime.last_error || "-")}</span></div>
+              <div><strong>Recent 30m</strong><span>${escapeHTML(formatBackendRecentStats(recentStats))}</span></div>
               <div><strong>Created</strong><span>${escapeHTML(formatDateTime(backend.created_at))}</span></div>
               <div><strong>Updated</strong><span>${escapeHTML(formatDateTime(backend.updated_at))}</span></div>
             </div>
@@ -1317,22 +1312,11 @@ function renderProxyOptions() {
   backendForm.elements.proxy_id.value = state.proxies.some((proxy) => String(proxy.id) === selected) ? selected : "0";
 }
 
-function isCoolingDown(runtime = {}) {
-  if (!runtime.cooldown_until) {
-    return false;
-  }
-  const timestamp = Date.parse(runtime.cooldown_until);
-  return Number.isFinite(timestamp) && timestamp > Date.now();
-}
-
-function backendRuntimeLabel(runtime = {}) {
-  if (isCoolingDown(runtime)) {
-    return `cooldown until ${formatDateTime(runtime.cooldown_until)}`;
-  }
-  if (runtime.last_error) {
-    return runtime.last_error;
-  }
-  return "ready";
+function formatBackendRecentStats(stats = {}) {
+  const windowMinutes = Number(stats.window_minutes) || 30;
+  const successes = Number(stats.successes) || 0;
+  const failures = Number(stats.failures) || 0;
+  return `${windowMinutes}m ${successes} ok / ${failures} fail`;
 }
 
 function formatDateTime(value) {

@@ -59,7 +59,13 @@ type pagedListResponse struct {
 
 type backendView struct {
 	domain.Backend
-	Runtime scheduler.BackendRuntime `json:"runtime"`
+	RecentStats backendRecentStats `json:"recent_stats"`
+}
+
+type backendRecentStats struct {
+	WindowMinutes int `json:"window_minutes"`
+	Successes     int `json:"successes"`
+	Failures      int `json:"failures"`
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
@@ -477,12 +483,21 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshot := a.scheduler.Snapshot()
+	stats, err := a.store.BackendRequestStatsSince(r.Context(), time.Now().UTC().Add(-30*time.Minute))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	var views []backendView
 	for _, backend := range backends {
+		stat := stats[backend.ID]
 		views = append(views, backendView{
 			Backend: backend,
-			Runtime: snapshot[backend.ID],
+			RecentStats: backendRecentStats{
+				WindowMinutes: 30,
+				Successes:     stat.Successes,
+				Failures:      stat.Failures,
+			},
 		})
 	}
 
@@ -617,13 +632,22 @@ func (a *App) handleListBackends(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	stats, err := a.store.BackendRequestStatsSince(r.Context(), time.Now().UTC().Add(-30*time.Minute))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 
-	snapshot := a.scheduler.Snapshot()
 	var response []backendView
 	for _, backend := range backends {
+		stat := stats[backend.ID]
 		response = append(response, backendView{
 			Backend: backend,
-			Runtime: snapshot[backend.ID],
+			RecentStats: backendRecentStats{
+				WindowMinutes: 30,
+				Successes:     stat.Successes,
+				Failures:      stat.Failures,
+			},
 		})
 	}
 	writeJSON(w, http.StatusOK, pagedResponse(ensureBackendViews(response), total, page, limit))
