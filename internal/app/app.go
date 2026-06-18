@@ -57,6 +57,108 @@ type pagedListResponse struct {
 	Limit int   `json:"limit"`
 }
 
+type dashboardSummaryResponse struct {
+	Counts    dashboardSummaryCounts  `json:"counts"`
+	Growth    dashboardSummaryGrowth  `json:"growth"`
+	Status    dashboardSummaryStatus  `json:"status"`
+	Sparkline []dashboardSparkPoint   `json:"sparkline"`
+}
+
+type dashboardSummaryCounts struct {
+	Backends      int `json:"backends"`
+	ClientKeys    int `json:"client_keys"`
+	ModelPolicies int `json:"model_policies"`
+	SocksProxies  int `json:"socks_proxies"`
+}
+
+type dashboardSummaryGrowth struct {
+	Requests float64 `json:"requests"`
+	Errors   float64 `json:"errors"`
+}
+
+type dashboardSummaryStatus struct {
+	HealthyBackends int `json:"healthy_backends"`
+	RecentErrors    int `json:"recent_errors"`
+	ActiveClients   int `json:"active_clients"`
+}
+
+type dashboardSparkPoint struct {
+	Label    string `json:"label"`
+	Requests int    `json:"requests"`
+}
+
+type dashboardUsageResponse struct {
+	Range  string                `json:"range"`
+	Series []dashboardUsagePoint `json:"series"`
+}
+
+type dashboardUsagePoint struct {
+	Label        string  `json:"label"`
+	Requests     int     `json:"requests"`
+	TrafficBytes int64   `json:"traffic_bytes"`
+	ErrorRate    float64 `json:"error_rate"`
+}
+
+type dashboardActivityResponse struct {
+	Events  []domain.AuditEvent        `json:"events"`
+	Usage   []domain.UsageLog          `json:"usage"`
+	Summary []dashboardActivitySummary `json:"summary"`
+}
+
+type dashboardActivitySummary struct {
+	Category string `json:"category"`
+	Count    int    `json:"count"`
+}
+
+type searchResponse struct {
+	Query   string                `json:"query"`
+	Results searchResultsResponse `json:"results"`
+}
+
+type searchResultsResponse struct {
+	Backends   []searchResultItem `json:"backends"`
+	ClientKeys []searchResultItem `json:"client_keys"`
+	Policies   []searchResultItem `json:"policies"`
+	Proxies    []searchResultItem `json:"proxies"`
+	UsageLogs  []searchResultItem `json:"usage_logs"`
+	Events     []searchResultItem `json:"events"`
+}
+
+type searchResultItem struct {
+	Kind       string         `json:"kind"`
+	ID         int64          `json:"id"`
+	Title      string         `json:"title"`
+	Subtitle   string         `json:"subtitle"`
+	Meta       map[string]any `json:"meta"`
+	Status     string         `json:"status"`
+	TargetPage string         `json:"target_page"`
+	TargetID   int64          `json:"target_id"`
+}
+
+type detailPlaceholderResponse struct {
+	Overview      detailOverviewPlaceholder      `json:"overview"`
+	Configuration detailConfigurationPlaceholder `json:"configuration"`
+	Metadata      detailMetadataPlaceholder      `json:"metadata"`
+	Raw           detailRawPlaceholder           `json:"raw"`
+	Activity      detailActivityPlaceholder      `json:"activity"`
+}
+
+type detailOverviewPlaceholder struct{}
+
+type detailConfigurationPlaceholder struct{}
+
+type detailMetadataPlaceholder struct {
+	ID int64 `json:"id"`
+}
+
+type detailRawPlaceholder struct{}
+
+type detailActivityPlaceholder struct {
+	Usage    []domain.UsageLog   `json:"usage"`
+	Events   []domain.AuditEvent `json:"events"`
+	Backends []domain.Backend    `json:"backends"`
+}
+
 type backendView struct {
 	domain.Backend
 	RecentStats backendRecentStats `json:"recent_stats"`
@@ -121,19 +223,27 @@ func (a *App) routes() {
 	a.mux.Handle("/v1/", a.clientAuth(http.HandlerFunc(a.handleProxy)))
 
 	a.mux.Handle("GET /admin/api/overview", a.adminAuth(http.HandlerFunc(a.handleOverview)))
+	a.mux.Handle("GET /admin/api/dashboard/summary", a.adminAuth(http.HandlerFunc(a.handleDashboardSummary)))
+	a.mux.Handle("GET /admin/api/dashboard/usage", a.adminAuth(http.HandlerFunc(a.handleDashboardUsage)))
+	a.mux.Handle("GET /admin/api/dashboard/activity", a.adminAuth(http.HandlerFunc(a.handleDashboardActivity)))
+	a.mux.Handle("GET /admin/api/search", a.adminAuth(http.HandlerFunc(a.handleSearch)))
 	a.mux.Handle("GET /admin/api/socks-proxies", a.adminAuth(http.HandlerFunc(a.handleListSocksProxies)))
+	a.mux.Handle("GET /admin/api/socks-proxies/{id}/detail", a.adminAuth(http.HandlerFunc(a.handleSocksProxyDetail)))
 	a.mux.Handle("POST /admin/api/socks-proxies", a.adminAuth(http.HandlerFunc(a.handleCreateSocksProxy)))
 	a.mux.Handle("PUT /admin/api/socks-proxies/{id}", a.adminAuth(http.HandlerFunc(a.handleUpdateSocksProxy)))
 	a.mux.Handle("DELETE /admin/api/socks-proxies/{id}", a.adminAuth(http.HandlerFunc(a.handleDeleteSocksProxy)))
 	a.mux.Handle("GET /admin/api/backends", a.adminAuth(http.HandlerFunc(a.handleListBackends)))
+	a.mux.Handle("GET /admin/api/backends/{id}/detail", a.adminAuth(http.HandlerFunc(a.handleBackendDetail)))
 	a.mux.Handle("POST /admin/api/backends", a.adminAuth(http.HandlerFunc(a.handleCreateBackend)))
 	a.mux.Handle("PUT /admin/api/backends/{id}", a.adminAuth(http.HandlerFunc(a.handleUpdateBackend)))
 	a.mux.Handle("DELETE /admin/api/backends/{id}", a.adminAuth(http.HandlerFunc(a.handleDeleteBackend)))
 	a.mux.Handle("GET /admin/api/client-keys", a.adminAuth(http.HandlerFunc(a.handleListClientKeys)))
+	a.mux.Handle("GET /admin/api/client-keys/{id}/detail", a.adminAuth(http.HandlerFunc(a.handleClientKeyDetail)))
 	a.mux.Handle("POST /admin/api/client-keys", a.adminAuth(http.HandlerFunc(a.handleCreateClientKey)))
 	a.mux.Handle("PUT /admin/api/client-keys/{id}", a.adminAuth(http.HandlerFunc(a.handleUpdateClientKey)))
 	a.mux.Handle("DELETE /admin/api/client-keys/{id}", a.adminAuth(http.HandlerFunc(a.handleDeleteClientKey)))
 	a.mux.Handle("GET /admin/api/model-policies", a.adminAuth(http.HandlerFunc(a.handleListPolicies)))
+	a.mux.Handle("GET /admin/api/model-policies/{id}/detail", a.adminAuth(http.HandlerFunc(a.handlePolicyDetail)))
 	a.mux.Handle("POST /admin/api/model-policies", a.adminAuth(http.HandlerFunc(a.handleCreatePolicy)))
 	a.mux.Handle("PUT /admin/api/model-policies/{id}", a.adminAuth(http.HandlerFunc(a.handleUpdatePolicy)))
 	a.mux.Handle("DELETE /admin/api/model-policies/{id}", a.adminAuth(http.HandlerFunc(a.handleDeletePolicy)))
@@ -514,6 +624,44 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *App) handleDashboardSummary(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, dashboardSummaryResponse{
+		Counts:    dashboardSummaryCounts{},
+		Growth:    dashboardSummaryGrowth{},
+		Status:    dashboardSummaryStatus{},
+		Sparkline: []dashboardSparkPoint{},
+	})
+}
+
+func (a *App) handleDashboardUsage(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, dashboardUsageResponse{
+		Range:  strings.TrimSpace(r.URL.Query().Get("range")),
+		Series: []dashboardUsagePoint{},
+	})
+}
+
+func (a *App) handleDashboardActivity(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, dashboardActivityResponse{
+		Events:  []domain.AuditEvent{},
+		Usage:   []domain.UsageLog{},
+		Summary: []dashboardActivitySummary{},
+	})
+}
+
+func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, searchResponse{
+		Query: strings.TrimSpace(r.URL.Query().Get("q")),
+		Results: searchResultsResponse{
+			Backends:   []searchResultItem{},
+			ClientKeys: []searchResultItem{},
+			Policies:   []searchResultItem{},
+			Proxies:    []searchResultItem{},
+			UsageLogs:  []searchResultItem{},
+			Events:     []searchResultItem{},
+		},
+	})
+}
+
 func (a *App) handleListSocksProxies(w http.ResponseWriter, r *http.Request) {
 	page, limit := parsePageQuery(r)
 	total, err := a.store.CountSocksProxies(r.Context())
@@ -622,6 +770,10 @@ func (a *App) handleDeleteSocksProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
+}
+
+func (a *App) handleSocksProxyDetail(w http.ResponseWriter, r *http.Request) {
+	a.handlePlaceholderDetail(w, r)
 }
 
 func (a *App) handleListBackends(w http.ResponseWriter, r *http.Request) {
@@ -790,6 +942,10 @@ func (a *App) handleDeleteBackend(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
 }
 
+func (a *App) handleBackendDetail(w http.ResponseWriter, r *http.Request) {
+	a.handlePlaceholderDetail(w, r)
+}
+
 func (a *App) handleListClientKeys(w http.ResponseWriter, r *http.Request) {
 	page, limit := parsePageQuery(r)
 	total, err := a.store.CountClientKeys(r.Context())
@@ -914,6 +1070,10 @@ func (a *App) handleDeleteClientKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
 }
 
+func (a *App) handleClientKeyDetail(w http.ResponseWriter, r *http.Request) {
+	a.handlePlaceholderDetail(w, r)
+}
+
 func (a *App) handleListPolicies(w http.ResponseWriter, r *http.Request) {
 	page, limit := parsePageQuery(r)
 	total, err := a.store.CountModelPolicies(r.Context())
@@ -1010,6 +1170,10 @@ func (a *App) handleDeletePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
+}
+
+func (a *App) handlePolicyDetail(w http.ResponseWriter, r *http.Request) {
+	a.handlePlaceholderDetail(w, r)
 }
 
 func (a *App) handleListEvents(w http.ResponseWriter, r *http.Request) {
@@ -1348,5 +1512,30 @@ func pagedResponse(items any, total, page, limit int) map[string]any {
 		"total": total,
 		"page":  page,
 		"limit": limit,
+	}
+}
+
+func (a *App) handlePlaceholderDetail(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, placeholderDetailResponse(id))
+}
+
+func placeholderDetailResponse(id int64) detailPlaceholderResponse {
+	return detailPlaceholderResponse{
+		Overview:      detailOverviewPlaceholder{},
+		Configuration: detailConfigurationPlaceholder{},
+		Metadata: detailMetadataPlaceholder{
+			ID: id,
+		},
+		Raw: detailRawPlaceholder{},
+		Activity: detailActivityPlaceholder{
+			Usage:    []domain.UsageLog{},
+			Events:   []domain.AuditEvent{},
+			Backends: []domain.Backend{},
+		},
 	}
 }
