@@ -116,6 +116,28 @@ test("createQuickDetailSections surfaces proxy bindings and usage summary", () =
   ]);
 });
 
+test("createQuickDetailSections surfaces policy routing and usage summary", () => {
+  const sections = createQuickDetailSections("policies", {
+    pattern: "gpt-*",
+    endpoint: "chat",
+    placement_policy: "sticky",
+    backend_pool: "premium",
+    priority: 10,
+    failover_enabled: true,
+    request_count: 23,
+    backend_count: 4,
+    model_count: 7,
+    last_used_at: "2026-06-19T15:00:00Z",
+  });
+
+  assert.deepEqual(sections, [
+    { title: "Relationships", items: ["Pool premium", "Endpoint chat"] },
+    { title: "Routing", items: ["Placement sticky", "Priority 10", "Failover on"] },
+    { title: "Usage", items: ["23 requests", "4 backends", "7 models", "Last used 2026-06-19T15:00:00Z"] },
+    { title: "JSON Preview", items: ['"pattern":"gpt-*"', '"failover_enabled":true'] },
+  ]);
+});
+
 test("paginateResourceRows uses local filtered totals and clamps out-of-range pages", () => {
   assert.deepEqual(
     paginateResourceRows(

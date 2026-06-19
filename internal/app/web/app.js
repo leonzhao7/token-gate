@@ -2354,11 +2354,11 @@ function renderPolicies() {
           <thead>
             <tr>
               <th>Pattern</th>
-              <th>Endpoint</th>
-              <th>Placement</th>
-              <th>Pool</th>
-              <th>Priority</th>
-              <th>Failover</th>
+              <th>Routing</th>
+              <th>Usage</th>
+              <th>Coverage</th>
+              <th>Last Used</th>
+              <th>Updated</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -2523,12 +2523,16 @@ function renderPolicyRow(policy) {
           <span class="chevron">${expanded ? "收起" : "展开"}</span>
           <span>${escapeHTML(policy.pattern)}</span>
         </button>
+        <div class="cell-subtitle">${escapeHTML(policy.endpoint)}</div>
       </td>
-      <td>${escapeHTML(policy.endpoint)}</td>
-      <td><span class="chip">${escapeHTML(policy.placement_policy)}</span></td>
-      <td>${escapeHTML(policy.backend_pool || "-")}</td>
-      <td>${policy.priority}</td>
-      <td>${statusPill(policy.failover_enabled, "on", "off")}</td>
+      <td>
+        <div><span class="chip">${escapeHTML(policy.placement_policy)}</span></div>
+        <div class="cell-subtitle">${escapeHTML(formatPolicyRouting(policy))}</div>
+      </td>
+      <td>${escapeHTML(formatUsageCount(policy.request_count))}</td>
+      <td>${escapeHTML(formatPolicyCoverage(policy))}</td>
+      <td>${escapeHTML(formatDateTime(policy.last_used_at))}</td>
+      <td>${escapeHTML(formatDateTime(policy.updated_at))}</td>
       <td>${tableActions("policy", policy.id)}</td>
     </tr>
     ${expanded ? `
@@ -3576,6 +3580,12 @@ function formatBackendCoverage(backend) {
   return `${modelCount} models / ${endpointCount} endpoints`;
 }
 
+function formatPolicyCoverage(policy) {
+  const backendCount = Number(policy?.backend_count || 0);
+  const modelCount = Number(policy?.model_count || 0);
+  return `${Number.isFinite(backendCount) ? backendCount : 0} backends / ${Number.isFinite(modelCount) ? modelCount : 0} models`;
+}
+
 function formatLatency(value) {
   const latency = Number(value || 0);
   if (!Number.isFinite(latency) || latency <= 0) {
@@ -3614,6 +3624,15 @@ function formatBackendRouting(backend) {
   const parts = [
     backend?.pool ? `pool ${backend.pool}` : "",
     proxyLabel(backend?.proxy_id, backend?.proxy),
+  ].filter(Boolean);
+  return parts.join(" | ") || "-";
+}
+
+function formatPolicyRouting(policy) {
+  const parts = [
+    policy?.backend_pool ? `pool ${policy.backend_pool}` : "",
+    Number.isFinite(Number(policy?.priority)) ? `priority ${policy.priority}` : "",
+    policy?.failover_enabled ? "failover on" : "failover off",
   ].filter(Boolean);
   return parts.join(" | ") || "-";
 }

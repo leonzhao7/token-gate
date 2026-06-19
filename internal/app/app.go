@@ -176,6 +176,14 @@ type clientKeyView struct {
 	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
 }
 
+type policyView struct {
+	domain.ModelPolicy
+	RequestCount int        `json:"request_count"`
+	BackendCount int        `json:"backend_count"`
+	ModelCount   int        `json:"model_count"`
+	LastUsedAt   *time.Time `json:"last_used_at,omitempty"`
+}
+
 type proxyView struct {
 	domain.SocksProxy
 	BoundBackendCount int        `json:"bound_backend_count"`
@@ -1348,7 +1356,24 @@ func (a *App) handleListPolicies(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, pagedResponse(ensureModelPolicies(policies), total, page, limit))
+	summaries, err := a.store.PolicyUsageSummaryByIDs(r.Context(), modelPolicyIDs(policies))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response := make([]policyView, 0, len(policies))
+	for _, policy := range policies {
+		summary := summaries[policy.ID]
+		response = append(response, policyView{
+			ModelPolicy:  policy,
+			RequestCount: summary.RequestCount,
+			BackendCount: summary.BackendCount,
+			ModelCount:   summary.ModelCount,
+			LastUsedAt:   optionalTime(summary.LastUsedAt),
+		})
+	}
+	writeJSON(w, http.StatusOK, pagedResponse(ensurePolicyViews(response), total, page, limit))
 }
 
 func (a *App) handleCreatePolicy(w http.ResponseWriter, r *http.Request) {
@@ -2025,6 +2050,13 @@ func ensureModelPolicies(values []domain.ModelPolicy) []domain.ModelPolicy {
 	return values
 }
 
+func ensurePolicyViews(values []policyView) []policyView {
+	if values == nil {
+		return []policyView{}
+	}
+	return values
+}
+
 func ensureAuditEvents(values []domain.AuditEvent) []domain.AuditEvent {
 	if values == nil {
 		return []domain.AuditEvent{}
@@ -2061,6 +2093,17 @@ func clientKeyIDs(values []domain.ClientKey) []int64 {
 }
 
 func socksProxyIDs(values []domain.SocksProxy) []int64 {
+	if len(values) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(values))
+	for _, value := range values {
+		ids = append(ids, value.ID)
+	}
+	return ids
+}
+
+func modelPolicyIDs(values []domain.ModelPolicy) []int64 {
 	if len(values) == 0 {
 		return nil
 	}

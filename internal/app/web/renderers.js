@@ -97,10 +97,20 @@
           ]),
         },
         {
-          title: "Capabilities",
+          title: "Routing",
           items: compactItems([
             source.placement_policy ? `Placement ${source.placement_policy}` : "",
             typeof source.priority !== "undefined" ? `Priority ${source.priority}` : "",
+            typeof source.failover_enabled === "boolean" ? `Failover ${source.failover_enabled ? "on" : "off"}` : "",
+          ]),
+        },
+        {
+          title: "Usage",
+          items: compactItems([
+            Number.isFinite(Number(source.request_count)) ? `${Number(source.request_count)} requests` : "",
+            Number.isFinite(Number(source.backend_count)) ? `${Number(source.backend_count)} backends` : "",
+            Number.isFinite(Number(source.model_count)) ? `${Number(source.model_count)} models` : "",
+            source.last_used_at ? `Last used ${source.last_used_at}` : "",
           ]),
         },
         {

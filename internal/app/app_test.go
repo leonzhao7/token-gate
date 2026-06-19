@@ -797,6 +797,100 @@ func TestAdminSocksProxyListIncludesBindingAndUsageSummary(t *testing.T) {
 	}
 }
 
+func TestPolicyListIncludesUsageSummary(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	policy := createTestPolicy(t, application, domain.ModelPolicy{
+		Pattern:         "alpha-*",
+		Endpoint:        domain.EndpointChat,
+		PlacementPolicy: domain.PlacementSticky,
+		BackendPool:     "alpha-pool",
+		FailoverEnabled: true,
+		Priority:        10,
+	})
+
+	for index, entry := range []domain.UsageLog{
+		{
+			RequestID:         "policy-list-1",
+			ClientID:          1,
+			ClientName:        "client-a",
+			ClientTokenPrefix: "cli-a",
+			Method:            http.MethodPost,
+			Path:              "/v1/chat/completions",
+			Endpoint:          domain.EndpointChat,
+			Model:             "alpha-1",
+			PolicyID:          policy.ID,
+			PolicyName:        policy.Pattern,
+			BackendID:         11,
+			BackendName:       "backend-a",
+			Attempts:          1,
+			StatusCode:        http.StatusOK,
+			DurationMS:        40,
+		},
+		{
+			RequestID:         "policy-list-2",
+			ClientID:          2,
+			ClientName:        "client-b",
+			ClientTokenPrefix: "cli-b",
+			Method:            http.MethodPost,
+			Path:              "/v1/chat/completions",
+			Endpoint:          domain.EndpointChat,
+			Model:             "alpha-2",
+			PolicyID:          policy.ID,
+			PolicyName:        policy.Pattern,
+			BackendID:         12,
+			BackendName:       "backend-b",
+			Attempts:          1,
+			StatusCode:        http.StatusTooManyRequests,
+			DurationMS:        80,
+		},
+	} {
+		if err := application.store.AppendUsageLog(ctx, entry); err != nil {
+			t.Fatalf("append usage log %d: %v", index+1, err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/model-policies", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected policy list status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID           int64      `json:"id"`
+			RequestCount int        `json:"request_count"`
+			BackendCount int        `json:"backend_count"`
+			ModelCount   int        `json:"model_count"`
+			LastUsedAt   *time.Time `json:"last_used_at"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal policy list: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one policy item, got %#v", payload.Items)
+	}
+	item := payload.Items[0]
+	if item.ID != policy.ID {
+		t.Fatalf("expected policy id %d, got %#v", policy.ID, item)
+	}
+	if item.RequestCount != 2 {
+		t.Fatalf("expected request_count 2, got %#v", item)
+	}
+	if item.BackendCount != 2 || item.ModelCount != 2 {
+		t.Fatalf("expected backend/model counts 2/2, got %#v", item)
+	}
+	if item.LastUsedAt == nil || item.LastUsedAt.IsZero() {
+		t.Fatalf("expected last_used_at populated, got %#v", item)
+	}
+}
+
 func TestAdminOverviewAndListsReturnEmptyArrays(t *testing.T) {
 	application := newTestApp(t)
 

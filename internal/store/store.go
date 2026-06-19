@@ -44,6 +44,13 @@ type BackendUsageSummary struct {
 	LastUsedAt   time.Time
 }
 
+type PolicyUsageSummary struct {
+	RequestCount int
+	BackendCount int
+	ModelCount   int
+	LastUsedAt   time.Time
+}
+
 type UsageLogFilter struct {
 	BackendName string
 	Model       string
@@ -1429,6 +1436,50 @@ func (s *Store) BackendUsageSummaryByIDs(ctx context.Context, ids []int64) (map[
 		out[backendID] = BackendUsageSummary{
 			RequestCount: requests,
 			AvgLatencyMS: avgLatency,
+			LastUsedAt:   parseTime(lastUsed),
+		}
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) PolicyUsageSummaryByIDs(ctx context.Context, ids []int64) (map[int64]PolicyUsageSummary, error) {
+	if len(ids) == 0 {
+		return map[int64]PolicyUsageSummary{}, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT policy_id, COUNT(*), COUNT(DISTINCT backend_name), COUNT(DISTINCT model), MAX(created_at)
+		FROM usage_logs
+		WHERE policy_id IN (`+placeholders+`)
+		GROUP BY policy_id
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[int64]PolicyUsageSummary, len(ids))
+	for rows.Next() {
+		var (
+			policyID     int64
+			requests     int
+			backendCount int
+			modelCount   int
+			lastUsed     string
+		)
+		if err := rows.Scan(&policyID, &requests, &backendCount, &modelCount, &lastUsed); err != nil {
+			return nil, err
+		}
+		out[policyID] = PolicyUsageSummary{
+			RequestCount: requests,
+			BackendCount: backendCount,
+			ModelCount:   modelCount,
 			LastUsedAt:   parseTime(lastUsed),
 		}
 	}
