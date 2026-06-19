@@ -53,6 +53,7 @@
     { key: "key", label: "Key Creations", tone: "neutral" },
     { key: "backend", label: "Backend Updates", tone: "success" },
   ];
+  const DASHBOARD_RANGE_OPTIONS = ["24h", "7d", "30d"];
 
   function createDashboardState() {
     return {
@@ -160,6 +161,17 @@
         createdAt: String(entry?.created_at || ""),
       })),
     };
+  }
+
+  function createDashboardRangeOptions(activeRange) {
+    const normalized = DASHBOARD_RANGE_OPTIONS.includes(String(activeRange || "").trim())
+      ? String(activeRange).trim()
+      : "7d";
+    return DASHBOARD_RANGE_OPTIONS.map((key) => ({
+      key,
+      label: key,
+      active: key === normalized,
+    }));
   }
 
   function applyDashboardSummaryPayload(state, summary, targetKey = "") {
@@ -336,6 +348,7 @@
     applyDashboardActivityPayload,
     applyDashboardSummaryError,
     applyDashboardSummaryPayload,
+    createDashboardRangeOptions,
     createDashboardState,
     createDashboardActivityState,
     createDashboardSummaryCards,

@@ -1283,12 +1283,27 @@ function renderDashboardUsageCard() {
   const selectedMetric = usageData.metrics?.[activeMetric];
   const values = usageData.points.map((point) => usageValueForMetric(point, activeMetric));
   const chart = renderAreaChart(values, usageData.points.map((point) => point.label), { width: 720, height: 260, padding: 22 });
+  const rangeOptions = typeof DashboardUtils.createDashboardRangeOptions === "function"
+    ? DashboardUtils.createDashboardRangeOptions(usageData.range || state.dashboard.usage.range)
+    : [];
 
   return renderDashboardPanelFrame({
     eyebrow: "Usage Overview",
     title: "Traffic intelligence",
     subtitle: `Range ${escapeHTML(usageData.range || state.dashboard.usage.range)}`,
     body: `
+      <div class="dashboard-range-switch" role="tablist" aria-label="Usage range">
+        ${rangeOptions.map((option) => `
+          <button
+            class="dashboard-range-chip ${option.active ? "active" : ""}"
+            type="button"
+            data-dashboard-range="${escapeHTML(option.key)}"
+            aria-pressed="${String(option.active)}"
+          >
+            ${escapeHTML(option.label)}
+          </button>
+        `).join("")}
+      </div>
       <div class="dashboard-metric-tabs" role="tablist" aria-label="Usage metrics">
         ${metrics.map((metric) => `
           <button
@@ -1533,6 +1548,17 @@ function usageValueForMetric(point, metric) {
 }
 
 function bindDashboardInteractions() {
+  dashboardRoot?.querySelectorAll("[data-dashboard-range]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextRange = button.dataset.dashboardRange || "7d";
+      if (state.dashboard.usage.range === nextRange) {
+        return;
+      }
+      state.dashboard.usage.range = nextRange;
+      refreshDashboardUsagePanel().catch(reportError);
+    });
+  });
+
   dashboardRoot?.querySelectorAll("[data-dashboard-metric]").forEach((button) => {
     button.addEventListener("click", () => {
       state.dashboard.usage.metric = button.dataset.dashboardMetric || "requests";
@@ -1546,6 +1572,26 @@ function bindDashboardInteractions() {
       retryDashboardSection(target).catch(reportError);
     });
   });
+}
+
+async function refreshDashboardUsagePanel() {
+  state.dashboard.usage.status = "loading";
+  state.dashboard.usage.error = "";
+  state.dashboard.usage.data = null;
+  renderDashboardShell();
+  try {
+    const payload = await api(`/admin/api/dashboard/usage?range=${encodeURIComponent(state.dashboard.usage.range)}`);
+    state.dashboard.usage.data = typeof DashboardUtils.createDashboardUsageState === "function"
+      ? DashboardUtils.createDashboardUsageState(payload)
+      : null;
+    state.dashboard.usage.status = (state.dashboard.usage.data?.points || []).length ? "ready" : "empty";
+    state.dashboard.usage.error = "";
+  } catch (error) {
+    state.dashboard.usage.status = "failed";
+    state.dashboard.usage.error = error?.message || "Failed to load usage";
+    state.dashboard.usage.data = null;
+  }
+  renderDashboardShell();
 }
 
 async function retryDashboardSection(target) {

@@ -825,6 +825,7 @@ func (s *Store) DashboardUsageSeries(ctx context.Context, now time.Time, rangeKe
 				continue
 			}
 			series[index].Requests++
+			series[index].TrafficBytes += log.RequestBytes + log.ResponseBytes
 			if domain.IsBackendFailureStatus(log.StatusCode) {
 				failures[index]++
 			}
@@ -861,6 +862,7 @@ func (s *Store) DashboardUsageSeries(ctx context.Context, now time.Time, rangeKe
 			continue
 		}
 		series[index].Requests++
+		series[index].TrafficBytes += log.RequestBytes + log.ResponseBytes
 		if domain.IsBackendFailureStatus(log.StatusCode) {
 			failures[index]++
 		}

@@ -2270,6 +2270,8 @@ func TestDashboardUsageReturnsSeries(t *testing.T) {
 		Attempts:          1,
 		StatusCode:        http.StatusOK,
 		DurationMS:        256,
+		RequestBytes:      120,
+		ResponseBytes:     880,
 	}); err != nil {
 		t.Fatalf("append usage log 1: %v", err)
 	}
@@ -2287,6 +2289,8 @@ func TestDashboardUsageReturnsSeries(t *testing.T) {
 		Attempts:          1,
 		StatusCode:        http.StatusBadGateway,
 		DurationMS:        512,
+		RequestBytes:      64,
+		ResponseBytes:     256,
 		ErrorMessage:      "upstream failed",
 	}); err != nil {
 		t.Fatalf("append usage log 2: %v", err)
@@ -2323,6 +2327,9 @@ func TestDashboardUsageReturnsSeries(t *testing.T) {
 	latest := payload.Series[len(payload.Series)-1]
 	if latest.Requests != 2 {
 		t.Fatalf("expected latest requests=2, got %#v", latest)
+	}
+	if latest.TrafficBytes != 1320 {
+		t.Fatalf("expected latest traffic_bytes=1320, got %#v", latest)
 	}
 	if latest.ErrorRate <= 0 {
 		t.Fatalf("expected latest error rate > 0, got %#v", latest)

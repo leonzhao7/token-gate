@@ -8,6 +8,7 @@ const {
   applyDashboardActivityPayload,
   applyDashboardSummaryError,
   applyDashboardSummaryPayload,
+  createDashboardRangeOptions,
   createDashboardState,
   createDashboardSummaryCards,
   createDashboardUsageState,
@@ -89,6 +90,19 @@ test("createDashboardUsageState normalizes series and exposes metric summaries",
     value: "5.0%",
     delta: "-15.0%",
   });
+});
+
+test("createDashboardRangeOptions marks the active dashboard range", () => {
+  assert.deepEqual(createDashboardRangeOptions("30d"), [
+    { key: "24h", label: "24h", active: false },
+    { key: "7d", label: "7d", active: false },
+    { key: "30d", label: "30d", active: true },
+  ]);
+  assert.deepEqual(createDashboardRangeOptions("unexpected"), [
+    { key: "24h", label: "24h", active: false },
+    { key: "7d", label: "7d", active: true },
+    { key: "30d", label: "30d", active: false },
+  ]);
 });
 
 test("createDashboardActivityState builds event counters and trims recent lists", () => {
