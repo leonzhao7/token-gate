@@ -755,6 +755,30 @@ Recommended structure:
 
 The exact file split can be adapted to the current repository, but the implementation must reduce the current monolithic frontend structure.
 
+### File Size Guardrails
+
+To keep the admin console maintainable during iterative delivery, future work should avoid growing individual source files into oversized monoliths.
+
+Guardrails:
+
+- Prefer keeping frontend source files below roughly `60 KB`
+- Prefer keeping backend source files below roughly `80 KB`
+- Prefer keeping test files below roughly `80 KB`
+- If a file approaches these limits, new work should first extract a focused module instead of appending more logic
+- Split by responsibility, not by arbitrary line count:
+  - page rendering
+  - list row builders
+  - drawer composition
+  - dashboard panels
+  - observability views
+  - state helpers
+- Avoid creating another “god file” during refactors; each extracted module should own a clear surface and be testable in isolation
+
+Current priority:
+
+- Continue shrinking `internal/app/web/app.js`
+- Avoid further growth in `internal/app/app_test.go`
+
 ## Accessibility and UX Rules
 
 The redesign must remain practical and keyboard-friendly.

@@ -162,9 +162,11 @@ const RESOURCE_VIEW_CONFIG = {
 const ThemeUtils = globalThis.ThemeUtils || {};
 const SearchUtils = globalThis.SearchUtils || {};
 const DashboardUtils = globalThis.DashboardUtils || {};
+const DashboardViewUtils = globalThis.DashboardViewUtils || {};
 const ChartsUtils = globalThis.ChartsUtils || {};
 const DrawerUtils = globalThis.DrawerUtils || {};
 const ObservabilityUtils = globalThis.ObservabilityUtils || {};
+const ObservabilityViewUtils = globalThis.ObservabilityViewUtils || {};
 const RendererUtils = globalThis.RendererUtils || {};
 const SettingsUtils = globalThis.SettingsUtils || {};
 const systemThemeQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -1227,296 +1229,59 @@ function renderSearchShell() {
 }
 
 function renderDashboardSummaryRow() {
-  const order = ["backends", "client_keys", "policies", "proxies"];
-  return order.map((key, index) => {
-    const cardState = state.dashboard.summaryCards?.[key];
-    if (!cardState || cardState.status === "loading") {
-      return renderDashboardLoadingCard("Loading summary");
-    }
-    if (cardState.status === "failed") {
-      return renderDashboardFailedCard({
-        title: `Summary ${index + 1}`,
-        description: cardState.error || "Summary unavailable",
-        action: `summary:${key}`,
-      });
-    }
-    if (cardState.status === "empty" || !cardState.data) {
-      return renderDashboardEmptyCard({
-        title: `Summary ${index + 1}`,
-        description: "No dashboard summary data yet.",
-      });
-    }
-
-    const card = cardState.data;
-    const sparkline = renderSparkline(card.sparkline, {
-      width: 150,
-      height: 54,
-      padding: 5,
-      className: `sparkline-chart tone-${escapeHTML(card.tone)}`,
+  if (typeof DashboardViewUtils.renderDashboardSummaryRow === "function") {
+    return DashboardViewUtils.renderDashboardSummaryRow({
+      dashboard: state.dashboard,
+      renderSparkline,
+      escapeHTML,
     });
-    return `
-      <article class="dashboard-card dashboard-summary-card">
-        <div class="dashboard-card-head">
-          <span class="section-label">Signal</span>
-          <span class="dashboard-trend tone-${escapeHTML(card.tone)}">${escapeHTML(card.trend)}</span>
-        </div>
-        <div class="dashboard-card-value-row">
-          <div>
-            <strong>${escapeHTML(card.value)}</strong>
-            <h3>${escapeHTML(card.label)}</h3>
-            <p>${escapeHTML(card.detail)}</p>
-          </div>
-          ${sparkline}
-        </div>
-      </article>
-    `;
-  }).join("");
+  }
+  return "";
 }
 
 function renderDashboardUsageCard() {
-  const usageState = state.dashboard.usage;
-  if (usageState.status === "loading") {
-    return renderDashboardPanelFrame({
-      eyebrow: "Usage Overview",
-      title: "Traffic intelligence",
-      body: renderDashboardLoadingCard("Loading usage"),
+  if (typeof DashboardViewUtils.renderDashboardUsageCard === "function") {
+    return DashboardViewUtils.renderDashboardUsageCard({
+      dashboard: state.dashboard,
+      createDashboardRangeOptions: DashboardUtils.createDashboardRangeOptions,
+      renderAreaChart,
+      escapeHTML,
     });
   }
-  if (usageState.status === "failed") {
-    return renderDashboardPanelFrame({
-      eyebrow: "Usage Overview",
-      title: "Traffic intelligence",
-      body: renderDashboardFailedCard({
-        title: "Usage unavailable",
-        description: usageState.error || "Unable to fetch usage series.",
-        action: "usage",
-      }),
-    });
-  }
-  if (usageState.status === "empty") {
-    return renderDashboardPanelFrame({
-      eyebrow: "Usage Overview",
-      title: "Traffic intelligence",
-      body: renderDashboardEmptyCard({
-        title: "No usage yet",
-        description: "Requests, traffic, and error rates will appear after proxy traffic arrives.",
-      }),
-    });
-  }
-
-  const usageData = usageState.data || { points: [], metrics: {} };
-  const metrics = Object.values(usageData.metrics || {});
-  const activeMetric = state.dashboard.usage.metric in (usageData.metrics || {}) ? state.dashboard.usage.metric : "requests";
-  state.dashboard.usage.metric = activeMetric;
-  const selectedMetric = usageData.metrics?.[activeMetric];
-  const values = usageData.points.map((point) => usageValueForMetric(point, activeMetric));
-  const chart = renderAreaChart(values, usageData.points.map((point) => point.label), { width: 720, height: 260, padding: 22 });
-  const rangeOptions = typeof DashboardUtils.createDashboardRangeOptions === "function"
-    ? DashboardUtils.createDashboardRangeOptions(usageData.range || state.dashboard.usage.range)
-    : [];
-
-  return renderDashboardPanelFrame({
-    eyebrow: "Usage Overview",
-    title: "Traffic intelligence",
-    subtitle: `Range ${escapeHTML(usageData.range || state.dashboard.usage.range)}`,
-    body: `
-      <div class="dashboard-range-switch" role="tablist" aria-label="Usage range">
-        ${rangeOptions.map((option) => `
-          <button
-            class="dashboard-range-chip ${option.active ? "active" : ""}"
-            type="button"
-            data-dashboard-range="${escapeHTML(option.key)}"
-            aria-pressed="${String(option.active)}"
-          >
-            ${escapeHTML(option.label)}
-          </button>
-        `).join("")}
-      </div>
-      <div class="dashboard-metric-tabs" role="tablist" aria-label="Usage metrics">
-        ${metrics.map((metric) => `
-          <button
-            class="dashboard-metric-tab ${metric.key === activeMetric ? "active" : ""}"
-            type="button"
-            data-dashboard-metric="${escapeHTML(metric.key)}"
-            aria-pressed="${String(metric.key === activeMetric)}"
-          >
-            <span>${escapeHTML(metric.label)}</span>
-            <strong>${escapeHTML(metric.value)}</strong>
-            <small>${escapeHTML(metric.delta)}</small>
-          </button>
-        `).join("")}
-      </div>
-      <div class="dashboard-chart-stage">
-        <div class="dashboard-chart-meta">
-          <div>
-            <span class="dashboard-chart-label">${escapeHTML(selectedMetric?.label || "Metric")}</span>
-            <strong>${escapeHTML(selectedMetric?.value ?? "-")}</strong>
-          </div>
-          <span class="dashboard-chart-delta">${escapeHTML(selectedMetric?.delta || "")}</span>
-        </div>
-        ${chart}
-      </div>
-    `,
-  });
+  return "";
 }
 
 function renderDashboardEventsSummaryCard() {
-  const panelState = state.dashboard.eventsSummary;
-  if (panelState.status === "loading") {
-    return renderDashboardPanelFrame({
-      eyebrow: "Events Summary",
-      title: "Control plane activity",
-      body: renderDashboardLoadingCard("Loading events summary"),
+  if (typeof DashboardViewUtils.renderDashboardEventsSummaryCard === "function") {
+    return DashboardViewUtils.renderDashboardEventsSummaryCard({
+      dashboard: state.dashboard,
+      escapeHTML,
     });
   }
-  if (panelState.status === "failed") {
-    return renderDashboardPanelFrame({
-      eyebrow: "Events Summary",
-      title: "Control plane activity",
-      body: renderDashboardFailedCard({
-        title: "Events summary unavailable",
-        description: panelState.error || "Unable to fetch recent activity.",
-        action: "activity:eventsSummary",
-      }),
-    });
-  }
-  if (panelState.status === "empty") {
-    return renderDashboardPanelFrame({
-      eyebrow: "Events Summary",
-      title: "Control plane activity",
-      body: renderDashboardEmptyCard({
-        title: "No recent control plane changes",
-        description: "Warnings, errors, and change events will collect here.",
-      }),
-    });
-  }
-
-  const counters = ensureArray(panelState.data);
-  return renderDashboardPanelFrame({
-    eyebrow: "Events Summary",
-    title: "Control plane activity",
-    body: `
-      <div class="dashboard-counter-grid">
-        ${counters.map((counter) => `
-          <article class="dashboard-counter tone-${escapeHTML(counter.tone)}">
-            <small>${escapeHTML(counter.label)}</small>
-            <strong>${escapeHTML(counter.count)}</strong>
-          </article>
-        `).join("")}
-      </div>
-    `,
-  });
+  return "";
 }
 
 function renderDashboardRecentEventsCard() {
-  return renderDashboardFeedPanel({
-    eyebrow: "Recent Events",
-    title: "Audit trail",
-    stateValue: state.dashboard.recentEvents,
-    action: "activity:recentEvents",
-    emptyTitle: "No recent events",
-    emptyDescription: "Policy, backend, and key changes will surface here.",
-    items: ensureArray(state.dashboard.recentEvents.data).map((event) => `
-      <li class="dashboard-feed-item">
-        <div class="dashboard-feed-copy">
-          <strong>${escapeHTML(event.title)}</strong>
-          <p>${escapeHTML(event.message || "No event message")}</p>
-        </div>
-        <div class="dashboard-feed-meta">
-          <span class="status-pill ${feedToneClass(event.tone)}">${escapeHTML(formatDateTime(event.createdAt))}</span>
-        </div>
-      </li>
-    `),
-  });
+  if (typeof DashboardViewUtils.renderDashboardRecentEventsCard === "function") {
+    return DashboardViewUtils.renderDashboardRecentEventsCard({
+      dashboard: state.dashboard,
+      formatDateTime,
+      escapeHTML,
+      feedToneClass,
+    });
+  }
+  return "";
 }
 
 function renderDashboardRecentUsageCard() {
-  return renderDashboardFeedPanel({
-    eyebrow: "Recent Usage",
-    title: "Latest request samples",
-    stateValue: state.dashboard.recentUsage,
-    action: "activity:recentUsage",
-    emptyTitle: "No recent usage logs",
-    emptyDescription: "Recent request samples will appear after traffic is proxied.",
-    items: ensureArray(state.dashboard.recentUsage.data).map((entry) => `
-      <li class="dashboard-feed-item">
-        <div class="dashboard-feed-copy">
-          <strong>${escapeHTML(entry.client)} · ${escapeHTML(entry.model)}</strong>
-          <p>${escapeHTML(entry.backend)} · ${escapeHTML(entry.requestId)} · ${escapeHTML(entry.duration)} ms</p>
-        </div>
-        <div class="dashboard-feed-meta">
-          <span class="status-pill ${Number(entry.status) >= 400 ? "off" : "ok"}">${escapeHTML(entry.status)}</span>
-          <small>${escapeHTML(formatDateTime(entry.createdAt))}</small>
-        </div>
-      </li>
-    `),
-  });
-}
-
-function renderDashboardFeedPanel({ eyebrow, title, stateValue, action, emptyTitle, emptyDescription, items }) {
-  let body = "";
-  if (stateValue.status === "loading") {
-    body = renderDashboardLoadingCard(`Loading ${title}`);
-  } else if (stateValue.status === "failed") {
-    body = renderDashboardFailedCard({
-      title: `${title} unavailable`,
-      description: stateValue.error || `Unable to fetch ${title.toLowerCase()}.`,
-      action,
+  if (typeof DashboardViewUtils.renderDashboardRecentUsageCard === "function") {
+    return DashboardViewUtils.renderDashboardRecentUsageCard({
+      dashboard: state.dashboard,
+      formatDateTime,
+      escapeHTML,
     });
-  } else if (stateValue.status === "empty" || items.length === 0) {
-    body = renderDashboardEmptyCard({
-      title: emptyTitle,
-      description: emptyDescription,
-    });
-  } else {
-    body = `<ul class="dashboard-feed-list">${items.join("")}</ul>`;
   }
-
-  return renderDashboardPanelFrame({ eyebrow, title, body });
-}
-
-function renderDashboardPanelFrame({ eyebrow, title, subtitle = "", body }) {
-  return `
-    <div class="dashboard-panel-head">
-      <div>
-        <span class="section-label">${escapeHTML(eyebrow)}</span>
-        <h3>${escapeHTML(title)}</h3>
-        ${subtitle ? `<p>${escapeHTML(subtitle)}</p>` : ""}
-      </div>
-    </div>
-    <div class="dashboard-panel-body">
-      ${body}
-    </div>
-  `;
-}
-
-function renderDashboardLoadingCard(label) {
-  return `
-    <div class="dashboard-state dashboard-state-loading" aria-busy="true">
-      <span class="dashboard-state-shimmer"></span>
-      <strong>${escapeHTML(label)}</strong>
-      <p>Fetching the latest dashboard data.</p>
-    </div>
-  `;
-}
-
-function renderDashboardFailedCard({ title, description, action }) {
-  return `
-    <div class="dashboard-state dashboard-state-failed">
-      <strong>${escapeHTML(title)}</strong>
-      <p>${escapeHTML(description)}</p>
-      <button class="ghost-button" type="button" data-dashboard-retry="${escapeHTML(action)}">Retry</button>
-    </div>
-  `;
-}
-
-function renderDashboardEmptyCard({ title, description }) {
-  return `
-    <div class="dashboard-state dashboard-state-empty">
-      <strong>${escapeHTML(title)}</strong>
-      <p>${escapeHTML(description)}</p>
-    </div>
-  `;
+  return "";
 }
 
 function renderSparkline(values, { width, height, padding, className = "" }) {
@@ -2998,9 +2763,6 @@ function renderEvents() {
   const events = state.events;
   syncEventFilterInputs();
   const pageData = currentRemotePageData("events", events);
-  const timelineItems = typeof ObservabilityUtils.createEventTimelineItems === "function"
-    ? ObservabilityUtils.createEventTimelineItems(events)
-    : [];
   const pageTimeline = typeof ObservabilityUtils.createEventTimelineItems === "function"
     ? ObservabilityUtils.createEventTimelineItems(pageData.items)
     : [];
@@ -3008,73 +2770,19 @@ function renderEvents() {
     ? ObservabilityUtils.createEventSummaryModel(state.eventSummary)
     : { total: 0, categories: [], severities: [] };
 
-  eventList.innerHTML = `
-    <div class="observability-shell">
-      <section class="observability-main">
-        ${timelineItems.length === 0
-    ? emptyState(
-      "还没有事件",
-      "配置变更、backend failover 或上游异常会出现在这里。",
-    )
-    : `
-          <div class="timeline-list">
-            ${pageTimeline.map((item) => `
-              <article class="timeline-item tone-${escapeHTML(item.tone)}">
-                <div class="timeline-rail">
-                  <span class="timeline-icon">${escapeHTML(item.icon)}</span>
-                </div>
-                <div
-                  class="timeline-card"
-                  tabindex="0"
-                  role="button"
-                  data-event-row="${escapeHTML(item.id)}"
-                  data-event-title="${escapeHTML(item.title || "Event")}"
-                >
-                  <div class="timeline-card-head">
-                    <div>
-                      <strong>${escapeHTML(item.title)}</strong>
-                      <p>${escapeHTML(item.description)}</p>
-                    </div>
-                    <span class="timeline-stamp">${escapeHTML(formatDateTime(item.timestamp))}</span>
-                  </div>
-                  <div class="timeline-meta">
-                    <span class="status-pill ${feedToneClass(item.tone)}">${escapeHTML(item.category)}</span>
-                    <span>${escapeHTML(item.meta)}</span>
-                    <span>${escapeHTML(item.actor)}</span>
-                  </div>
-                </div>
-              </article>
-            `).join("")}
-          </div>
-        `}
-      </section>
-      <aside class="observability-side">
-        <section class="observability-summary-card">
-          <header>
-            <span class="section-label">Event Summary</span>
-            <strong>${escapeHTML(String(summary.total || 0))} events</strong>
-          </header>
-          <div class="summary-stack">
-            ${summary.categories.map((item) => `
-              <div class="summary-row">
-                <span>${escapeHTML(item.label)}</span>
-                <strong class="tone-${escapeHTML(item.tone)}">${escapeHTML(String(item.count))}</strong>
-              </div>
-            `).join("")}
-          </div>
-          <div class="summary-stack">
-            ${summary.severities.map((item) => `
-              <div class="summary-row">
-                <span>${escapeHTML(item.label)}</span>
-                <strong class="tone-${escapeHTML(item.tone)}">${escapeHTML(String(item.count))}</strong>
-              </div>
-            `).join("")}
-          </div>
-        </section>
-      </aside>
-    </div>
-    ${renderPagination("events", pageData)}
-  `;
+  eventList.innerHTML = typeof ObservabilityViewUtils.renderEventsPage === "function"
+    ? ObservabilityViewUtils.renderEventsPage({
+      events,
+      pageData,
+      timelineItems: pageTimeline,
+      summary,
+      formatDateTime,
+      renderPagination,
+      emptyState,
+      feedToneClass,
+      escapeHTML,
+    })
+    : "";
 
   bindPagination(eventList, "events", refreshAll);
   eventList.querySelectorAll("[data-event-row]").forEach((row) => {
@@ -3108,61 +2816,25 @@ function renderUsageLogs() {
   const rows = typeof ObservabilityUtils.createUsageLogRows === "function"
     ? ObservabilityUtils.createUsageLogRows(logs)
     : [];
-  if (logs.length === 0) {
-    usageLogList.innerHTML = `
-      <div class="observability-stats-grid">
-        ${statsCards.map((card) => `
-          <article class="observability-stat-card">
-            <span class="section-label">${escapeHTML(card.label)}</span>
-            <strong>${escapeHTML(card.value)}</strong>
-            <p class="tone-${escapeHTML(card.tone)}">${escapeHTML(card.detail)}</p>
-          </article>
-        `).join("")}
-      </div>
-      ${emptyState(
-        "还没有使用日志",
-        "有客户端通过 Token Gate 发起请求后，这里会按请求维度记录一条 usage log。",
-      )}
-    `;
-    return;
-  }
   const pageData = currentRemotePageData("usageLogs", logs);
   const pageRows = typeof ObservabilityUtils.createUsageLogRows === "function"
     ? ObservabilityUtils.createUsageLogRows(pageData.items)
     : [];
 
-  usageLogList.innerHTML = `
-    <div class="observability-stats-grid">
-      ${statsCards.map((card) => `
-        <article class="observability-stat-card">
-          <span class="section-label">${escapeHTML(card.label)}</span>
-          <strong>${escapeHTML(card.value)}</strong>
-          <p class="tone-${escapeHTML(card.tone)}">${escapeHTML(card.detail)}</p>
-        </article>
-      `).join("")}
-    </div>
-    <div class="event-table-shell">
-      <div class="event-table usage-log-table">
-        <div class="event-table-head usage-log-head">
-          <span>Timestamp</span>
-          <span>Method</span>
-          <span>Path</span>
-          <span>Status</span>
-          <span>Latency</span>
-          <span>Client Key</span>
-          <span>Backend</span>
-          <span>Proxy</span>
-          <span>Trace ID</span>
-        </div>
-        <div class="event-table-body">
-          ${pageRows.map((row) => `
-            ${renderUsageLogRow(row)}
-          `).join("")}
-        </div>
-      </div>
-    </div>
-    ${renderPagination("usageLogs", pageData)}
-  `;
+  usageLogList.innerHTML = typeof ObservabilityViewUtils.renderUsageLogsPage === "function"
+    ? ObservabilityViewUtils.renderUsageLogsPage({
+      logs,
+      pageData,
+      statsCards,
+      pageRows,
+      expandedUsageLogs: state.expandedUsageLogs,
+      formatDateTime,
+      renderPagination,
+      emptyState,
+      renderUsageLogInlineDetail,
+      escapeHTML,
+    })
+    : "";
 
   bindPagination(usageLogList, "usageLogs", refreshAll);
   usageLogList.querySelectorAll("[data-toggle-usage-log]").forEach((button) => {
@@ -3199,61 +2871,22 @@ function renderUsageLogs() {
 }
 
 function renderUsageLogRow(row) {
-  const expanded = state.expandedUsageLogs.has(String(row.id));
-  return `
-    <div class="usage-log-block ${expanded ? "is-expanded" : ""}">
-      <div
-        class="event-row usage-log-row usage-log-row-button"
-        tabindex="0"
-        data-usage-log-row="${escapeHTML(row.id)}"
-        data-usage-log-title="${escapeHTML(row.requestId || row.model || "Usage Log")}"
-      >
-        <span>
-          <button class="row-title inline-row-toggle" data-toggle-usage-log="${escapeHTML(row.id)}" type="button">
-            <span class="chevron">${expanded ? "收起" : "展开"}</span>
-            <span>${escapeHTML(formatDateTime(row.timestamp))}</span>
-          </button>
-        </span>
-        <span>${escapeHTML(row.method)}</span>
-        <span>${escapeHTML(row.path)}</span>
-        <span><em class="search-status-pill tone-${escapeHTML(row.tone)}">${escapeHTML(row.status)}</em></span>
-        <span>${escapeHTML(row.latency)}</span>
-        <span>${escapeHTML(row.clientKey)}</span>
-        <span>${escapeHTML(row.backend)}</span>
-        <span>${escapeHTML(row.proxy)}</span>
-        <span>${escapeHTML(row.traceId)}</span>
-      </div>
-      ${expanded ? `
-        <div class="usage-log-inline-detail">
-          ${renderUsageLogInlineDetail(row)}
-        </div>
-      ` : ""}
-    </div>
-  `;
+  if (typeof ObservabilityViewUtils.renderUsageLogRow === "function") {
+    return ObservabilityViewUtils.renderUsageLogRow({
+      row,
+      expanded: state.expandedUsageLogs.has(String(row.id)),
+      formatDateTime,
+      renderInlineDetail: () => renderUsageLogInlineDetail(row),
+      escapeHTML,
+    });
+  }
+  return "";
 }
 
 function renderUsageLogInlineDetail(row) {
   const detail = state.usageLogDetailCache.get(String(row.id));
   if (!detail) {
     primeUsageLogDetail(row.id);
-  }
-  if (detail?.error) {
-    return `
-      <div class="usage-log-inline-grid">
-        <article class="usage-log-inline-card">
-          <span class="section-label">Trace ID</span>
-          <strong>${escapeHTML(row.traceId || "-")}</strong>
-        </article>
-        <article class="usage-log-inline-card usage-log-inline-card-wide">
-          <span class="section-label tone-danger">Detail</span>
-          <strong class="tone-danger">${escapeHTML(detail.error)}</strong>
-        </article>
-        <article class="usage-log-inline-card usage-log-inline-card-wide">
-          <span class="section-label">Request</span>
-          <strong>${escapeHTML(row.requestMetadata || "-")}</strong>
-        </article>
-      </div>
-    `;
   }
   const previewItems = typeof ObservabilityUtils.createUsageLogDetailPreview === "function"
     ? ObservabilityUtils.createUsageLogDetailPreview(detail, row)
@@ -3264,24 +2897,16 @@ function renderUsageLogInlineDetail(row) {
       { key: "payload", label: "Payload", value: row.payloadPreview || "-" },
       { key: "response", label: "Response", value: row.responsePreview || "-" },
     ];
-  return `
-    <div class="usage-log-inline-grid">
-      ${previewItems.map((item) => `
-        <article class="usage-log-inline-card ${item.key === "headers" || item.key === "payload" || item.key === "response" ? "usage-log-inline-card-wide" : ""}">
-          <span class="section-label">${escapeHTML(item.label)}</span>
-          <strong>${escapeHTML(item.key === "headers" || item.key === "payload" || item.key === "response" ? formatInlinePreview(item.value) : item.value || "-")}</strong>
-        </article>
-      `).join("")}
-    </div>
-  `;
-}
-
-function formatInlinePreview(value) {
-  const normalized = String(value || "").trim();
-  if (!normalized) {
-    return "-";
+  if (typeof ObservabilityViewUtils.renderUsageLogInlineDetail === "function") {
+    return ObservabilityViewUtils.renderUsageLogInlineDetail({
+      detail,
+      row,
+      previewItems,
+      formatInlinePreview: ObservabilityViewUtils.formatInlinePreview,
+      escapeHTML,
+    });
   }
-  return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
+  return "";
 }
 
 async function primeUsageLogDetail(id) {
