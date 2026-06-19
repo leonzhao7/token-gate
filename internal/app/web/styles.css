@@ -2254,12 +2254,40 @@ button:hover {
 }
 
 .usage-log-inline-detail {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 20px;
   padding: 14px 16px 16px;
   border-top: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface-muted) 76%, var(--surface) 24%);
+}
+
+.usage-log-inline-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.usage-log-inline-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 84%, var(--surface-muted) 16%);
+  box-shadow: var(--shadow-sm);
+}
+
+.usage-log-inline-card strong {
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.usage-log-inline-card-wide {
+  grid-column: 1 / -1;
+}
+
+.usage-log-inline-detail .section-label {
   color: var(--muted);
   font-size: 0.84rem;
 }
@@ -2318,7 +2346,8 @@ button:hover {
   .observability-shell,
   .observability-stats-grid,
   .dashboard-main-grid,
-  .dashboard-detail-grid {
+  .dashboard-detail-grid,
+  .usage-log-inline-grid {
     grid-template-columns: 1fr;
   }
 

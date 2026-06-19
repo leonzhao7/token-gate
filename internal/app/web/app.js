@@ -2982,28 +2982,40 @@ function renderUsageLogInlineDetail(row) {
   }
   if (detail?.error) {
     return `
-      <span>Trace ID: ${escapeHTML(row.traceId || "-")}</span>
-      <span class="tone-danger">Detail: ${escapeHTML(detail.error)}</span>
-      <span>Request: ${escapeHTML(row.requestMetadata || "-")}</span>
-      <span>Headers: -</span>
-      <span>Payload: -</span>
-      <span>Response: -</span>
+      <div class="usage-log-inline-grid">
+        <article class="usage-log-inline-card">
+          <span class="section-label">Trace ID</span>
+          <strong>${escapeHTML(row.traceId || "-")}</strong>
+        </article>
+        <article class="usage-log-inline-card usage-log-inline-card-wide">
+          <span class="section-label tone-danger">Detail</span>
+          <strong class="tone-danger">${escapeHTML(detail.error)}</strong>
+        </article>
+        <article class="usage-log-inline-card usage-log-inline-card-wide">
+          <span class="section-label">Request</span>
+          <strong>${escapeHTML(row.requestMetadata || "-")}</strong>
+        </article>
+      </div>
     `;
   }
-  const request = detail?.request && typeof detail.request === "object" ? detail.request : {};
-  const response = detail?.response && typeof detail.response === "object" ? detail.response : {};
-  const requestHeaders = request.headers || row.headersPreview || "-";
-  const requestPayload = request.body_preview || row.payloadPreview || "-";
-  const responsePreview = response.body_preview || row.responsePreview || "-";
-  const requestMetadata = typeof ObservabilityUtils.formatUsageLogRequestLine === "function"
-    ? ObservabilityUtils.formatUsageLogRequestLine(request, row)
-    : row.requestMetadata;
+  const previewItems = typeof ObservabilityUtils.createUsageLogDetailPreview === "function"
+    ? ObservabilityUtils.createUsageLogDetailPreview(detail, row)
+    : [
+      { key: "trace", label: "Trace ID", value: row.traceId || "-" },
+      { key: "request", label: "Request", value: row.requestMetadata || "-" },
+      { key: "headers", label: "Headers", value: row.headersPreview || "-" },
+      { key: "payload", label: "Payload", value: row.payloadPreview || "-" },
+      { key: "response", label: "Response", value: row.responsePreview || "-" },
+    ];
   return `
-    <span>Trace ID: ${escapeHTML(row.traceId || "-")}</span>
-    <span>Request: ${escapeHTML(requestMetadata || row.requestMetadata || "-")}</span>
-    <span>Headers: ${escapeHTML(formatInlinePreview(requestHeaders))}</span>
-    <span>Payload: ${escapeHTML(formatInlinePreview(requestPayload))}</span>
-    <span>Response: ${escapeHTML(formatInlinePreview(responsePreview))}</span>
+    <div class="usage-log-inline-grid">
+      ${previewItems.map((item) => `
+        <article class="usage-log-inline-card ${item.key === "headers" || item.key === "payload" || item.key === "response" ? "usage-log-inline-card-wide" : ""}">
+          <span class="section-label">${escapeHTML(item.label)}</span>
+          <strong>${escapeHTML(item.key === "headers" || item.key === "payload" || item.key === "response" ? formatInlinePreview(item.value) : item.value || "-")}</strong>
+        </article>
+      `).join("")}
+    </div>
   `;
 }
 

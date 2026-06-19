@@ -110,6 +110,18 @@
     })).filter((row) => row.id) : [];
   }
 
+  function createUsageLogDetailPreview(detail, row) {
+    const request = detail?.request && typeof detail.request === "object" ? detail.request : {};
+    const response = detail?.response && typeof detail.response === "object" ? detail.response : {};
+    return [
+      { key: "trace", label: "Trace ID", value: stringValue(row?.traceId || detail?.trace_id || "-") },
+      { key: "request", label: "Request", value: formatUsageLogRequestLine(request, row || {}) || "-" },
+      { key: "headers", label: "Headers", value: stringValue(request.headers || row?.headersPreview || "-") },
+      { key: "payload", label: "Payload", value: stringValue(request.body_preview || row?.payloadPreview || "-") },
+      { key: "response", label: "Response", value: stringValue(response.body_preview || row?.responsePreview || "-") },
+    ];
+  }
+
   function createEventSummaryModel(payload) {
     const categoryCounts = mapCounts(payload?.categories, "category");
     const severityCounts = mapCounts(payload?.severities, "severity");
@@ -281,6 +293,7 @@
     buildEventQueryParams,
     buildUsageLogQueryParams,
     createEventSummaryModel,
+    createUsageLogDetailPreview,
     createEventTimelineItems,
     createUsageLogRows,
     createUsageStatsCards,

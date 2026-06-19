@@ -8,6 +8,7 @@ const {
   buildUsageLogQueryParams,
   createEventSummaryModel,
   createEventTimelineItems,
+  createUsageLogDetailPreview,
   createUsageLogRows,
   createUsageStatsCards,
   formatUsageLogRequestLine,
@@ -85,6 +86,38 @@ test("createUsageLogRows keeps request metadata needed by the usage table", () =
       statusFamily: "4xx",
     },
   ]);
+});
+
+test("createUsageLogDetailPreview prefers fetched detail and keeps the inline detail fields", () => {
+  assert.deepEqual(
+    createUsageLogDetailPreview(
+      {
+        request: {
+          method: "POST",
+          path: "/v1/responses",
+          query: "stream=true",
+          headers: "{\"content-type\":\"application/json\"}",
+          body_preview: "{\"model\":\"gpt-5.4\"}",
+        },
+        response: {
+          body_preview: "{\"id\":\"resp_1\"}",
+        },
+      },
+      {
+        traceId: "trace-9",
+        headersPreview: "-",
+        payloadPreview: "-",
+        responsePreview: "-",
+      },
+    ),
+    [
+      { key: "trace", label: "Trace ID", value: "trace-9" },
+      { key: "request", label: "Request", value: "POST /v1/responses?stream=true" },
+      { key: "headers", label: "Headers", value: "{\"content-type\":\"application/json\"}" },
+      { key: "payload", label: "Payload", value: "{\"model\":\"gpt-5.4\"}" },
+      { key: "response", label: "Response", value: "{\"id\":\"resp_1\"}" },
+    ],
+  );
 });
 
 test("buildUsageLogQueryParams uses the shared filter set for list, stats, and delete requests", () => {
