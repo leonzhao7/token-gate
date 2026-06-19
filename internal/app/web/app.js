@@ -63,6 +63,7 @@ const usageLogProxyOptions = document.querySelector("#usageLogProxyOptions");
 const refreshUsageLogsBtn = document.querySelector("#refreshUsageLogsBtn");
 const applyUsageLogFiltersBtn = document.querySelector("#applyUsageLogFiltersBtn");
 const resetUsageLogFiltersBtn = document.querySelector("#resetUsageLogFiltersBtn");
+const settingsRoot = document.querySelector("#settingsRoot");
 const pages = Array.from(document.querySelectorAll(".page"));
 const pageLinks = Array.from(document.querySelectorAll("[data-page-link]"));
 
@@ -75,12 +76,6 @@ const addProxyBtn = document.querySelector("#addProxyBtn");
 const addBackendBtn = document.querySelector("#addBackendBtn");
 const addClientBtn = document.querySelector("#addClientBtn");
 const addPolicyBtn = document.querySelector("#addPolicyBtn");
-const settingsFocusTokenBtn = document.querySelector("#settingsFocusTokenBtn");
-const settingsRefreshBtn = document.querySelector("#settingsRefreshBtn");
-const settingsThemeBtn = document.querySelector("#settingsThemeBtn");
-const settingsSidebarBtn = document.querySelector("#settingsSidebarBtn");
-const settingsSearchBtn = document.querySelector("#settingsSearchBtn");
-const settingsUsageLogsBtn = document.querySelector("#settingsUsageLogsBtn");
 const proxyModal = document.querySelector("#proxyModal");
 const proxyModalCloseBtn = document.querySelector("#proxyModalCloseBtn");
 const proxyModalTitle = document.querySelector("#proxyModalTitle");
@@ -171,6 +166,7 @@ const ChartsUtils = globalThis.ChartsUtils || {};
 const DrawerUtils = globalThis.DrawerUtils || {};
 const ObservabilityUtils = globalThis.ObservabilityUtils || {};
 const RendererUtils = globalThis.RendererUtils || {};
+const SettingsUtils = globalThis.SettingsUtils || {};
 const systemThemeQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
 const searchDebounce = typeof SearchUtils.createDebouncedTask === "function"
   ? SearchUtils.createDebouncedTask((query) => {
@@ -263,6 +259,7 @@ const state = {
   ui: {
     theme: "light",
     themePreference: "system",
+    lastRefreshAt: "",
     drawer: { open: false, kind: "", id: null, title: "", tab: "overview", loading: false, data: null, error: "", detailPath: "", deletePath: "", page: "", triggerElement: null },
     search: {
       open: false,
@@ -327,28 +324,12 @@ searchInput?.addEventListener("input", (event) => {
   renderSearchShell();
 });
 
-settingsFocusTokenBtn?.addEventListener("click", () => {
-  tokenInput?.focus();
-});
-
-settingsRefreshBtn?.addEventListener("click", () => {
-  refreshAll().catch(reportError);
-});
-
-settingsThemeBtn?.addEventListener("click", () => {
-  cycleThemePreference();
-});
-
-settingsSidebarBtn?.addEventListener("click", () => {
-  toggleSidebarCollapsed();
-});
-
-settingsSearchBtn?.addEventListener("click", () => {
-  openSearchShell();
-});
-
-settingsUsageLogsBtn?.addEventListener("click", () => {
-  location.hash = "#usage-logs";
+settingsRoot?.addEventListener("click", (event) => {
+  const actionButton = event.target.closest("[data-settings-action]");
+  if (!actionButton) {
+    return;
+  }
+  handleSettingsAction(actionButton.dataset.settingsAction || "").catch(reportError);
 });
 
 searchResultsRoot?.addEventListener("click", (event) => {
@@ -384,6 +365,7 @@ drawerTabRoot?.querySelectorAll("[data-drawer-tab]").forEach((button) => {
 
 saveTokenBtn.addEventListener("click", () => {
   localStorage.setItem(ADMIN_TOKEN_KEY, tokenInput.value.trim());
+  renderSettings();
 });
 
 refreshBtn.addEventListener("click", () => {
@@ -670,6 +652,7 @@ async function refreshAll() {
   state.usageLogOptions.clientKeys = ensureArray(usageLogOptions?.client_keys);
   state.usageLogOptions.policies = ensureArray(usageLogOptions?.policies);
   state.usageLogOptions.proxies = ensureArray(usageLogOptions?.proxies);
+  state.ui.lastRefreshAt = new Date().toISOString();
 
   renderProxyOptions();
   renderUsageLogFilterOptions();
@@ -986,6 +969,15 @@ function activatePage(id) {
   }
 }
 
+function navigateToPage(id) {
+  const nextID = pages.some((page) => page.id === id) ? id : "overview";
+  if (window.location.hash !== `#${nextID}`) {
+    window.location.hash = `#${nextID}`;
+    return;
+  }
+  activatePage(nextID);
+}
+
 function initializeThemeState() {
   const storedPreference = localStorage.getItem(THEME_PREFERENCE_KEY);
   const resolved = resolveThemeState(storedPreference);
@@ -1049,6 +1041,82 @@ function renderTheme() {
     } else {
       themeToggleBtn.setAttribute("aria-pressed", String(Boolean(buttonState.pressed)));
     }
+  }
+  renderSettings();
+}
+
+function renderSettings() {
+  if (!settingsRoot) {
+    return;
+  }
+  const viewModel = typeof SettingsUtils.createSettingsViewModel === "function"
+    ? SettingsUtils.createSettingsViewModel(buildSettingsSnapshot())
+    : null;
+  if (!viewModel) {
+    settingsRoot.innerHTML = "";
+    return;
+  }
+  settingsRoot.innerHTML = typeof SettingsUtils.renderSettingsPage === "function"
+    ? SettingsUtils.renderSettingsPage(viewModel)
+    : "";
+}
+
+function buildSettingsSnapshot() {
+  return {
+    adminTokenPresent: Boolean((localStorage.getItem(ADMIN_TOKEN_KEY) || "").trim()),
+    themePreference: state.ui.themePreference,
+    resolvedTheme: state.ui.theme,
+    sidebarCollapsed: appShell?.classList.contains("sidebar-collapsed"),
+    lastRefreshLabel: state.ui.lastRefreshAt ? formatDateTime(state.ui.lastRefreshAt) : "",
+    backends: state.backends,
+    clients: state.clients,
+    policies: state.policies,
+    proxies: state.proxies,
+    usageLogStats: state.usageLogStats,
+    usageLogMeta: state.paginationMeta.usageLogs,
+    eventSummary: state.eventSummary,
+  };
+}
+
+async function handleSettingsAction(action) {
+  const normalized = String(action || "").trim();
+  if (!normalized) {
+    return;
+  }
+  if (normalized === "focus-token") {
+    tokenInput?.focus();
+    return;
+  }
+  if (normalized === "refresh-data") {
+    await refreshAll();
+    return;
+  }
+  if (normalized === "cycle-theme") {
+    cycleThemePreference();
+    return;
+  }
+  if (normalized === "toggle-sidebar") {
+    toggleSidebarCollapsed();
+    return;
+  }
+  if (normalized === "open-search") {
+    openSearchShell();
+    return;
+  }
+  if (normalized === "view-usage-logs") {
+    navigateToPage("usage-logs");
+    return;
+  }
+  if (normalized === "view-events") {
+    navigateToPage("events");
+    return;
+  }
+  if (normalized === "open-backends") {
+    navigateToPage("backends");
+    return;
+  }
+  if (normalized === "open-policies") {
+    navigateToPage("model-policies");
   }
 }
 
@@ -3062,6 +3130,7 @@ function toggleSidebarCollapsed(forceState) {
     : !appShell?.classList.contains("sidebar-collapsed");
   appShell?.classList.toggle("sidebar-collapsed", nextState);
   sidebarRoot?.classList.toggle("is-collapsed", nextState);
+  renderSettings();
 }
 
 function bindPagination(container, key, rerender) {

@@ -596,35 +596,7 @@
                 <a href="#overview">返回 Dashboard</a>
               </div>
             </div>
-            <div class="settings-grid">
-              <article class="settings-card">
-                <span class="section-label">Access</span>
-                <h3>Admin Session</h3>
-                <p>管理 Token 保存在本地浏览器。侧栏中的 Admin Session 卡片仍然是主入口，这里提供快捷操作。</p>
-                <div class="button-row compact">
-                  <button id="settingsFocusTokenBtn" type="button">定位 Token</button>
-                  <button class="ghost-button" id="settingsRefreshBtn" type="button">刷新数据</button>
-                </div>
-              </article>
-              <article class="settings-card">
-                <span class="section-label">Appearance</span>
-                <h3>Theme & Navigation</h3>
-                <p>在 dark、light 和 system 之间切换，并按需要收起侧栏，保持更专注的操作空间。</p>
-                <div class="button-row compact">
-                  <button id="settingsThemeBtn" type="button">切换主题</button>
-                  <button class="ghost-button" id="settingsSidebarBtn" type="button">折叠侧栏</button>
-                </div>
-              </article>
-              <article class="settings-card">
-                <span class="section-label">Productivity</span>
-                <h3>Global Search</h3>
-                <p>使用中心搜索栏或 `Ctrl / Cmd + K`，快速跳转到资源详情、Usage Logs 和 Events。</p>
-                <div class="button-row compact">
-                  <button id="settingsSearchBtn" type="button">打开搜索</button>
-                  <button class="ghost-button" id="settingsUsageLogsBtn" type="button">查看 Usage Logs</button>
-                </div>
-              </article>
-            </div>
+            <div class="settings-dynamic-root" id="settingsRoot"></div>
           </section>
         </main>
       </div>
@@ -677,6 +649,7 @@
     <script src="./drawer.js"></script>
     <script src="./observability.js"></script>
     <script src="./renderers.js"></script>
+    <script src="./settings.js"></script>
     <script src="./app.js" type="module"></script>
   </body>
 </html>
