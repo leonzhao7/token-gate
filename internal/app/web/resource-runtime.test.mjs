@@ -49,6 +49,20 @@ test("requireResourceStateUtils throws a clear error when resource-state utils a
   );
 });
 
+test("requireResourceStateUtils reports missing helper names for partial state modules", () => {
+  assert.throws(
+    () => requireResourceStateUtils({
+      defaultResourceView() {
+        return { query: "", filter: "all", sort: "updated_desc" };
+      },
+      toolbarStatusLabel() {
+        return "Default view";
+      },
+    }),
+    /missing ResourceStateUtils methods: applyResourceView, currentLocalPageData, currentRemotePageData, applyPagedResponse, paginationPageNumbers/i,
+  );
+});
+
 test("app.js fails clearly during startup when resource view utils are missing", () => {
   const context = createAppVmContext({
     ResourceRuntimeUtils: { requireResourceViewUtils },
@@ -101,6 +115,26 @@ test("app.js integrates the validated resource view module for proxy list render
   assert.match(html, /data-toolbar-search="proxies"/);
   assert.match(html, /tokyo-proxy/);
   assert.match(html, /Default view/);
+});
+
+test("app.js initializes resource view defaults through ResourceStateUtils", () => {
+  const calls = [];
+  const instrumentedResourceStateUtils = {
+    ...ResourceStateUtils,
+    defaultResourceView(resourceKey) {
+      calls.push(resourceKey);
+      return ResourceStateUtils.defaultResourceView(resourceKey);
+    },
+  };
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils },
+    ResourceViewUtils,
+    ResourceStateUtils: instrumentedResourceStateUtils,
+  });
+
+  loadAppWithoutBootstrap(context);
+
+  assert.deepEqual(calls, ["proxies", "backends", "clients", "policies"]);
 });
 
 test("index.html loads resource runtime dependencies before app.js", () => {

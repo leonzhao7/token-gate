@@ -200,6 +200,12 @@ const initialDashboardState = typeof DashboardUtils.createDashboardState === "fu
     recentEvents: { status: "loading", data: null, error: "" },
     recentUsage: { status: "loading", data: null, error: "" },
   };
+const resourceViewDefaults = {
+  proxies: ResourceStateUtils.defaultResourceView("proxies"),
+  backends: ResourceStateUtils.defaultResourceView("backends"),
+  clients: ResourceStateUtils.defaultResourceView("clients"),
+  policies: ResourceStateUtils.defaultResourceView("policies"),
+};
 const state = {
   dashboard: initialDashboardState,
   proxies: [],
@@ -255,12 +261,7 @@ const state = {
     dateFrom: "",
     dateTo: "",
   },
-  resourceViews: {
-    proxies: { query: "", filter: "all", sort: "updated_desc" },
-    backends: { query: "", filter: "all", sort: "updated_desc" },
-    clients: { query: "", filter: "all", sort: "updated_desc" },
-    policies: { query: "", filter: "all", sort: "priority_asc" },
-  },
+  resourceViews: { ...resourceViewDefaults },
   pagination: {
     proxies: { page: 1, size: 10 },
     backends: { page: 1, size: 10 },

@@ -54,6 +54,82 @@ test("applyResourceView preserves policy failover filtering and priority sorting
   assert.deepEqual(filtered.map((item) => item.id), [9]);
 });
 
+test("applyResourceView searches backend fields across base url, pool, models, and endpoints", () => {
+  const items = [
+    {
+      id: 11,
+      name: "edge-east",
+      base_url: "https://east.example/v1",
+      pool: "premium",
+      models: ["gpt-5.4"],
+      endpoints: ["responses"],
+      enabled: true,
+      updated_at: "2026-06-18T12:00:00Z",
+    },
+    {
+      id: 12,
+      name: "edge-west",
+      base_url: "https://west.example/v1",
+      pool: "shared",
+      models: ["claude-sonnet-4"],
+      endpoints: ["messages"],
+      enabled: true,
+      updated_at: "2026-06-19T12:00:00Z",
+    },
+  ];
+
+  assert.deepEqual(
+    applyResourceView("backends", items, {
+      backends: { query: "shared", filter: "enabled", sort: "updated_desc" },
+    }).map((item) => item.id),
+    [12],
+  );
+
+  assert.deepEqual(
+    applyResourceView("backends", items, {
+      backends: { query: "responses", filter: "enabled", sort: "updated_desc" },
+    }).map((item) => item.id),
+    [11],
+  );
+});
+
+test("applyResourceView preserves client search and route-group sorting behavior", () => {
+  const items = [
+    {
+      id: 21,
+      name: "web-prod",
+      route_group: "beta",
+      route_mode_override: "sticky",
+      token_prefix: "prod-ab",
+      enabled: true,
+      updated_at: "2026-06-18T12:00:00Z",
+    },
+    {
+      id: 22,
+      name: "web-stage",
+      route_group: "alpha",
+      route_mode_override: "random",
+      token_prefix: "stage-cd",
+      enabled: true,
+      updated_at: "2026-06-19T12:00:00Z",
+    },
+  ];
+
+  assert.deepEqual(
+    applyResourceView("clients", items, {
+      clients: { query: "stage-cd", filter: "enabled", sort: "group_asc" },
+    }).map((item) => item.id),
+    [22],
+  );
+
+  assert.deepEqual(
+    applyResourceView("clients", items, {
+      clients: { query: "web", filter: "enabled", sort: "group_asc" },
+    }).map((item) => item.id),
+    [22, 21],
+  );
+});
+
 test("currentLocalPageData normalizes page size and clamps page state from filtered rows", () => {
   const state = {
     pagination: {
