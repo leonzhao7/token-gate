@@ -2966,7 +2966,7 @@ function createQuickDetailMarkup(resourceKey, record) {
   if (!sections.length) {
     return `
       <div class="detail-panel">
-        <p class="muted-text">No quick details.</p>
+        <p class="muted-text">No quick details for this row yet.</p>
       </div>
     `;
   }
@@ -2974,11 +2974,19 @@ function createQuickDetailMarkup(resourceKey, record) {
     <div class="detail-panel compact-detail-panel">
       <div class="quick-detail-grid">
         ${sections.map((section) => `
-          <section class="quick-detail-card">
-            <strong>${escapeHTML(section.title)}</strong>
-            <ul>
-              ${ensureArray(section.items).map((item) => `<li>${escapeHTML(item)}</li>`).join("")}
-            </ul>
+          <section class="quick-detail-card tone-${escapeHTML(section.tone || "neutral")}">
+            <header class="quick-detail-head">
+              <strong>${escapeHTML(section.title)}</strong>
+              <span>${escapeHTML(String(ensureArray(section.items).length))}</span>
+            </header>
+            <dl class="quick-detail-list">
+              ${ensureArray(section.items).map((item) => `
+                <div>
+                  <dt>${escapeHTML(item.label || "-")}</dt>
+                  <dd>${escapeHTML(item.value || "-")}</dd>
+                </div>
+              `).join("")}
+            </dl>
           </section>
         `).join("")}
       </div>

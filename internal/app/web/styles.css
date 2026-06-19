@@ -1143,6 +1143,88 @@ a {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.quick-detail-card {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 95%, transparent), color-mix(in srgb, var(--surface-muted) 78%, var(--surface) 22%));
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.quick-detail-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--primary) 22%, var(--border));
+  background: color-mix(in srgb, var(--surface-hover) 86%, var(--surface) 14%);
+}
+
+.quick-detail-card.tone-primary {
+  border-color: color-mix(in srgb, var(--primary) 26%, var(--border));
+}
+
+.quick-detail-card.tone-success {
+  border-color: color-mix(in srgb, var(--success) 26%, var(--border));
+}
+
+.quick-detail-card.tone-warning {
+  border-color: color-mix(in srgb, var(--warning) 26%, var(--border));
+}
+
+.quick-detail-card.tone-danger {
+  border-color: color-mix(in srgb, var(--danger) 26%, var(--border));
+}
+
+.quick-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.quick-detail-head strong {
+  margin: 0;
+}
+
+.quick-detail-head span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--primary) 16%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary-soft) 72%, var(--surface));
+  color: var(--text-primary);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.quick-detail-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.quick-detail-list div {
+  display: grid;
+  gap: 4px;
+}
+
+.quick-detail-list dt {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.quick-detail-list dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .drawer-activity-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1251,17 +1333,6 @@ a {
   color: var(--text-primary);
   font-size: 0.84rem;
   line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.quick-detail-card ul {
-  margin: 0;
-  padding-left: 18px;
-  color: var(--text-primary);
-}
-
-.quick-detail-card li {
-  line-height: 1.6;
   overflow-wrap: anywhere;
 }
 

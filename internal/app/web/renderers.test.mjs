@@ -64,10 +64,39 @@ test("createQuickDetailSections limits inline expansion to concise summaries", (
   });
 
   assert.deepEqual(sections, [
-    { title: "Relationships", items: ["Pool premium", "Proxy tokyo-egress"] },
-    { title: "Capabilities", items: ["2 models", "2 endpoints"] },
-    { title: "Usage", items: ["42 requests", "88 ms avg latency", "Last used 2026-06-19T13:00:00Z"] },
-    { title: "JSON Preview", items: ['"base_url":"https://edge.example.com/v1"', '"gpt-4o":"gpt-4o-prod"'] },
+    {
+      title: "Relationships",
+      tone: "primary",
+      items: [
+        { label: "Pool", value: "premium" },
+        { label: "Proxy", value: "tokyo-egress" },
+      ],
+    },
+    {
+      title: "Capabilities",
+      tone: "success",
+      items: [
+        { label: "Models", value: "2" },
+        { label: "Endpoints", value: "2" },
+      ],
+    },
+    {
+      title: "Usage",
+      tone: "warning",
+      items: [
+        { label: "Requests", value: "42" },
+        { label: "Avg latency", value: "88 ms" },
+        { label: "Last used", value: "2026-06-19T13:00:00Z" },
+      ],
+    },
+    {
+      title: "JSON Preview",
+      tone: "neutral",
+      items: [
+        { label: "Base URL", value: "https://edge.example.com/v1" },
+        { label: "Mapping", value: '"gpt-4o":"gpt-4o-prod"' },
+      ],
+    },
   ]);
 });
 
@@ -83,9 +112,30 @@ test("createQuickDetailSections surfaces client usage and routing summaries", ()
   });
 
   assert.deepEqual(sections, [
-    { title: "Routing", items: ["Route sticky", "Group frontend-a"] },
-    { title: "Usage", items: ["12 requests", "Last used 2026-06-19T12:00:00Z"] },
-    { title: "Client Key", items: ["client-v...-key", "client-visible-key"] },
+    {
+      title: "Routing",
+      tone: "primary",
+      items: [
+        { label: "Route mode", value: "sticky" },
+        { label: "Route group", value: "frontend-a" },
+      ],
+    },
+    {
+      title: "Usage",
+      tone: "success",
+      items: [
+        { label: "Requests", value: "12" },
+        { label: "Last used", value: "2026-06-19T12:00:00Z" },
+      ],
+    },
+    {
+      title: "Client Key",
+      tone: "neutral",
+      items: [
+        { label: "Masked", value: "client-v...-key" },
+        { label: "Visible", value: "client-visible-key" },
+      ],
+    },
   ]);
 });
 
@@ -97,9 +147,16 @@ test("createQuickDetailSections preserves legacy prefix-only client key context"
   });
 
   assert.deepEqual(sections, [
-    { title: "Routing", items: ["Route default"] },
-    { title: "Usage", items: [] },
-    { title: "Client Key", items: ["Prefix legacy-ab (历史记录仅保存 prefix)"] },
+    {
+      title: "Routing",
+      tone: "primary",
+      items: [{ label: "Route mode", value: "default" }],
+    },
+    {
+      title: "Client Key",
+      tone: "neutral",
+      items: [{ label: "Prefix", value: "legacy-ab (历史记录仅保存 prefix)" }],
+    },
   ]);
 });
 
@@ -116,9 +173,32 @@ test("createQuickDetailSections surfaces proxy bindings and usage summary", () =
   });
 
   assert.deepEqual(sections, [
-    { title: "Relationships", items: ["3 bound backends", "Address 127.0.0.1:1080"] },
-    { title: "Usage", items: ["42 requests", "88 ms avg latency", "Last used 2026-06-19T13:00:00Z"] },
-    { title: "Access", items: ["Auth user proxy-user", "Password set", "Enabled"] },
+    {
+      title: "Relationships",
+      tone: "primary",
+      items: [
+        { label: "Bound backends", value: "3" },
+        { label: "Address", value: "127.0.0.1:1080" },
+      ],
+    },
+    {
+      title: "Usage",
+      tone: "warning",
+      items: [
+        { label: "Requests", value: "42" },
+        { label: "Avg latency", value: "88 ms" },
+        { label: "Last used", value: "2026-06-19T13:00:00Z" },
+      ],
+    },
+    {
+      title: "Access",
+      tone: "success",
+      items: [
+        { label: "Auth", value: "proxy-user" },
+        { label: "Password", value: "set" },
+        { label: "Status", value: "enabled" },
+      ],
+    },
   ]);
 });
 
@@ -137,10 +217,41 @@ test("createQuickDetailSections surfaces policy routing and usage summary", () =
   });
 
   assert.deepEqual(sections, [
-    { title: "Relationships", items: ["Pool premium", "Endpoint chat"] },
-    { title: "Routing", items: ["Placement sticky", "Priority 10", "Failover on"] },
-    { title: "Usage", items: ["23 requests", "4 backends", "7 models", "Last used 2026-06-19T15:00:00Z"] },
-    { title: "JSON Preview", items: ['"pattern":"gpt-*"', '"failover_enabled":true'] },
+    {
+      title: "Relationships",
+      tone: "primary",
+      items: [
+        { label: "Pool", value: "premium" },
+        { label: "Endpoint", value: "chat" },
+      ],
+    },
+    {
+      title: "Routing",
+      tone: "warning",
+      items: [
+        { label: "Placement", value: "sticky" },
+        { label: "Priority", value: "10" },
+        { label: "Failover", value: "on" },
+      ],
+    },
+    {
+      title: "Usage",
+      tone: "success",
+      items: [
+        { label: "Requests", value: "23" },
+        { label: "Backends", value: "4" },
+        { label: "Models", value: "7" },
+        { label: "Last used", value: "2026-06-19T15:00:00Z" },
+      ],
+    },
+    {
+      title: "JSON Preview",
+      tone: "neutral",
+      items: [
+        { label: "Pattern", value: "gpt-*" },
+        { label: "Failover", value: "true" },
+      ],
+    },
   ]);
 });
 

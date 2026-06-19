@@ -29,129 +29,87 @@
     if (kind === "backends") {
       const modelCount = numericCount(source.model_count, source.models);
       const endpointCount = numericCount(source.endpoint_count, source.endpoints);
-      return [
-        {
-          title: "Relationships",
-          items: compactItems([
-            source.pool ? `Pool ${source.pool}` : "",
-            source.proxy?.name ? `Proxy ${source.proxy.name}` : "",
-            source.protocol ? `Protocol ${source.protocol}` : "",
-          ]),
-        },
-        {
-          title: "Capabilities",
-          items: compactItems([
-            modelCount > 0 ? `${modelCount} models` : "",
-            endpointCount > 0 ? `${endpointCount} endpoints` : "",
-          ]),
-        },
-        {
-          title: "Usage",
-          items: compactItems([
-            Number.isFinite(Number(source.request_count)) ? `${Number(source.request_count)} requests` : "",
-            Number.isFinite(Number(source.avg_latency_ms)) && Number(source.avg_latency_ms) > 0 ? `${Math.round(Number(source.avg_latency_ms))} ms avg latency` : "",
-            source.last_used_at ? `Last used ${source.last_used_at}` : "",
-            source.recent_stats ? recentStatsPreview(source.recent_stats) : "",
-          ]),
-        },
-        {
-          title: "JSON Preview",
-          items: compactItems([
-            source.base_url ? `"base_url":"${source.base_url}"` : "",
-            objectPreview(source.model_mapping),
-          ]),
-        },
-      ];
+      return compactSections([
+        detailSection("Relationships", "primary", [
+          detailItem("Pool", source.pool),
+          detailItem("Proxy", source.proxy?.name),
+        ]),
+        detailSection("Capabilities", "success", [
+          detailItem("Models", modelCount > 0 ? String(modelCount) : ""),
+          detailItem("Endpoints", endpointCount > 0 ? String(endpointCount) : ""),
+        ]),
+        detailSection("Usage", "warning", [
+          detailItem("Requests", finiteCount(source.request_count)),
+          detailItem("Avg latency", positiveRoundedMS(source.avg_latency_ms)),
+          detailItem("Last used", source.last_used_at),
+          detailItem("30m", source.recent_stats ? recentStatsPreview(source.recent_stats) : ""),
+        ]),
+        detailSection("JSON Preview", "neutral", [
+          detailItem("Base URL", source.base_url),
+          detailItem("Mapping", objectPreview(source.model_mapping)),
+        ]),
+      ]);
     }
 
     if (kind === "clients") {
-      return [
-        {
-          title: "Routing",
-          items: compactItems([
-            source.route_mode_override ? `Route ${source.route_mode_override}` : "Route default",
-            source.route_group ? `Group ${source.route_group}` : "",
-          ]),
-        },
-        {
-          title: "Usage",
-          items: compactItems([
-            Number.isFinite(Number(source.usage_count)) ? `${Number(source.usage_count)} requests` : "",
-            source.last_used_at ? `Last used ${source.last_used_at}` : "",
-          ]),
-        },
-        {
-          title: "Client Key",
-          items: compactItems([
-            source.masked_token || (source.token_prefix ? `Prefix ${source.token_prefix} (历史记录仅保存 prefix)` : ""),
-            source.token || "",
-          ]),
-        },
-      ];
+      return compactSections([
+        detailSection("Routing", "primary", [
+          detailItem("Route mode", source.route_mode_override || "default"),
+          detailItem("Route group", source.route_group),
+        ]),
+        detailSection("Usage", "success", [
+          detailItem("Requests", finiteCount(source.usage_count)),
+          detailItem("Last used", source.last_used_at),
+        ]),
+        detailSection("Client Key", "neutral", [
+          detailItem("Masked", source.masked_token),
+          detailItem("Visible", source.token),
+          detailItem("Prefix", source.token_prefix ? `${source.token_prefix} (历史记录仅保存 prefix)` : ""),
+        ]),
+      ]);
     }
 
     if (kind === "policies") {
-      return [
-        {
-          title: "Relationships",
-          items: compactItems([
-            source.backend_pool ? `Pool ${source.backend_pool}` : "",
-            source.endpoint ? `Endpoint ${source.endpoint}` : "",
-          ]),
-        },
-        {
-          title: "Routing",
-          items: compactItems([
-            source.placement_policy ? `Placement ${source.placement_policy}` : "",
-            typeof source.priority !== "undefined" ? `Priority ${source.priority}` : "",
-            typeof source.failover_enabled === "boolean" ? `Failover ${source.failover_enabled ? "on" : "off"}` : "",
-          ]),
-        },
-        {
-          title: "Usage",
-          items: compactItems([
-            Number.isFinite(Number(source.request_count)) ? `${Number(source.request_count)} requests` : "",
-            Number.isFinite(Number(source.backend_count)) ? `${Number(source.backend_count)} backends` : "",
-            Number.isFinite(Number(source.model_count)) ? `${Number(source.model_count)} models` : "",
-            source.last_used_at ? `Last used ${source.last_used_at}` : "",
-          ]),
-        },
-        {
-          title: "JSON Preview",
-          items: compactItems([
-            source.pattern ? `"pattern":"${source.pattern}"` : "",
-            typeof source.failover_enabled === "boolean" ? `"failover_enabled":${String(source.failover_enabled)}` : "",
-          ]),
-        },
-      ];
+      return compactSections([
+        detailSection("Relationships", "primary", [
+          detailItem("Pool", source.backend_pool),
+          detailItem("Endpoint", source.endpoint),
+        ]),
+        detailSection("Routing", "warning", [
+          detailItem("Placement", source.placement_policy),
+          detailItem("Priority", typeof source.priority !== "undefined" ? String(source.priority) : ""),
+          detailItem("Failover", typeof source.failover_enabled === "boolean" ? (source.failover_enabled ? "on" : "off") : ""),
+        ]),
+        detailSection("Usage", "success", [
+          detailItem("Requests", finiteCount(source.request_count)),
+          detailItem("Backends", finiteCount(source.backend_count)),
+          detailItem("Models", finiteCount(source.model_count)),
+          detailItem("Last used", source.last_used_at),
+        ]),
+        detailSection("JSON Preview", "neutral", [
+          detailItem("Pattern", source.pattern),
+          detailItem("Failover", typeof source.failover_enabled === "boolean" ? String(source.failover_enabled) : ""),
+        ]),
+      ]);
     }
 
     if (kind === "proxies") {
-      return [
-        {
-          title: "Relationships",
-          items: compactItems([
-            Number.isFinite(Number(source.bound_backend_count)) ? `${Number(source.bound_backend_count)} bound backends` : "",
-            source.address ? `Address ${source.address}` : "",
-          ]),
-        },
-        {
-          title: "Usage",
-          items: compactItems([
-            Number.isFinite(Number(source.request_count)) ? `${Number(source.request_count)} requests` : "",
-            Number.isFinite(Number(source.avg_latency_ms)) && Number(source.avg_latency_ms) > 0 ? `${Math.round(Number(source.avg_latency_ms))} ms avg latency` : "",
-            source.last_used_at ? `Last used ${source.last_used_at}` : "",
-          ]),
-        },
-        {
-          title: "Access",
-          items: compactItems([
-            source.username ? `Auth user ${source.username}` : "Auth none",
-            source.password ? "Password set" : "No password",
-            source.enabled ? "Enabled" : "Disabled",
-          ]),
-        },
-      ];
+      return compactSections([
+        detailSection("Relationships", "primary", [
+          detailItem("Bound backends", finiteCount(source.bound_backend_count)),
+          detailItem("Address", source.address),
+        ]),
+        detailSection("Usage", "warning", [
+          detailItem("Requests", finiteCount(source.request_count)),
+          detailItem("Avg latency", positiveRoundedMS(source.avg_latency_ms)),
+          detailItem("Last used", source.last_used_at),
+        ]),
+        detailSection("Access", "success", [
+          detailItem("Auth", source.username || "none"),
+          detailItem("Password", source.password ? "set" : "none"),
+          detailItem("Status", source.enabled ? "enabled" : "disabled"),
+        ]),
+      ]);
     }
 
     return [];
@@ -188,10 +146,6 @@
     return arrayCount(fallbackValue);
   }
 
-  function compactItems(items) {
-    return items.filter((item) => String(item || "").trim());
-  }
-
   function objectPreview(value) {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       return "";
@@ -212,6 +166,50 @@
       return "";
     }
     return `${hasSuccesses ? successes : 0} ok / ${hasFailures ? failures : 0} fail (30m)`;
+  }
+
+  function detailSection(title, tone, items) {
+    return {
+      title,
+      tone,
+      items: compactDetailItems(items),
+    };
+  }
+
+  function detailItem(label, value) {
+    const normalizedLabel = String(label || "").trim();
+    const normalizedValue = String(value || "").trim();
+    if (!normalizedLabel || !normalizedValue) {
+      return null;
+    }
+    return {
+      label: normalizedLabel,
+      value: normalizedValue,
+    };
+  }
+
+  function compactDetailItems(items) {
+    return (Array.isArray(items) ? items : []).filter(Boolean);
+  }
+
+  function compactSections(sections) {
+    return (Array.isArray(sections) ? sections : []).filter((section) => section && section.items.length);
+  }
+
+  function finiteCount(value) {
+    const count = Number(value);
+    if (!Number.isFinite(count)) {
+      return "";
+    }
+    return String(Math.floor(count));
+  }
+
+  function positiveRoundedMS(value) {
+    const duration = Number(value);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      return "";
+    }
+    return `${Math.round(duration)} ms`;
   }
 
   const api = {
