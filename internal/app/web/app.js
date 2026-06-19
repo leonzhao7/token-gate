@@ -167,7 +167,12 @@ const ChartsUtils = globalThis.ChartsUtils || {};
 const DrawerUtils = globalThis.DrawerUtils || {};
 const ObservabilityUtils = globalThis.ObservabilityUtils || {};
 const ObservabilityViewUtils = globalThis.ObservabilityViewUtils || {};
-const ResourceViewUtils = globalThis.ResourceViewUtils || {};
+const ResourceRuntimeUtils = globalThis.ResourceRuntimeUtils || {};
+const ResourceViewUtils = typeof ResourceRuntimeUtils.requireResourceViewUtils === "function"
+  ? ResourceRuntimeUtils.requireResourceViewUtils(globalThis.ResourceViewUtils)
+  : (() => {
+    throw new Error("resource-runtime.js failed to load before app.js");
+  })();
 const RendererUtils = globalThis.RendererUtils || {};
 const SettingsUtils = globalThis.SettingsUtils || {};
 const systemThemeQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -2095,20 +2100,18 @@ function renderProxies() {
     count: pageData.total,
   });
 
-  proxyList.innerHTML = typeof ResourceViewUtils.renderResourceTablePage === "function"
-    ? ResourceViewUtils.renderResourceTablePage({
-      toolbar,
-      isEmpty: filtered.length === 0,
-      emptyMarkup: emptyState(
-        "还没有 SOCKS5 Proxy",
-        "如果某些 Backend 需要固定出口代理，先在这里添加 SOCKS5 节点，再回到 Backend 里绑定。",
-      ),
-      headers: ["Proxy", "Status", "Bindings", "Traffic", "Latency", "Last Used", "Updated", "Actions"],
-      rowsMarkup: pageData.items.map(renderProxyRow).join(""),
-      paginationMarkup: renderPagination("proxies", pageData),
-      escapeHTML,
-    })
-    : "";
+  proxyList.innerHTML = ResourceViewUtils.renderResourceTablePage({
+    toolbar,
+    isEmpty: filtered.length === 0,
+    emptyMarkup: emptyState(
+      "还没有 SOCKS5 Proxy",
+      "如果某些 Backend 需要固定出口代理，先在这里添加 SOCKS5 节点，再回到 Backend 里绑定。",
+    ),
+    headers: ["Proxy", "Status", "Bindings", "Traffic", "Latency", "Last Used", "Updated", "Actions"],
+    rowsMarkup: pageData.items.map(renderProxyRow).join(""),
+    paginationMarkup: renderPagination("proxies", pageData),
+    escapeHTML,
+  });
 
   proxyList.querySelectorAll("[data-toggle-proxy]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2156,20 +2159,18 @@ function renderBackends() {
     count: pageData.total,
   });
 
-  backendList.innerHTML = typeof ResourceViewUtils.renderResourceTablePage === "function"
-    ? ResourceViewUtils.renderResourceTablePage({
-      toolbar,
-      isEmpty: filtered.length === 0,
-      emptyMarkup: emptyState(
-        "还没有 Backend",
-        "先配置至少一个 OpenAI 或 Claude/Anthropic 上游节点，之后模型路由和故障切换才会生效。",
-      ),
-      headers: ["Backend", "Routing", "Coverage", "Requests", "Avg Latency", "Last Used", "Recent 30m", "Actions"],
-      rowsMarkup: pageData.items.map(renderBackendRow).join(""),
-      paginationMarkup: renderPagination("backends", pageData),
-      escapeHTML,
-    })
-    : "";
+  backendList.innerHTML = ResourceViewUtils.renderResourceTablePage({
+    toolbar,
+    isEmpty: filtered.length === 0,
+    emptyMarkup: emptyState(
+      "还没有 Backend",
+      "先配置至少一个 OpenAI 或 Claude/Anthropic 上游节点，之后模型路由和故障切换才会生效。",
+    ),
+    headers: ["Backend", "Routing", "Coverage", "Requests", "Avg Latency", "Last Used", "Recent 30m", "Actions"],
+    rowsMarkup: pageData.items.map(renderBackendRow).join(""),
+    paginationMarkup: renderPagination("backends", pageData),
+    escapeHTML,
+  });
 
   backendList.querySelectorAll("[data-toggle-backend]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2217,20 +2218,18 @@ function renderClients() {
     count: pageData.total,
   });
 
-  clientList.innerHTML = typeof ResourceViewUtils.renderResourceTablePage === "function"
-    ? ResourceViewUtils.renderResourceTablePage({
-      toolbar,
-      isEmpty: filtered.length === 0,
-      emptyMarkup: emptyState(
-        "还没有 Client Key",
-        "创建一个客户端 key 后，外部 SDK 或 AI 客户端才能通过 Token Gate 访问后端模型。",
-      ),
-      headers: ["Client Key", "Status", "Routing", "Usage", "Last Used", "Updated", "Actions"],
-      rowsMarkup: pageData.items.map(renderClientRow).join(""),
-      paginationMarkup: renderPagination("clients", pageData),
-      escapeHTML,
-    })
-    : "";
+  clientList.innerHTML = ResourceViewUtils.renderResourceTablePage({
+    toolbar,
+    isEmpty: filtered.length === 0,
+    emptyMarkup: emptyState(
+      "还没有 Client Key",
+      "创建一个客户端 key 后，外部 SDK 或 AI 客户端才能通过 Token Gate 访问后端模型。",
+    ),
+    headers: ["Client Key", "Status", "Routing", "Usage", "Last Used", "Updated", "Actions"],
+    rowsMarkup: pageData.items.map(renderClientRow).join(""),
+    paginationMarkup: renderPagination("clients", pageData),
+    escapeHTML,
+  });
 
   clientList.querySelectorAll("[data-toggle-client]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2278,20 +2277,18 @@ function renderPolicies() {
     count: pageData.total,
   });
 
-  policyList.innerHTML = typeof ResourceViewUtils.renderResourceTablePage === "function"
-    ? ResourceViewUtils.renderResourceTablePage({
-      toolbar,
-      isEmpty: filtered.length === 0,
-      emptyMarkup: emptyState(
-        "还没有 Model Policy",
-        "定义模型模式、端点和 placement 策略后，路由行为才会按业务意图收敛。",
-      ),
-      headers: ["Pattern", "Routing", "Usage", "Coverage", "Last Used", "Updated", "Actions"],
-      rowsMarkup: pageData.items.map(renderPolicyRow).join(""),
-      paginationMarkup: renderPagination("policies", pageData),
-      escapeHTML,
-    })
-    : "";
+  policyList.innerHTML = ResourceViewUtils.renderResourceTablePage({
+    toolbar,
+    isEmpty: filtered.length === 0,
+    emptyMarkup: emptyState(
+      "还没有 Model Policy",
+      "定义模型模式、端点和 placement 策略后，路由行为才会按业务意图收敛。",
+    ),
+    headers: ["Pattern", "Routing", "Usage", "Coverage", "Last Used", "Updated", "Actions"],
+    rowsMarkup: pageData.items.map(renderPolicyRow).join(""),
+    paginationMarkup: renderPagination("policies", pageData),
+    escapeHTML,
+  });
 
   policyList.querySelectorAll("[data-toggle-policy]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2330,80 +2327,68 @@ function renderPolicies() {
 }
 
 function renderProxyRow(proxy) {
-  if (typeof ResourceViewUtils.renderProxyRow === "function") {
-    return ResourceViewUtils.renderProxyRow({
-      proxy,
-      expanded: state.expandedProxies.has(String(proxy.id)),
-      editing: String(state.editingProxyID) === String(proxy.id),
-      quickDetails: buildQuickDetailMarkup("proxies", proxy),
-      statusPill,
-      formatBindingCount,
-      formatDataSize,
-      formatLatency,
-      formatDateTime,
-      tableActions,
-      escapeHTML,
-    });
-  }
-  return "";
+  return ResourceViewUtils.renderProxyRow({
+    proxy,
+    expanded: state.expandedProxies.has(String(proxy.id)),
+    editing: String(state.editingProxyID) === String(proxy.id),
+    quickDetails: buildQuickDetailMarkup("proxies", proxy),
+    statusPill,
+    formatBindingCount,
+    formatDataSize,
+    formatLatency,
+    formatDateTime,
+    tableActions,
+    escapeHTML,
+  });
 }
 
 function renderBackendRow(backend) {
-  if (typeof ResourceViewUtils.renderBackendRow === "function") {
-    return ResourceViewUtils.renderBackendRow({
-      backend,
-      expanded: state.expandedBackends.has(String(backend.id)),
-      editing: String(state.editingBackendID) === String(backend.id),
-      quickDetails: buildQuickDetailMarkup("backends", backend),
-      statusPill,
-      formatBackendRouting,
-      formatBackendCoverage,
-      backendProtocolLabel,
-      formatUsageCount,
-      formatLatency,
-      formatDateTime,
-      formatBackendRecentStats,
-      tableActions,
-      escapeHTML,
-    });
-  }
-  return "";
+  return ResourceViewUtils.renderBackendRow({
+    backend,
+    expanded: state.expandedBackends.has(String(backend.id)),
+    editing: String(state.editingBackendID) === String(backend.id),
+    quickDetails: buildQuickDetailMarkup("backends", backend),
+    statusPill,
+    formatBackendRouting,
+    formatBackendCoverage,
+    backendProtocolLabel,
+    formatUsageCount,
+    formatLatency,
+    formatDateTime,
+    formatBackendRecentStats,
+    tableActions,
+    escapeHTML,
+  });
 }
 
 function renderClientRow(client) {
-  if (typeof ResourceViewUtils.renderClientRow === "function") {
-    return ResourceViewUtils.renderClientRow({
-      client,
-      expanded: state.expandedClients.has(String(client.id)),
-      editing: String(state.editingClientID) === String(client.id),
-      quickDetails: buildQuickDetailMarkup("clients", client),
-      clientTokenText: clientTokenDisplay(client),
-      statusPill,
-      formatUsageCount,
-      formatDateTime,
-      tableActions,
-      escapeHTML,
-    });
-  }
-  return "";
+  return ResourceViewUtils.renderClientRow({
+    client,
+    expanded: state.expandedClients.has(String(client.id)),
+    editing: String(state.editingClientID) === String(client.id),
+    quickDetails: buildQuickDetailMarkup("clients", client),
+    clientTokenText: clientTokenDisplay(client),
+    statusPill,
+    formatUsageCount,
+    formatDateTime,
+    tableActions,
+    escapeHTML,
+  });
 }
 
 function renderPolicyRow(policy) {
-  if (typeof ResourceViewUtils.renderPolicyRow === "function") {
-    return ResourceViewUtils.renderPolicyRow({
-      policy,
-      expanded: state.expandedPolicies.has(String(policy.id)),
-      editing: String(state.editingPolicyID) === String(policy.id),
-      quickDetails: buildQuickDetailMarkup("policies", policy),
-      formatPolicyRouting,
-      formatUsageCount,
-      formatPolicyCoverage,
-      formatDateTime,
-      tableActions,
-      escapeHTML,
-    });
-  }
-  return "";
+  return ResourceViewUtils.renderPolicyRow({
+    policy,
+    expanded: state.expandedPolicies.has(String(policy.id)),
+    editing: String(state.editingPolicyID) === String(policy.id),
+    quickDetails: buildQuickDetailMarkup("policies", policy),
+    formatPolicyRouting,
+    formatUsageCount,
+    formatPolicyCoverage,
+    formatDateTime,
+    tableActions,
+    escapeHTML,
+  });
 }
 
 function bindResourceRowOpen(container, kind) {
@@ -2454,18 +2439,16 @@ function buildResourceToolbarMarkup({ resourceKey, searchPlaceholder, count }) {
     ? RendererUtils.createResourceToolbarModel({ resourceKey, searchPlaceholder, count, activeFilters, hasChanges })
     : { searchPlaceholder, count, activeFilters, hasChanges, actions: ["search", "filters", "sort", "reset", "refresh"] };
   const config = RESOURCE_VIEW_CONFIG[resourceKey] || { filterOptions: [], sortOptions: [] };
-  return typeof ResourceViewUtils.renderResourceToolbar === "function"
-    ? ResourceViewUtils.renderResourceToolbar({
-      resourceKey,
-      viewState,
-      model,
-      config,
-      activeFilters,
-      hasChanges,
-      escapeHTML,
-      toolbarStatusLabel,
-    })
-    : "";
+  return ResourceViewUtils.renderResourceToolbar({
+    resourceKey,
+    viewState,
+    model,
+    config,
+    activeFilters,
+    hasChanges,
+    escapeHTML,
+    toolbarStatusLabel,
+  });
 }
 
 function bindResourceToolbar(container, resourceKey, actions) {
@@ -2602,9 +2585,7 @@ function buildQuickDetailMarkup(resourceKey, record) {
   const sections = typeof RendererUtils.createQuickDetailSections === "function"
     ? RendererUtils.createQuickDetailSections(resourceKey, record)
     : [];
-  return typeof ResourceViewUtils.createQuickDetailMarkup === "function"
-    ? ResourceViewUtils.createQuickDetailMarkup({ sections, escapeHTML })
-    : "";
+  return ResourceViewUtils.createQuickDetailMarkup({ sections, escapeHTML });
 }
 
 function renderEvents() {
