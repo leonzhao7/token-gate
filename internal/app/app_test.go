@@ -2800,6 +2800,16 @@ func TestPolicyDetailReturnsDrawerData(t *testing.T) {
 	application := newTestApp(t)
 	ctx := context.Background()
 
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "policy-alpha-backend",
+		Pool:      "alpha-pool",
+		BaseURL:   "https://policy-alpha.local/v1",
+		APIKey:    "alpha-key",
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"alpha-model"},
+		Endpoints: []string{domain.EndpointChat},
+	})
 	policy := createTestPolicy(t, application, domain.ModelPolicy{
 		Pattern:         "alpha-*",
 		Endpoint:        domain.EndpointChat,
@@ -2815,6 +2825,25 @@ func TestPolicyDetailReturnsDrawerData(t *testing.T) {
 		Model:   policy.Pattern,
 	}); err != nil {
 		t.Fatalf("append audit event: %v", err)
+	}
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "policy-detail-1",
+		ClientID:          1,
+		ClientName:        "policy-client",
+		ClientTokenPrefix: "pol",
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "alpha-model",
+		PolicyID:          policy.ID,
+		PolicyName:        policy.Pattern,
+		BackendID:         backend.ID,
+		BackendName:       backend.Name,
+		Attempts:          1,
+		StatusCode:        http.StatusOK,
+		DurationMS:        42,
+	}); err != nil {
+		t.Fatalf("append policy usage log: %v", err)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/api/model-policies/"+strconv.FormatInt(policy.ID, 10)+"/detail", nil)
@@ -2839,7 +2868,9 @@ func TestPolicyDetailReturnsDrawerData(t *testing.T) {
 		} `json:"metadata"`
 		Raw      domain.ModelPolicy `json:"raw"`
 		Activity struct {
-			Events []domain.AuditEvent `json:"events"`
+			Events   []domain.AuditEvent `json:"events"`
+			Usage    []domain.UsageLog   `json:"usage"`
+			Backends []domain.Backend    `json:"backends"`
 		} `json:"activity"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
@@ -2855,6 +2886,16 @@ func TestPolicyDetailReturnsDrawerData(t *testing.T) {
 		return event.Model == "alpha-*"
 	}) {
 		t.Fatalf("expected policy activity events, got %#v", payload.Activity.Events)
+	}
+	if !containsUsageLog(payload.Activity.Usage, func(entry domain.UsageLog) bool {
+		return entry.PolicyID == policy.ID
+	}) {
+		t.Fatalf("expected policy usage activity, got %#v", payload.Activity.Usage)
+	}
+	if !containsBackend(payload.Activity.Backends, func(item domain.Backend) bool {
+		return item.ID == backend.ID
+	}) {
+		t.Fatalf("expected policy related backend, got %#v", payload.Activity.Backends)
 	}
 }
 
@@ -2882,6 +2923,25 @@ func TestProxyDetailReturnsDrawerData(t *testing.T) {
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
 	})
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "proxy-detail-1",
+		ClientID:          1,
+		ClientName:        "proxy-client",
+		ClientTokenPrefix: "prx",
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "gpt-4o",
+		BackendID:         backend.ID,
+		BackendName:       backend.Name,
+		ProxyID:           proxyItem.ID,
+		ProxyName:         proxyItem.Name,
+		Attempts:          1,
+		StatusCode:        http.StatusOK,
+		DurationMS:        64,
+	}); err != nil {
+		t.Fatalf("append proxy usage log: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/api/socks-proxies/"+strconv.FormatInt(proxyItem.ID, 10)+"/detail", nil)
 	req.Header.Set("Authorization", "Bearer test-admin")
@@ -2904,7 +2964,8 @@ func TestProxyDetailReturnsDrawerData(t *testing.T) {
 		} `json:"metadata"`
 		Raw      domain.SocksProxy `json:"raw"`
 		Activity struct {
-			Backends []domain.Backend `json:"backends"`
+			Usage    []domain.UsageLog `json:"usage"`
+			Backends []domain.Backend  `json:"backends"`
 		} `json:"activity"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
@@ -2920,6 +2981,11 @@ func TestProxyDetailReturnsDrawerData(t *testing.T) {
 		return item.ID == backend.ID
 	}) {
 		t.Fatalf("expected proxy-bound backends in activity, got %#v", payload.Activity.Backends)
+	}
+	if !containsUsageLog(payload.Activity.Usage, func(entry domain.UsageLog) bool {
+		return entry.ProxyID == proxyItem.ID
+	}) {
+		t.Fatalf("expected proxy usage activity, got %#v", payload.Activity.Usage)
 	}
 }
 

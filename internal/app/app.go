@@ -931,7 +931,7 @@ func (a *App) handleSocksProxyDetail(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	detail, err := a.store.SocksProxyDetail(r.Context(), id)
+	detail, err := a.store.SocksProxyDetail(r.Context(), id, 10)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "socks proxy not found")
 		return
@@ -953,7 +953,7 @@ func (a *App) handleSocksProxyDetail(w http.ResponseWriter, r *http.Request) {
 		},
 		"raw": detail.Proxy,
 		"activity": map[string]any{
-			"usage":    []domain.UsageLog{},
+			"usage":    ensureUsageLogs(detail.Usage),
 			"events":   []domain.AuditEvent{},
 			"backends": detail.Backends,
 		},
@@ -1492,9 +1492,9 @@ func (a *App) handlePolicyDetail(w http.ResponseWriter, r *http.Request) {
 		},
 		"raw": detail.Policy,
 		"activity": map[string]any{
-			"usage":    []domain.UsageLog{},
+			"usage":    ensureUsageLogs(detail.Usage),
 			"events":   ensureAuditEvents(detail.Events),
-			"backends": []domain.Backend{},
+			"backends": detail.Backends,
 		},
 	})
 }

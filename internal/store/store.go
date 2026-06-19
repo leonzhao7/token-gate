@@ -150,13 +150,16 @@ type ClientKeyDetailData struct {
 }
 
 type ModelPolicyDetailData struct {
-	Policy domain.ModelPolicy
-	Events []domain.AuditEvent
+	Policy   domain.ModelPolicy
+	Usage    []domain.UsageLog
+	Backends []domain.Backend
+	Events   []domain.AuditEvent
 }
 
 type SocksProxyDetailData struct {
 	Proxy    domain.SocksProxy
 	Backends []domain.Backend
+	Usage    []domain.UsageLog
 }
 
 type UsageLogStats struct {
@@ -1264,17 +1267,27 @@ func (s *Store) ModelPolicyDetail(ctx context.Context, id int64, limit int) (Mod
 	if err != nil {
 		return ModelPolicyDetailData{}, err
 	}
+	usage, err := s.listUsageLogsByPolicyID(ctx, id, limit)
+	if err != nil {
+		return ModelPolicyDetailData{}, err
+	}
+	backends, err := s.listBackendsByPool(ctx, policy.BackendPool)
+	if err != nil {
+		return ModelPolicyDetailData{}, err
+	}
 	events, err := s.listAuditEventsByModel(ctx, policy.Pattern, limit)
 	if err != nil {
 		return ModelPolicyDetailData{}, err
 	}
 	return ModelPolicyDetailData{
-		Policy: policy,
-		Events: ensureAuditEventSlice(events),
+		Policy:   policy,
+		Usage:    ensureUsageLogSlice(usage),
+		Backends: ensureBackendSlice(backends),
+		Events:   ensureAuditEventSlice(events),
 	}, nil
 }
 
-func (s *Store) SocksProxyDetail(ctx context.Context, id int64) (SocksProxyDetailData, error) {
+func (s *Store) SocksProxyDetail(ctx context.Context, id int64, limit int) (SocksProxyDetailData, error) {
 	proxy, err := s.GetSocksProxy(ctx, id)
 	if err != nil {
 		return SocksProxyDetailData{}, err
@@ -1283,9 +1296,14 @@ func (s *Store) SocksProxyDetail(ctx context.Context, id int64) (SocksProxyDetai
 	if err != nil {
 		return SocksProxyDetailData{}, err
 	}
+	usage, err := s.listUsageLogsByProxyID(ctx, id, limit)
+	if err != nil {
+		return SocksProxyDetailData{}, err
+	}
 	return SocksProxyDetailData{
 		Proxy:    proxy,
 		Backends: ensureBackendSlice(backends),
+		Usage:    ensureUsageLogSlice(usage),
 	}, nil
 }
 
@@ -2651,9 +2669,17 @@ func (s *Store) listUsageLogsByClientID(ctx context.Context, id int64, limit int
 	return s.listUsageLogsByColumn(ctx, "client_id", id, limit)
 }
 
+func (s *Store) listUsageLogsByPolicyID(ctx context.Context, id int64, limit int) ([]domain.UsageLog, error) {
+	return s.listUsageLogsByColumn(ctx, "policy_id", id, limit)
+}
+
+func (s *Store) listUsageLogsByProxyID(ctx context.Context, id int64, limit int) ([]domain.UsageLog, error) {
+	return s.listUsageLogsByColumn(ctx, "proxy_id", id, limit)
+}
+
 func (s *Store) listUsageLogsByColumn(ctx context.Context, column string, id int64, limit int) ([]domain.UsageLog, error) {
 	switch column {
-	case "backend_id", "client_id":
+	case "backend_id", "client_id", "policy_id", "proxy_id":
 	default:
 		return nil, fmt.Errorf("unsupported usage log lookup column %q", column)
 	}
@@ -2743,6 +2769,37 @@ func (s *Store) listBackendsByProxyID(ctx context.Context, proxyID int64) ([]dom
 		WHERE b.proxy_id = ?
 		ORDER BY b.id DESC
 	`, proxyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var backends []domain.Backend
+	for rows.Next() {
+		backend, err := scanBackendWithProxy(rows)
+		if err != nil {
+			return nil, err
+		}
+		backends = append(backends, backend)
+	}
+	return backends, rows.Err()
+}
+
+func (s *Store) listBackendsByPool(ctx context.Context, pool string) ([]domain.Backend, error) {
+	pool = strings.TrimSpace(pool)
+	if pool == "" {
+		return []domain.Backend{}, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
+			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
+		FROM backends b
+		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
+		WHERE b.pool = ?
+		ORDER BY b.id DESC
+	`, pool)
 	if err != nil {
 		return nil, err
 	}
