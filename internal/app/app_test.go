@@ -946,8 +946,13 @@ func TestBackendListIncludesRecentRequestStats(t *testing.T) {
 
 	var payload struct {
 		Items []struct {
-			ID          int64 `json:"id"`
-			RecentStats struct {
+			ID            int64      `json:"id"`
+			RequestCount  int        `json:"request_count"`
+			AvgLatencyMS  float64    `json:"avg_latency_ms"`
+			LastUsedAt    *time.Time `json:"last_used_at"`
+			ModelCount    int        `json:"model_count"`
+			EndpointCount int        `json:"endpoint_count"`
+			RecentStats   struct {
 				WindowMinutes int `json:"window_minutes"`
 				Successes     int `json:"successes"`
 				Failures      int `json:"failures"`
@@ -962,6 +967,18 @@ func TestBackendListIncludesRecentRequestStats(t *testing.T) {
 	}
 	if payload.Items[0].ID != backend.ID {
 		t.Fatalf("unexpected backend item: %#v", payload.Items[0])
+	}
+	if payload.Items[0].RequestCount != 2 {
+		t.Fatalf("expected request_count 2, got %d", payload.Items[0].RequestCount)
+	}
+	if payload.Items[0].AvgLatencyMS < 0 {
+		t.Fatalf("expected avg_latency_ms >= 0, got %f", payload.Items[0].AvgLatencyMS)
+	}
+	if payload.Items[0].LastUsedAt == nil || payload.Items[0].LastUsedAt.IsZero() {
+		t.Fatalf("expected last_used_at to be populated, got %#v", payload.Items[0].LastUsedAt)
+	}
+	if payload.Items[0].ModelCount != 1 || payload.Items[0].EndpointCount != 1 {
+		t.Fatalf("unexpected capability counts: models=%d endpoints=%d", payload.Items[0].ModelCount, payload.Items[0].EndpointCount)
 	}
 	if payload.Items[0].RecentStats.WindowMinutes != 30 || payload.Items[0].RecentStats.Successes != 1 || payload.Items[0].RecentStats.Failures != 1 {
 		t.Fatalf("unexpected recent stats: %#v", payload.Items[0].RecentStats)
@@ -1026,6 +1043,104 @@ func TestBackendListExcludesBadRequestFromFailureStats(t *testing.T) {
 	}
 	if payload.Items[0].RecentStats.Failures != 0 {
 		t.Fatalf("expected 400 not to count as backend failure, got %#v", payload.Items[0].RecentStats)
+	}
+}
+
+func TestBackendListIncludesUsageAndRelationshipSummaries(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	proxyItem, err := application.store.CreateSocksProxy(ctx, domain.SocksProxy{
+		Name:    "summary-proxy",
+		Address: "127.0.0.1:1080",
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create proxy: %v", err)
+	}
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "alpha",
+		Pool:      "premium",
+		BaseURL:   "https://alpha.local/v1",
+		APIKey:    "alpha-key",
+		ProxyID:   proxyItem.ID,
+		Enabled:   true,
+		Weight:    2,
+		Models:    []string{"gpt-4o", "gpt-4.1"},
+		Endpoints: []string{domain.EndpointChat, domain.EndpointResponses},
+	})
+
+	for i, duration := range []int64{45, 75} {
+		if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+			RequestID:         fmt.Sprintf("backend-summary-%d", i+1),
+			ClientID:          1,
+			ClientName:        "summary-client",
+			ClientTokenPrefix: "summ",
+			Method:            http.MethodPost,
+			Path:              "/v1/chat/completions",
+			Endpoint:          domain.EndpointChat,
+			Model:             "gpt-4o",
+			BackendID:         backend.ID,
+			BackendName:       backend.Name,
+			ProxyID:           proxyItem.ID,
+			ProxyName:         proxyItem.Name,
+			Attempts:          1,
+			StatusCode:        http.StatusOK,
+			DurationMS:        duration,
+		}); err != nil {
+			t.Fatalf("append usage log %d: %v", i+1, err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/backends", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected backend list status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID            int64     `json:"id"`
+			APIKey        string    `json:"api_key"`
+			RequestCount  int       `json:"request_count"`
+			AvgLatencyMS  float64   `json:"avg_latency_ms"`
+			LastUsedAt    time.Time `json:"last_used_at"`
+			ModelCount    int       `json:"model_count"`
+			EndpointCount int       `json:"endpoint_count"`
+			Proxy         *struct {
+				Name string `json:"name"`
+			} `json:"proxy"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal backend list: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one backend item, got %#v", payload.Items)
+	}
+	item := payload.Items[0]
+	if item.ID != backend.ID {
+		t.Fatalf("unexpected backend item: %#v", item)
+	}
+	if item.APIKey != backend.APIKey {
+		t.Fatalf("expected backend list to keep raw api key available, got %#v", item)
+	}
+	if item.RequestCount != 2 || item.AvgLatencyMS != 60 {
+		t.Fatalf("unexpected usage summary: %#v", item)
+	}
+	if item.LastUsedAt.IsZero() {
+		t.Fatalf("expected last_used_at populated, got %#v", item)
+	}
+	if item.ModelCount != 2 || item.EndpointCount != 2 {
+		t.Fatalf("unexpected relationship counts: %#v", item)
+	}
+	if item.Proxy == nil || item.Proxy.Name != proxyItem.Name {
+		t.Fatalf("expected proxy relationship in payload, got %#v", item.Proxy)
 	}
 }
 

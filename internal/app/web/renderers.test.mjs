@@ -47,14 +47,20 @@ test("createQuickDetailSections limits inline expansion to concise summaries", (
     base_url: "https://edge.example.com/v1",
     models: ["gpt-4o", "gpt-4.1"],
     endpoints: ["chat", "responses"],
+    model_count: 2,
+    endpoint_count: 2,
     pool: "premium",
     proxy: { name: "tokyo-egress" },
+    request_count: 42,
+    avg_latency_ms: 88,
+    last_used_at: "2026-06-19T13:00:00Z",
     model_mapping: { "gpt-4o": "gpt-4o-prod" },
   });
 
   assert.deepEqual(sections, [
     { title: "Relationships", items: ["Pool premium", "Proxy tokyo-egress"] },
     { title: "Capabilities", items: ["2 models", "2 endpoints"] },
+    { title: "Usage", items: ["42 requests", "88 ms avg latency", "Last used 2026-06-19T13:00:00Z"] },
     { title: "JSON Preview", items: ['"base_url":"https://edge.example.com/v1"', '"gpt-4o":"gpt-4o-prod"'] },
   ]);
 });

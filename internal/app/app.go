@@ -161,7 +161,12 @@ type detailActivityPlaceholder struct {
 
 type backendView struct {
 	domain.Backend
-	RecentStats backendRecentStats `json:"recent_stats"`
+	RequestCount  int                `json:"request_count"`
+	AvgLatencyMS  float64            `json:"avg_latency_ms"`
+	LastUsedAt    *time.Time         `json:"last_used_at,omitempty"`
+	ModelCount    int                `json:"model_count"`
+	EndpointCount int                `json:"endpoint_count"`
+	RecentStats   backendRecentStats `json:"recent_stats"`
 }
 
 type clientKeyView struct {
@@ -184,6 +189,12 @@ type backendRecentStats struct {
 	WindowMinutes int `json:"window_minutes"`
 	Successes     int `json:"successes"`
 	Failures      int `json:"failures"`
+}
+
+type backendUsageSummary struct {
+	RequestCount int
+	AvgLatencyMS float64
+	LastUsedAt   *time.Time
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
@@ -655,21 +666,14 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	var views []backendView
-	for _, backend := range backends {
-		stat := stats[backend.ID]
-		views = append(views, backendView{
-			Backend: backend,
-			RecentStats: backendRecentStats{
-				WindowMinutes: 30,
-				Successes:     stat.Successes,
-				Failures:      stat.Failures,
-			},
-		})
+	summaries, err := a.backendUsageSummaryMap(r.Context(), backends)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 
 	writeJSON(w, http.StatusOK, overviewResponse{
-		Backends:      ensureBackendViews(views),
+		Backends:      ensureBackendViews(buildBackendViews(backends, summaries, stats)),
 		SocksProxies:  len(proxies),
 		ClientKeys:    len(clients),
 		ModelPolicies: len(policies),
@@ -965,19 +969,13 @@ func (a *App) handleListBackends(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-
-	var response []backendView
-	for _, backend := range backends {
-		stat := stats[backend.ID]
-		response = append(response, backendView{
-			Backend: backend,
-			RecentStats: backendRecentStats{
-				WindowMinutes: 30,
-				Successes:     stat.Successes,
-				Failures:      stat.Failures,
-			},
-		})
+	summaries, err := a.backendUsageSummaryMap(r.Context(), backends)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
+
+	response := buildBackendViews(backends, summaries, stats)
 	writeJSON(w, http.StatusOK, pagedResponse(ensureBackendViews(response), total, page, limit))
 }
 
@@ -1942,6 +1940,54 @@ func ensureBackendViews(values []backendView) []backendView {
 		return []backendView{}
 	}
 	return values
+}
+
+func (a *App) backendUsageSummaryMap(ctx context.Context, backends []domain.Backend) (map[int64]backendUsageSummary, error) {
+	ids := make([]int64, 0, len(backends))
+	for _, backend := range backends {
+		ids = append(ids, backend.ID)
+	}
+
+	storeSummaries, err := a.store.BackendUsageSummaryByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(map[int64]backendUsageSummary, len(storeSummaries))
+	for backendID, summary := range storeSummaries {
+		summaryValue := backendUsageSummary{
+			RequestCount: summary.RequestCount,
+			AvgLatencyMS: summary.AvgLatencyMS,
+		}
+		if !summary.LastUsedAt.IsZero() {
+			lastUsedAt := summary.LastUsedAt
+			summaryValue.LastUsedAt = &lastUsedAt
+		}
+		out[backendID] = summaryValue
+	}
+	return out, nil
+}
+
+func buildBackendViews(backends []domain.Backend, summaries map[int64]backendUsageSummary, stats map[int64]store.BackendRequestStats) []backendView {
+	views := make([]backendView, 0, len(backends))
+	for _, backend := range backends {
+		stat := stats[backend.ID]
+		summary := summaries[backend.ID]
+		views = append(views, backendView{
+			Backend:       backend,
+			RequestCount:  summary.RequestCount,
+			AvgLatencyMS:  summary.AvgLatencyMS,
+			LastUsedAt:    summary.LastUsedAt,
+			ModelCount:    len(backend.Models),
+			EndpointCount: len(backend.Endpoints),
+			RecentStats: backendRecentStats{
+				WindowMinutes: 30,
+				Successes:     stat.Successes,
+				Failures:      stat.Failures,
+			},
+		})
+	}
+	return views
 }
 
 func ensureSocksProxies(values []domain.SocksProxy) []domain.SocksProxy {

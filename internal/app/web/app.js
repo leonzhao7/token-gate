@@ -2205,11 +2205,11 @@ function renderBackends() {
           <thead>
             <tr>
               <th>Backend</th>
-              <th>Status</th>
-              <th>Protocol</th>
-              <th>Pool</th>
-              <th>Proxy</th>
-              <th>Models</th>
+              <th>Routing</th>
+              <th>Coverage</th>
+              <th>Requests</th>
+              <th>Avg Latency</th>
+              <th>Last Used</th>
               <th>Recent 30m</th>
               <th>Actions</th>
             </tr>
@@ -2453,11 +2453,17 @@ function renderBackendRow(backend) {
         </button>
         <div class="cell-subtitle">${escapeHTML(backend.base_url)}</div>
       </td>
-      <td>${statusPill(backend.enabled, "enabled", "disabled")}</td>
-      <td>${escapeHTML(backendProtocolLabel(backend.protocol))}</td>
-      <td>${escapeHTML(backend.pool || "-")}</td>
-      <td>${escapeHTML(proxyLabel(backend.proxy_id, backend.proxy))}</td>
-      <td>${compactList(backend.models)}</td>
+      <td>
+        ${statusPill(backend.enabled, "enabled", "disabled")}
+        <div class="cell-subtitle">${escapeHTML(formatBackendRouting(backend))}</div>
+      </td>
+      <td>
+        <div>${escapeHTML(formatBackendCoverage(backend))}</div>
+        <div class="cell-subtitle">${escapeHTML(backendProtocolLabel(backend.protocol))}</div>
+      </td>
+      <td>${escapeHTML(formatUsageCount(backend.request_count))}</td>
+      <td>${escapeHTML(formatLatency(backend.avg_latency_ms))}</td>
+      <td>${escapeHTML(formatDateTime(backend.last_used_at))}</td>
       <td>${escapeHTML(formatBackendRecentStats(recentStats))}</td>
       <td>${tableActions("backend", backend.id)}</td>
     </tr>
@@ -3560,6 +3566,16 @@ function formatBindingCount(value) {
   return `${count} backends`;
 }
 
+function formatBackendCoverage(backend) {
+  const modelCount = Number.isFinite(Number(backend?.model_count))
+    ? Number(backend.model_count)
+    : ensureArray(backend?.models).filter(Boolean).length;
+  const endpointCount = Number.isFinite(Number(backend?.endpoint_count))
+    ? Number(backend.endpoint_count)
+    : ensureArray(backend?.endpoints).filter(Boolean).length;
+  return `${modelCount} models / ${endpointCount} endpoints`;
+}
+
 function formatLatency(value) {
   const latency = Number(value || 0);
   if (!Number.isFinite(latency) || latency <= 0) {
@@ -3592,6 +3608,14 @@ function proxyLabel(proxyID, proxy) {
     return `missing proxy #${proxyID}`;
   }
   return `${proxy.name}${proxy.enabled ? "" : " (disabled)"}`;
+}
+
+function formatBackendRouting(backend) {
+  const parts = [
+    backend?.pool ? `pool ${backend.pool}` : "",
+    proxyLabel(backend?.proxy_id, backend?.proxy),
+  ].filter(Boolean);
+  return parts.join(" | ") || "-";
 }
 
 function backendProtocolLabel(protocol) {

@@ -24,19 +24,31 @@
     const kind = String(resourceKey || "").trim();
     const source = record && typeof record === "object" ? record : {};
     if (kind === "backends") {
+      const modelCount = numericCount(source.model_count, source.models);
+      const endpointCount = numericCount(source.endpoint_count, source.endpoints);
       return [
         {
           title: "Relationships",
           items: compactItems([
             source.pool ? `Pool ${source.pool}` : "",
             source.proxy?.name ? `Proxy ${source.proxy.name}` : "",
+            source.protocol ? `Protocol ${source.protocol}` : "",
           ]),
         },
         {
           title: "Capabilities",
           items: compactItems([
-            `${arrayCount(source.models)} models`,
-            `${arrayCount(source.endpoints)} endpoints`,
+            modelCount > 0 ? `${modelCount} models` : "",
+            endpointCount > 0 ? `${endpointCount} endpoints` : "",
+          ]),
+        },
+        {
+          title: "Usage",
+          items: compactItems([
+            Number.isFinite(Number(source.request_count)) ? `${Number(source.request_count)} requests` : "",
+            Number.isFinite(Number(source.avg_latency_ms)) && Number(source.avg_latency_ms) > 0 ? `${Math.round(Number(source.avg_latency_ms))} ms avg latency` : "",
+            source.last_used_at ? `Last used ${source.last_used_at}` : "",
+            source.recent_stats ? recentStatsPreview(source.recent_stats) : "",
           ]),
         },
         {
@@ -155,6 +167,14 @@
     return Array.isArray(value) ? value.length : 0;
   }
 
+  function numericCount(countValue, fallbackValue) {
+    const count = Number(countValue);
+    if (Number.isFinite(count) && count >= 0) {
+      return Math.floor(count);
+    }
+    return arrayCount(fallbackValue);
+  }
+
   function compactItems(items) {
     return items.filter((item) => String(item || "").trim());
   }
@@ -168,6 +188,17 @@
       return "";
     }
     return `"${firstKey}":"${value[firstKey]}"`;
+  }
+
+  function recentStatsPreview(stats) {
+    const successes = Number(stats?.successes);
+    const failures = Number(stats?.failures);
+    const hasSuccesses = Number.isFinite(successes) && successes > 0;
+    const hasFailures = Number.isFinite(failures) && failures > 0;
+    if (!hasSuccesses && !hasFailures) {
+      return "";
+    }
+    return `${hasSuccesses ? successes : 0} ok / ${hasFailures ? failures : 0} fail (30m)`;
   }
 
   const api = {

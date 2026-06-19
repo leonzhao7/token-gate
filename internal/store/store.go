@@ -38,6 +38,12 @@ type ProxyUsageSummary struct {
 	LastUsedAt   time.Time
 }
 
+type BackendUsageSummary struct {
+	RequestCount int
+	AvgLatencyMS float64
+	LastUsedAt   time.Time
+}
+
 type UsageLogFilter struct {
 	BackendName string
 	Model       string
@@ -1380,6 +1386,48 @@ func (s *Store) ProxyUsageSummaryByIDs(ctx context.Context, ids []int64) (map[in
 		out[proxyID] = ProxyUsageSummary{
 			RequestCount: requests,
 			TrafficBytes: traffic,
+			AvgLatencyMS: avgLatency,
+			LastUsedAt:   parseTime(lastUsed),
+		}
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) BackendUsageSummaryByIDs(ctx context.Context, ids []int64) (map[int64]BackendUsageSummary, error) {
+	if len(ids) == 0 {
+		return map[int64]BackendUsageSummary{}, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT backend_id, COUNT(*), AVG(duration_ms), MAX(created_at)
+		FROM usage_logs
+		WHERE backend_id IN (`+placeholders+`)
+		GROUP BY backend_id
+	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[int64]BackendUsageSummary, len(ids))
+	for rows.Next() {
+		var (
+			backendID  int64
+			requests   int
+			avgLatency float64
+			lastUsed   string
+		)
+		if err := rows.Scan(&backendID, &requests, &avgLatency, &lastUsed); err != nil {
+			return nil, err
+		}
+		out[backendID] = BackendUsageSummary{
+			RequestCount: requests,
 			AvgLatencyMS: avgLatency,
 			LastUsedAt:   parseTime(lastUsed),
 		}
