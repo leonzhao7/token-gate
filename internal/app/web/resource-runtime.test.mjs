@@ -9,6 +9,8 @@ const ResourceViewUtils = require("./resource-view.js");
 const ResourceStateUtils = require("./resource-state.js");
 const { requireResourceViewUtils } = require("./resource-runtime.js");
 const { requireResourceStateUtils } = require("./resource-runtime.js");
+const { requireResourceCrudUtils } = require("./resource-runtime.js");
+const ResourceCrudUtils = require("./resource-crud.js");
 
 test("requireResourceViewUtils returns the resource view api when all required functions exist", () => {
   const resourceView = requireResourceViewUtils(ResourceViewUtils);
@@ -63,6 +65,19 @@ test("requireResourceStateUtils reports missing helper names for partial state m
   );
 });
 
+test("requireResourceCrudUtils returns the resource crud api when all required functions exist", () => {
+  const resourceCrud = requireResourceCrudUtils(ResourceCrudUtils);
+  assert.deepEqual(resourceCrud.parseModelMapping("gpt-4=gpt-4.1"), { "gpt-4": "gpt-4.1" });
+  assert.equal(typeof resourceCrud.createResourceCrud, "function");
+});
+
+test("requireResourceCrudUtils throws a clear error when resource-crud utils are unavailable", () => {
+  assert.throws(
+    () => requireResourceCrudUtils(null),
+    /resource-crud\.js.*load.*before app\.js/i,
+  );
+});
+
 test("app.js fails clearly during startup when resource view utils are missing", () => {
   const context = createAppVmContext({
     ResourceRuntimeUtils: { requireResourceViewUtils },
@@ -89,11 +104,26 @@ test("app.js fails clearly during startup when resource state utils are missing"
   );
 });
 
-test("app.js integrates the validated resource view module for proxy list rendering", () => {
+test("app.js fails clearly during startup when resource crud utils are missing", () => {
   const context = createAppVmContext({
-    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils },
+    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils, requireResourceCrudUtils },
     ResourceViewUtils,
     ResourceStateUtils,
+    ResourceCrudUtils: null,
+  });
+
+  assert.throws(
+    () => loadAppWithoutBootstrap(context),
+    /resource-crud\.js.*load.*before app\.js/i,
+  );
+});
+
+test("app.js integrates the validated resource view module for proxy list rendering", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils, requireResourceCrudUtils },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
   });
 
   loadAppWithoutBootstrap(context);
@@ -127,9 +157,10 @@ test("app.js initializes resource view defaults through ResourceStateUtils", () 
     },
   };
   const context = createAppVmContext({
-    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils },
+    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils, requireResourceCrudUtils },
     ResourceViewUtils,
     ResourceStateUtils: instrumentedResourceStateUtils,
+    ResourceCrudUtils,
   });
 
   loadAppWithoutBootstrap(context);
@@ -142,12 +173,14 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   const resourceViewIndex = html.indexOf("./resource-view.js");
   const resourceRuntimeIndex = html.indexOf("./resource-runtime.js");
   const resourceStateIndex = html.indexOf("./resource-state.js");
+  const resourceCrudIndex = html.indexOf("./resource-crud.js");
   const appIndex = html.indexOf("./app.js");
 
   assert.ok(resourceViewIndex >= 0);
   assert.ok(resourceRuntimeIndex > resourceViewIndex);
   assert.ok(resourceStateIndex > resourceRuntimeIndex);
-  assert.ok(appIndex > resourceStateIndex);
+  assert.ok(resourceCrudIndex > resourceStateIndex);
+  assert.ok(appIndex > resourceCrudIndex);
 });
 
 function loadAppWithoutBootstrap(context) {
@@ -157,7 +190,12 @@ function loadAppWithoutBootstrap(context) {
   return context;
 }
 
-function createAppVmContext({ ResourceRuntimeUtils, ResourceViewUtils: resourceViewUtils, ResourceStateUtils: resourceStateUtils }) {
+function createAppVmContext({
+  ResourceRuntimeUtils,
+  ResourceViewUtils: resourceViewUtils,
+  ResourceStateUtils: resourceStateUtils,
+  ResourceCrudUtils: resourceCrudUtils,
+}) {
   const elements = new Map();
   const HTMLElement = class HTMLElement {};
 
@@ -292,6 +330,7 @@ function createAppVmContext({ ResourceRuntimeUtils, ResourceViewUtils: resourceV
     ResourceRuntimeUtils,
     ResourceViewUtils: resourceViewUtils,
     ResourceStateUtils: resourceStateUtils,
+    ResourceCrudUtils: resourceCrudUtils,
     ThemeUtils: {},
     SearchUtils: {},
     DashboardUtils: {},

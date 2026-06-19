@@ -178,6 +178,11 @@ const ResourceStateUtils = typeof ResourceRuntimeUtils.requireResourceStateUtils
   : (() => {
     throw new Error("resource-runtime.js failed to load before app.js");
   })();
+const ResourceCrudUtils = typeof ResourceRuntimeUtils.requireResourceCrudUtils === "function"
+  ? ResourceRuntimeUtils.requireResourceCrudUtils(globalThis.ResourceCrudUtils)
+  : (() => {
+    throw new Error("resource-runtime.js failed to load before app.js");
+  })();
 const RendererUtils = globalThis.RendererUtils || {};
 const SettingsUtils = globalThis.SettingsUtils || {};
 const systemThemeQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -287,6 +292,160 @@ const state = {
     },
   },
 };
+const resourceCrud = ResourceCrudUtils.createResourceCrud({
+  state,
+  escapeHTML,
+  resources: {
+    proxies: {
+      form: proxyForm,
+      modal: proxyModal,
+      title: proxyModalTitle,
+      submitButton: proxySubmitBtn,
+      cancelButton: proxyCancelBtn,
+      editBanner: proxyEditBanner,
+      editingStateKey: "editingProxyID",
+      collectionStateKey: "proxies",
+      render: renderProxies,
+      createTitle: "新增 Proxy",
+      editTitle: "编辑 Proxy",
+      createSubmitLabel: "新增 Proxy",
+      editSubmitLabel: "保存 Proxy",
+      editBannerText(proxy) {
+        return `正在编辑 SOCKS5 Proxy: ${proxy.name}`;
+      },
+      focusField: "name",
+      defaults: {
+        enabled: true,
+      },
+      assignEditValues(form, proxy) {
+        form.elements.name.value = proxy.name || "";
+        form.elements.address.value = proxy.address || "";
+        form.elements.username.value = proxy.username || "";
+        form.elements.password.value = proxy.password || "";
+        form.elements.enabled.checked = Boolean(proxy.enabled);
+      },
+    },
+    backends: {
+      form: backendForm,
+      modal: backendModal,
+      title: backendModalTitle,
+      submitButton: backendSubmitBtn,
+      cancelButton: backendCancelBtn,
+      editBanner: backendEditBanner,
+      editingStateKey: "editingBackendID",
+      collectionStateKey: "backends",
+      render: renderBackends,
+      createTitle: "新增 Backend",
+      editTitle: "编辑 Backend",
+      createSubmitLabel: "新增 Backend",
+      editSubmitLabel: "保存 Backend",
+      editBannerText(backend) {
+        return `正在编辑 Backend: ${backend.name}`;
+      },
+      focusField: "name",
+      defaults: {
+        protocol: "openai",
+        api_key: { placeholder: "Backend API key" },
+        proxy_id: "0",
+        model_mapping: "",
+        weight: 1,
+        enabled: true,
+      },
+      assignEditValues(form, backend, helpers) {
+        form.elements.name.value = backend.name || "";
+        form.elements.pool.value = backend.pool || "";
+        form.elements.protocol.value = backend.protocol || "openai";
+        form.elements.base_url.value = backend.base_url || "";
+        form.elements.api_key.value = backend.api_key || "";
+        form.elements.api_key.placeholder = "Backend API key";
+        form.elements.proxy_id.value = String(backend.proxy_id || 0);
+        form.elements.models.value = (backend.models || []).join(", ");
+        form.elements.model_mapping.value = helpers.formatModelMappingInput(backend.model_mapping);
+        form.elements.endpoints.value = (backend.endpoints || []).join(", ");
+        form.elements.weight.value = backend.weight || 1;
+        form.elements.enabled.checked = Boolean(backend.enabled);
+      },
+    },
+    clients: {
+      form: clientForm,
+      modal: clientModal,
+      title: clientModalTitle,
+      submitButton: clientSubmitBtn,
+      cancelButton: clientCancelBtn,
+      editBanner: clientEditBanner,
+      editingStateKey: "editingClientID",
+      collectionStateKey: "clients",
+      render: renderClients,
+      createTitle: "新增 Client Key",
+      editTitle: "编辑 Client Key",
+      createSubmitLabel: "新增 Client Key",
+      editSubmitLabel: "保存 Client Key",
+      editBannerText(client) {
+        return `正在编辑 Client Key: ${client.name}`;
+      },
+      focusField: "name",
+      defaults: {
+        token: { placeholder: "Leave blank to auto-generate" },
+        enabled: true,
+      },
+      assignEditValues(form, client) {
+        form.elements.name.value = client.name || "";
+        form.elements.token.value = client.token || "";
+        form.elements.token.placeholder = client.token ? "Client token" : "历史 key 仅保存了 hash；重新填写后可显示";
+        form.elements.route_mode_override.value = client.route_mode_override || "";
+        form.elements.route_group.value = client.route_group || "";
+        form.elements.enabled.checked = Boolean(client.enabled);
+      },
+    },
+    policies: {
+      form: policyForm,
+      modal: policyModal,
+      title: policyModalTitle,
+      submitButton: policySubmitBtn,
+      cancelButton: policyCancelBtn,
+      editBanner: policyEditBanner,
+      editingStateKey: "editingPolicyID",
+      collectionStateKey: "policies",
+      render: renderPolicies,
+      createTitle: "新增 Policy",
+      editTitle: "编辑 Policy",
+      createSubmitLabel: "新增 Policy",
+      editSubmitLabel: "保存 Policy",
+      editBannerText(policy) {
+        return `正在编辑 Model Policy: ${policy.pattern}`;
+      },
+      focusField: "pattern",
+      defaults: {
+        endpoint: "chat",
+        placement_policy: "sticky",
+        priority: 100,
+        failover_enabled: true,
+      },
+      assignEditValues(form, policy) {
+        form.elements.pattern.value = policy.pattern || "";
+        form.elements.endpoint.value = policy.endpoint || "chat";
+        form.elements.placement_policy.value = policy.placement_policy || "sticky";
+        form.elements.backend_pool.value = policy.backend_pool || "";
+        form.elements.priority.value = policy.priority || 100;
+        form.elements.failover_enabled.checked = Boolean(policy.failover_enabled);
+      },
+    },
+  },
+});
+const { readForm, renderProxyOptions, splitList } = resourceCrud;
+const parseModelMapping = ResourceCrudUtils.parseModelMapping;
+const startCreateProxy = () => resourceCrud.startCreate("proxies");
+const startEditProxy = (id) => resourceCrud.startEdit("proxies", id);
+const resetProxyForm = () => resourceCrud.reset("proxies");
+const startCreateBackend = () => resourceCrud.startCreate("backends");
+const startEditBackend = (id) => resourceCrud.startEdit("backends", id);
+const resetBackendForm = () => resourceCrud.reset("backends");
+const startCreateClient = () => resourceCrud.startCreate("clients");
+const startEditClient = (id) => resourceCrud.startEdit("clients", id);
+const resetClientForm = () => resourceCrud.reset("clients");
+const startCreatePolicy = () => resourceCrud.startCreate("policies");
+const startEditPolicy = (id) => resourceCrud.startEdit("policies", id);
+const resetPolicyForm = () => resourceCrud.reset("policies");
 
 tokenInput.value = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
 initializeThemeState();
@@ -2797,21 +2956,6 @@ function formatUsageDetail(log) {
   return parts.join(" · ") || "-";
 }
 
-function parseModelMapping(value) {
-  const raw = String(value || "").trim();
-  if (!raw) {
-    return {};
-  }
-  const mapping = {};
-  raw.split(",").forEach((item) => {
-    const [from, to] = item.split("=").map((part) => String(part || "").trim());
-    if (from && to) {
-      mapping[from] = to;
-    }
-  });
-  return mapping;
-}
-
 function formatModelMapping(mapping) {
   if (!mapping || typeof mapping !== "object") {
     return "-";
@@ -2820,292 +2964,8 @@ function formatModelMapping(mapping) {
   return items.length === 0 ? "-" : items.join(", ");
 }
 
-function formatModelMappingInput(mapping) {
-  if (!mapping || typeof mapping !== "object") {
-    return "";
-  }
-  return Object.entries(mapping).map(([from, to]) => `${from}=${to}`).join(", ");
-}
-
-function startEditProxy(id) {
-  const proxy = state.proxies.find((item) => String(item.id) === String(id));
-  if (!proxy) {
-    return;
-  }
-
-  state.editingProxyID = proxy.id;
-  proxyForm.elements.name.value = proxy.name || "";
-  proxyForm.elements.address.value = proxy.address || "";
-  proxyForm.elements.username.value = proxy.username || "";
-  proxyForm.elements.password.value = proxy.password || "";
-  proxyForm.elements.enabled.checked = Boolean(proxy.enabled);
-
-  proxySubmitBtn.textContent = "保存 Proxy";
-  proxyCancelBtn.classList.remove("hidden");
-  proxyEditBanner.textContent = `正在编辑 SOCKS5 Proxy: ${proxy.name}`;
-  proxyEditBanner.classList.remove("hidden");
-  proxyModalTitle.textContent = "编辑 Proxy";
-  showProxyModal();
-  renderProxies();
-}
-
-function startCreateProxy() {
-  state.editingProxyID = null;
-  proxyForm.reset();
-  proxyForm.elements.enabled.checked = true;
-  proxySubmitBtn.textContent = "新增 Proxy";
-  proxyCancelBtn.classList.remove("hidden");
-  proxyEditBanner.classList.add("hidden");
-  proxyModalTitle.textContent = "新增 Proxy";
-  showProxyModal();
-  renderProxies();
-}
-
-function startCreateBackend() {
-  state.editingBackendID = null;
-  backendForm.reset();
-  backendForm.elements.protocol.value = "openai";
-  backendForm.elements.api_key.placeholder = "Backend API key";
-  backendForm.elements.proxy_id.value = "0";
-  backendForm.elements.model_mapping.value = "";
-  backendForm.elements.weight.value = 1;
-  backendForm.elements.enabled.checked = true;
-  backendSubmitBtn.textContent = "新增 Backend";
-  backendCancelBtn.classList.remove("hidden");
-  backendEditBanner.classList.add("hidden");
-  backendModalTitle.textContent = "新增 Backend";
-  showBackendModal();
-  renderBackends();
-}
-
-function startEditBackend(id) {
-  const backend = state.backends.find((item) => String(item.id) === String(id));
-  if (!backend) {
-    return;
-  }
-
-  state.editingBackendID = backend.id;
-  backendForm.elements.name.value = backend.name || "";
-  backendForm.elements.pool.value = backend.pool || "";
-  backendForm.elements.protocol.value = backend.protocol || "openai";
-  backendForm.elements.base_url.value = backend.base_url || "";
-  backendForm.elements.api_key.value = backend.api_key || "";
-  backendForm.elements.api_key.placeholder = "Backend API key";
-  backendForm.elements.proxy_id.value = String(backend.proxy_id || 0);
-  backendForm.elements.models.value = (backend.models || []).join(", ");
-  backendForm.elements.model_mapping.value = formatModelMappingInput(backend.model_mapping);
-  backendForm.elements.endpoints.value = (backend.endpoints || []).join(", ");
-  backendForm.elements.weight.value = backend.weight || 1;
-  backendForm.elements.enabled.checked = Boolean(backend.enabled);
-
-  backendSubmitBtn.textContent = "保存 Backend";
-  backendCancelBtn.classList.remove("hidden");
-  backendEditBanner.textContent = `正在编辑 Backend: ${backend.name}`;
-  backendEditBanner.classList.remove("hidden");
-  backendModalTitle.textContent = "编辑 Backend";
-  showBackendModal();
-  renderBackends();
-}
-
-function startCreateClient() {
-  state.editingClientID = null;
-  clientForm.reset();
-  clientForm.elements.token.placeholder = "Leave blank to auto-generate";
-  clientForm.elements.enabled.checked = true;
-  clientSubmitBtn.textContent = "新增 Client Key";
-  clientCancelBtn.classList.remove("hidden");
-  clientEditBanner.classList.add("hidden");
-  clientModalTitle.textContent = "新增 Client Key";
-  showClientModal();
-  renderClients();
-}
-
-function startEditClient(id) {
-  const client = state.clients.find((item) => String(item.id) === String(id));
-  if (!client) {
-    return;
-  }
-
-  state.editingClientID = client.id;
-  clientForm.elements.name.value = client.name || "";
-  clientForm.elements.token.value = client.token || "";
-  clientForm.elements.token.placeholder = client.token ? "Client token" : "历史 key 仅保存了 hash；重新填写后可显示";
-  clientForm.elements.route_mode_override.value = client.route_mode_override || "";
-  clientForm.elements.route_group.value = client.route_group || "";
-  clientForm.elements.enabled.checked = Boolean(client.enabled);
-
-  clientSubmitBtn.textContent = "保存 Client Key";
-  clientCancelBtn.classList.remove("hidden");
-  clientEditBanner.textContent = `正在编辑 Client Key: ${client.name}`;
-  clientEditBanner.classList.remove("hidden");
-  clientModalTitle.textContent = "编辑 Client Key";
-  showClientModal();
-  renderClients();
-}
-
-function showBackendModal() {
-  backendModal.classList.remove("hidden");
-  backendForm.elements.name.focus();
-}
-
-function showProxyModal() {
-  proxyModal.classList.remove("hidden");
-  proxyForm.elements.name.focus();
-}
-
-function hideProxyModal() {
-  proxyModal.classList.add("hidden");
-}
-
-function hideBackendModal() {
-  backendModal.classList.add("hidden");
-}
-
-function showClientModal() {
-  clientModal.classList.remove("hidden");
-  clientForm.elements.name.focus();
-}
-
-function hideClientModal() {
-  clientModal.classList.add("hidden");
-}
-
-function startCreatePolicy() {
-  state.editingPolicyID = null;
-  policyForm.reset();
-  policyForm.elements.endpoint.value = "chat";
-  policyForm.elements.placement_policy.value = "sticky";
-  policyForm.elements.priority.value = 100;
-  policyForm.elements.failover_enabled.checked = true;
-  policySubmitBtn.textContent = "新增 Policy";
-  policyCancelBtn.classList.remove("hidden");
-  policyEditBanner.classList.add("hidden");
-  policyModalTitle.textContent = "新增 Policy";
-  showPolicyModal();
-  renderPolicies();
-}
-
-function startEditPolicy(id) {
-  const policy = state.policies.find((item) => String(item.id) === String(id));
-  if (!policy) {
-    return;
-  }
-
-  state.editingPolicyID = policy.id;
-  policyForm.elements.pattern.value = policy.pattern || "";
-  policyForm.elements.endpoint.value = policy.endpoint || "chat";
-  policyForm.elements.placement_policy.value = policy.placement_policy || "sticky";
-  policyForm.elements.backend_pool.value = policy.backend_pool || "";
-  policyForm.elements.priority.value = policy.priority || 100;
-  policyForm.elements.failover_enabled.checked = Boolean(policy.failover_enabled);
-
-  policySubmitBtn.textContent = "保存 Policy";
-  policyCancelBtn.classList.remove("hidden");
-  policyEditBanner.textContent = `正在编辑 Model Policy: ${policy.pattern}`;
-  policyEditBanner.classList.remove("hidden");
-  policyModalTitle.textContent = "编辑 Policy";
-  showPolicyModal();
-  renderPolicies();
-}
-
-function resetProxyForm() {
-  state.editingProxyID = null;
-  proxyForm.reset();
-  proxyForm.elements.enabled.checked = true;
-  proxySubmitBtn.textContent = "新增 Proxy";
-  proxyCancelBtn.classList.add("hidden");
-  proxyEditBanner.classList.add("hidden");
-  proxyModalTitle.textContent = "新增 Proxy";
-  hideProxyModal();
-  renderProxies();
-}
-
-function resetBackendForm() {
-  state.editingBackendID = null;
-  backendForm.reset();
-  backendForm.elements.protocol.value = "openai";
-  backendForm.elements.api_key.placeholder = "Backend API key";
-  backendForm.elements.proxy_id.value = "0";
-  backendForm.elements.model_mapping.value = "";
-  backendForm.elements.weight.value = 1;
-  backendForm.elements.enabled.checked = true;
-  backendSubmitBtn.textContent = "新增 Backend";
-  backendCancelBtn.classList.add("hidden");
-  backendEditBanner.classList.add("hidden");
-  backendModalTitle.textContent = "新增 Backend";
-  hideBackendModal();
-  renderBackends();
-}
-
-function resetClientForm() {
-  state.editingClientID = null;
-  clientForm.reset();
-  clientForm.elements.token.placeholder = "Leave blank to auto-generate";
-  clientForm.elements.enabled.checked = true;
-  clientSubmitBtn.textContent = "新增 Client Key";
-  clientCancelBtn.classList.add("hidden");
-  clientEditBanner.classList.add("hidden");
-  clientModalTitle.textContent = "新增 Client Key";
-  hideClientModal();
-  renderClients();
-}
-
-function resetPolicyForm() {
-  state.editingPolicyID = null;
-  policyForm.reset();
-  policyForm.elements.endpoint.value = "chat";
-  policyForm.elements.placement_policy.value = "sticky";
-  policyForm.elements.priority.value = 100;
-  policyForm.elements.failover_enabled.checked = true;
-  policySubmitBtn.textContent = "新增 Policy";
-  policyCancelBtn.classList.add("hidden");
-  policyEditBanner.classList.add("hidden");
-  policyModalTitle.textContent = "新增 Policy";
-  hidePolicyModal();
-  renderPolicies();
-}
-
-function showPolicyModal() {
-  policyModal.classList.remove("hidden");
-  policyForm.elements.pattern.focus();
-}
-
-function hidePolicyModal() {
-  policyModal.classList.add("hidden");
-}
-
-function readForm(form) {
-  const formData = new FormData(form);
-  const payload = {};
-  for (const [key, value] of formData.entries()) {
-    payload[key] = value;
-  }
-  for (const input of form.querySelectorAll("input[type=checkbox]")) {
-    payload[input.name] = input.checked;
-  }
-  return payload;
-}
-
-function splitList(value) {
-  return String(value || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function ensureArray(value) {
   return Array.isArray(value) ? value : [];
-}
-
-function renderProxyOptions() {
-  const selected = backendForm.elements.proxy_id?.value || "0";
-  backendForm.elements.proxy_id.innerHTML = `
-    <option value="0">Direct connection</option>
-    ${state.proxies.map((proxy) => `
-      <option value="${proxy.id}">${escapeHTML(proxy.name)} (${escapeHTML(proxy.address)})${proxy.enabled ? "" : " - disabled"}</option>
-    `).join("")}
-  `;
-  backendForm.elements.proxy_id.value = state.proxies.some((proxy) => String(proxy.id) === selected) ? selected : "0";
 }
 
 function formatBackendRecentStats(stats = {}) {

@@ -17,6 +17,13 @@
     "applyPagedResponse",
     "paginationPageNumbers",
   ];
+  const REQUIRED_CRUD_METHODS = [
+    "createResourceCrud",
+    "parseModelMapping",
+    "formatModelMappingInput",
+    "readForm",
+    "splitList",
+  ];
 
   function requireResourceViewUtils(resourceViewUtils) {
     const candidate = resourceViewUtils && typeof resourceViewUtils === "object"
@@ -46,7 +53,22 @@
     );
   }
 
+  function requireResourceCrudUtils(resourceCrudUtils) {
+    const candidate = resourceCrudUtils && typeof resourceCrudUtils === "object"
+      ? resourceCrudUtils
+      : null;
+    const missing = REQUIRED_CRUD_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `resource-crud.js failed to load before app.js; missing ResourceCrudUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   const api = {
+    requireResourceCrudUtils,
     requireResourceStateUtils,
     requireResourceViewUtils,
   };
