@@ -14,10 +14,16 @@ test("createResourceToolbarModel keeps shared admin list actions in order", () =
   assert.deepEqual(createResourceToolbarModel({
     resourceKey: "backends",
     searchPlaceholder: "Search backends",
+    count: 12,
+    activeFilters: 2,
+    hasChanges: true,
   }), {
     resourceKey: "backends",
     searchPlaceholder: "Search backends",
-    actions: ["search", "filters", "sort", "refresh"],
+    count: 12,
+    activeFilters: 2,
+    hasChanges: true,
+    actions: ["search", "filters", "sort", "reset", "refresh"],
   });
 });
 

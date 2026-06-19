@@ -1,9 +1,12 @@
 (function initRenderersModule(globalScope) {
-  function createResourceToolbarModel({ resourceKey, searchPlaceholder = "" }) {
+  function createResourceToolbarModel({ resourceKey, searchPlaceholder = "", count = 0, activeFilters = 0, hasChanges = false }) {
     return {
       resourceKey: String(resourceKey || "").trim(),
       searchPlaceholder: String(searchPlaceholder || "").trim(),
-      actions: ["search", "filters", "sort", "refresh"],
+      count: Math.max(0, Number(count) || 0),
+      activeFilters: Math.max(0, Number(activeFilters) || 0),
+      hasChanges: Boolean(hasChanges),
+      actions: ["search", "filters", "sort", "reset", "refresh"],
     };
   }
 

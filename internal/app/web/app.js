@@ -2697,25 +2697,36 @@ function bindResourceRowOpen(container, kind) {
 }
 
 function renderResourceToolbar({ resourceKey, searchPlaceholder, count }) {
-  const model = typeof RendererUtils.createResourceToolbarModel === "function"
-    ? RendererUtils.createResourceToolbarModel({ resourceKey, searchPlaceholder })
-    : { searchPlaceholder, actions: ["search", "filters", "sort", "refresh", "create"] };
   const viewState = state.resourceViews[resourceKey] || { query: "", filter: "all", sort: "updated_desc" };
+  const defaultView = defaultResourceView(resourceKey);
+  const activeFilters = Number(Boolean(String(viewState.query || "").trim()))
+    + Number((viewState.filter || "all") !== defaultView.filter)
+    + Number((viewState.sort || "") !== defaultView.sort);
+  const hasChanges = activeFilters > 0;
+  const model = typeof RendererUtils.createResourceToolbarModel === "function"
+    ? RendererUtils.createResourceToolbarModel({ resourceKey, searchPlaceholder, count, activeFilters, hasChanges })
+    : { searchPlaceholder, count, activeFilters, hasChanges, actions: ["search", "filters", "sort", "reset", "refresh"] };
   const config = RESOURCE_VIEW_CONFIG[resourceKey] || { filterOptions: [], sortOptions: [] };
   return `
     <div class="resource-toolbar" data-resource-toolbar="${escapeHTML(resourceKey)}">
-      <label class="resource-toolbar-search">
-        <span class="field-label">Search</span>
-        <input type="search" data-toolbar-search="${escapeHTML(resourceKey)}" placeholder="${escapeHTML(model.searchPlaceholder || "")}" value="${escapeHTML(viewState.query || "")}" />
-      </label>
+      <div class="resource-toolbar-main">
+        <label class="resource-toolbar-search">
+          <span class="field-label">Search</span>
+          <input type="search" data-toolbar-search="${escapeHTML(resourceKey)}" placeholder="${escapeHTML(model.searchPlaceholder || "")}" value="${escapeHTML(viewState.query || "")}" />
+        </label>
+        <div class="resource-toolbar-meta">
+          <span class="toolbar-pill">${escapeHTML(String(model.count || 0))} items</span>
+          <span class="toolbar-muted">${escapeHTML(toolbarStatusLabel(activeFilters, hasChanges))}</span>
+        </div>
+      </div>
       <div class="resource-toolbar-actions">
-        <span class="toolbar-pill">${escapeHTML(String(count || 0))} items</span>
         <select data-toolbar-filter="${escapeHTML(resourceKey)}">
           ${config.filterOptions.map((option) => `<option value="${escapeHTML(option.value)}" ${option.value === viewState.filter ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")}
         </select>
         <select data-toolbar-sort="${escapeHTML(resourceKey)}">
           ${config.sortOptions.map((option) => `<option value="${escapeHTML(option.value)}" ${option.value === viewState.sort ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")}
         </select>
+        <button class="ghost-button small-button" type="button" data-toolbar-reset="${escapeHTML(resourceKey)}" ${hasChanges ? "" : "disabled"}>Reset</button>
         <button class="ghost-button small-button" type="button" data-toolbar-refresh="${escapeHTML(resourceKey)}">Refresh</button>
       </div>
     </div>
@@ -2735,6 +2746,11 @@ function bindResourceToolbar(container, resourceKey, actions) {
   });
   container.querySelector(`[data-toolbar-sort="${resourceKey}"]`)?.addEventListener("change", (event) => {
     state.resourceViews[resourceKey].sort = String(event.currentTarget.value || "");
+    state.pagination[resourceKey].page = 1;
+    renderResourceListByKey(resourceKey);
+  });
+  container.querySelector(`[data-toolbar-reset="${resourceKey}"]`)?.addEventListener("click", () => {
+    state.resourceViews[resourceKey] = defaultResourceView(resourceKey);
     state.pagination[resourceKey].page = 1;
     renderResourceListByKey(resourceKey);
   });
@@ -2762,6 +2778,29 @@ function renderResourceListByKey(resourceKey) {
   if (resourceKey === "policies") {
     renderPolicies();
   }
+}
+
+function defaultResourceView(resourceKey) {
+  const current = state.resourceViews[resourceKey];
+  if (current && typeof current === "object") {
+    const fallbackSort = resourceKey === "policies" ? "priority_asc" : "updated_desc";
+    return {
+      query: "",
+      filter: "all",
+      sort: fallbackSort,
+    };
+  }
+  return { query: "", filter: "all", sort: "updated_desc" };
+}
+
+function toolbarStatusLabel(activeFilters, hasChanges) {
+  if (!hasChanges || activeFilters <= 0) {
+    return "Default view";
+  }
+  if (activeFilters === 1) {
+    return "1 active control";
+  }
+  return `${activeFilters} active controls`;
 }
 
 function applyResourceView(resourceKey, items) {

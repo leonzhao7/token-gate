@@ -1802,19 +1802,30 @@ button:hover {
 }
 
 .resource-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: end;
   padding: 20px 0 14px;
+}
+
+.resource-toolbar-main {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
 }
 
 .resource-toolbar-search {
   display: grid;
   gap: 8px;
   min-width: min(360px, 100%);
-  flex: 1 1 320px;
+}
+
+.resource-toolbar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
 }
 
 .resource-toolbar-actions {
@@ -1843,6 +1854,12 @@ button:hover {
   background: var(--surface-muted);
   font-size: 0.78rem;
   font-weight: 800;
+}
+
+.toolbar-muted {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .table-shell {
