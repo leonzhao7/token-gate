@@ -6,7 +6,9 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const ResourceViewUtils = require("./resource-view.js");
+const ResourceStateUtils = require("./resource-state.js");
 const { requireResourceViewUtils } = require("./resource-runtime.js");
+const { requireResourceStateUtils } = require("./resource-runtime.js");
 
 test("requireResourceViewUtils returns the resource view api when all required functions exist", () => {
   const resourceView = requireResourceViewUtils(ResourceViewUtils);
@@ -31,10 +33,27 @@ test("requireResourceViewUtils throws a clear error when resource-view utils are
   );
 });
 
+test("requireResourceStateUtils returns the resource state api when all required functions exist", () => {
+  const resourceState = requireResourceStateUtils(ResourceStateUtils);
+  assert.deepEqual(resourceState.defaultResourceView("policies"), {
+    query: "",
+    filter: "all",
+    sort: "priority_asc",
+  });
+});
+
+test("requireResourceStateUtils throws a clear error when resource-state utils are unavailable", () => {
+  assert.throws(
+    () => requireResourceStateUtils(null),
+    /resource-state\.js.*load.*before app\.js/i,
+  );
+});
+
 test("app.js fails clearly during startup when resource view utils are missing", () => {
   const context = createAppVmContext({
     ResourceRuntimeUtils: { requireResourceViewUtils },
     ResourceViewUtils: null,
+    ResourceStateUtils,
   });
 
   assert.throws(
@@ -43,10 +62,24 @@ test("app.js fails clearly during startup when resource view utils are missing",
   );
 });
 
+test("app.js fails clearly during startup when resource state utils are missing", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils },
+    ResourceViewUtils,
+    ResourceStateUtils: null,
+  });
+
+  assert.throws(
+    () => loadAppWithoutBootstrap(context),
+    /resource-state\.js.*load.*before app\.js/i,
+  );
+});
+
 test("app.js integrates the validated resource view module for proxy list rendering", () => {
   const context = createAppVmContext({
-    ResourceRuntimeUtils: { requireResourceViewUtils },
+    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils },
     ResourceViewUtils,
+    ResourceStateUtils,
   });
 
   loadAppWithoutBootstrap(context);
@@ -74,11 +107,13 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   const html = fs.readFileSync(new URL("./index.html", import.meta.url), "utf8");
   const resourceViewIndex = html.indexOf("./resource-view.js");
   const resourceRuntimeIndex = html.indexOf("./resource-runtime.js");
+  const resourceStateIndex = html.indexOf("./resource-state.js");
   const appIndex = html.indexOf("./app.js");
 
   assert.ok(resourceViewIndex >= 0);
   assert.ok(resourceRuntimeIndex > resourceViewIndex);
-  assert.ok(appIndex > resourceRuntimeIndex);
+  assert.ok(resourceStateIndex > resourceRuntimeIndex);
+  assert.ok(appIndex > resourceStateIndex);
 });
 
 function loadAppWithoutBootstrap(context) {
@@ -88,7 +123,7 @@ function loadAppWithoutBootstrap(context) {
   return context;
 }
 
-function createAppVmContext({ ResourceRuntimeUtils, ResourceViewUtils: resourceViewUtils }) {
+function createAppVmContext({ ResourceRuntimeUtils, ResourceViewUtils: resourceViewUtils, ResourceStateUtils: resourceStateUtils }) {
   const elements = new Map();
   const HTMLElement = class HTMLElement {};
 
@@ -222,6 +257,7 @@ function createAppVmContext({ ResourceRuntimeUtils, ResourceViewUtils: resourceV
     },
     ResourceRuntimeUtils,
     ResourceViewUtils: resourceViewUtils,
+    ResourceStateUtils: resourceStateUtils,
     ThemeUtils: {},
     SearchUtils: {},
     DashboardUtils: {},

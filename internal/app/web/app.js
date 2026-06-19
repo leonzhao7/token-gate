@@ -173,6 +173,11 @@ const ResourceViewUtils = typeof ResourceRuntimeUtils.requireResourceViewUtils =
   : (() => {
     throw new Error("resource-runtime.js failed to load before app.js");
   })();
+const ResourceStateUtils = typeof ResourceRuntimeUtils.requireResourceStateUtils === "function"
+  ? ResourceRuntimeUtils.requireResourceStateUtils(globalThis.ResourceStateUtils)
+  : (() => {
+    throw new Error("resource-runtime.js failed to load before app.js");
+  })();
 const RendererUtils = globalThis.RendererUtils || {};
 const SettingsUtils = globalThis.SettingsUtils || {};
 const systemThemeQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -2429,8 +2434,8 @@ function bindResourceRowOpen(container, kind) {
 }
 
 function buildResourceToolbarMarkup({ resourceKey, searchPlaceholder, count }) {
-  const viewState = state.resourceViews[resourceKey] || { query: "", filter: "all", sort: "updated_desc" };
-  const defaultView = defaultResourceView(resourceKey);
+  const viewState = state.resourceViews[resourceKey] || ResourceStateUtils.defaultResourceView(resourceKey);
+  const defaultView = ResourceStateUtils.defaultResourceView(resourceKey);
   const activeFilters = Number(Boolean(String(viewState.query || "").trim()))
     + Number((viewState.filter || "all") !== defaultView.filter)
     + Number((viewState.sort || "") !== defaultView.sort);
@@ -2447,7 +2452,7 @@ function buildResourceToolbarMarkup({ resourceKey, searchPlaceholder, count }) {
     activeFilters,
     hasChanges,
     escapeHTML,
-    toolbarStatusLabel,
+    toolbarStatusLabel: ResourceStateUtils.toolbarStatusLabel,
   });
 }
 
@@ -2468,7 +2473,7 @@ function bindResourceToolbar(container, resourceKey, actions) {
     renderResourceListByKey(resourceKey);
   });
   container.querySelector(`[data-toolbar-reset="${resourceKey}"]`)?.addEventListener("click", () => {
-    state.resourceViews[resourceKey] = defaultResourceView(resourceKey);
+    state.resourceViews[resourceKey] = ResourceStateUtils.defaultResourceView(resourceKey);
     state.pagination[resourceKey].page = 1;
     renderResourceListByKey(resourceKey);
   });
@@ -2498,87 +2503,8 @@ function renderResourceListByKey(resourceKey) {
   }
 }
 
-function defaultResourceView(resourceKey) {
-  const current = state.resourceViews[resourceKey];
-  if (current && typeof current === "object") {
-    const fallbackSort = resourceKey === "policies" ? "priority_asc" : "updated_desc";
-    return {
-      query: "",
-      filter: "all",
-      sort: fallbackSort,
-    };
-  }
-  return { query: "", filter: "all", sort: "updated_desc" };
-}
-
-function toolbarStatusLabel(activeFilters, hasChanges) {
-  if (!hasChanges || activeFilters <= 0) {
-    return "Default view";
-  }
-  if (activeFilters === 1) {
-    return "1 active control";
-  }
-  return `${activeFilters} active controls`;
-}
-
 function applyResourceView(resourceKey, items) {
-  const source = ensureArray(items).slice();
-  const viewState = state.resourceViews[resourceKey] || { query: "", filter: "all", sort: "updated_desc" };
-  const query = String(viewState.query || "").trim().toLowerCase();
-  let filtered = source.filter((item) => resourceFilterPredicate(resourceKey, item, viewState.filter));
-  if (query) {
-    filtered = filtered.filter((item) => resourceSearchText(resourceKey, item).includes(query));
-  }
-  filtered.sort(resourceSorter(resourceKey, viewState.sort));
-  return filtered;
-}
-
-function resourceFilterPredicate(resourceKey, item, filter) {
-  if (filter === "all" || !filter) {
-    return true;
-  }
-  if (resourceKey === "policies") {
-    return filter === "enabled" ? Boolean(item.failover_enabled) : !item.failover_enabled;
-  }
-  return filter === "enabled" ? Boolean(item.enabled) : !item.enabled;
-}
-
-function resourceSearchText(resourceKey, item) {
-  const parts = [];
-  if (resourceKey === "proxies") {
-    parts.push(item.name, item.address, item.username);
-  }
-  if (resourceKey === "backends") {
-    parts.push(item.name, item.base_url, item.pool, ...(item.models || []), ...(item.endpoints || []));
-  }
-  if (resourceKey === "clients") {
-    parts.push(item.name, item.route_group, item.route_mode_override, item.token_prefix);
-  }
-  if (resourceKey === "policies") {
-    parts.push(item.pattern, item.endpoint, item.placement_policy, item.backend_pool);
-  }
-  return parts.filter(Boolean).join(" ").toLowerCase();
-}
-
-function resourceSorter(resourceKey, sortKey) {
-  return (left, right) => {
-    if (sortKey === "name_asc") {
-      return String(left.name || "").localeCompare(String(right.name || ""));
-    }
-    if (sortKey === "group_asc") {
-      return String(left.route_group || "").localeCompare(String(right.route_group || ""));
-    }
-    if (sortKey === "weight_desc") {
-      return Number(right.weight || 0) - Number(left.weight || 0);
-    }
-    if (sortKey === "pattern_asc") {
-      return String(left.pattern || "").localeCompare(String(right.pattern || ""));
-    }
-    if (sortKey === "priority_asc") {
-      return Number(left.priority || 0) - Number(right.priority || 0);
-    }
-    return String(right.updated_at || "").localeCompare(String(left.updated_at || ""));
-  };
+  return ResourceStateUtils.applyResourceView(resourceKey, items, state.resourceViews);
 }
 
 function buildQuickDetailMarkup(resourceKey, record) {
@@ -2802,55 +2728,15 @@ function bindPagination(container, key, rerender) {
 }
 
 function currentLocalPageData(key, items) {
-  const normalized = ensureArray(items);
-  const pageState = state.pagination[key];
-  const paginated = typeof RendererUtils.paginateResourceRows === "function"
-    ? RendererUtils.paginateResourceRows(normalized, pageState)
-    : {
-      items: normalized,
-      page: 1,
-      size: PAGE_SIZE_OPTIONS.includes(Number(pageState?.size)) ? Number(pageState.size) : 10,
-      total: normalized.length,
-      totalPages: 1,
-    };
-  state.pagination[key].page = paginated.page;
-  state.pagination[key].size = paginated.size;
-  return paginated;
+  return ResourceStateUtils.currentLocalPageData(key, items, state, { pageSizeOptions: PAGE_SIZE_OPTIONS });
 }
 
 function currentRemotePageData(key, items) {
-  const normalized = ensureArray(items);
-  const pageState = state.pagination[key];
-  const meta = state.paginationMeta[key];
-  const size = PAGE_SIZE_OPTIONS.includes(Number(pageState?.size)) ? Number(pageState.size) : 10;
-  const total = Number(meta?.total) || 0;
-  const page = Math.max(1, Number(meta?.page) || 1);
-  const totalPages = Math.max(1, Math.ceil(total / size));
-  return {
-    items: normalized,
-    page,
-    size,
-    total,
-    totalPages,
-  };
+  return ResourceStateUtils.currentRemotePageData(key, items, state, { pageSizeOptions: PAGE_SIZE_OPTIONS });
 }
 
 function applyPagedResponse(key, payload) {
-  const pageState = state.pagination[key];
-  const metaState = state.paginationMeta[key];
-  const items = ensureArray(payload?.items);
-  const total = Number(payload?.total) || 0;
-  const limit = PAGE_SIZE_OPTIONS.includes(Number(payload?.limit)) ? Number(payload.limit) : pageState.size;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const page = Math.min(Math.max(1, Number(payload?.page) || 1), totalPages);
-
-  pageState.page = page;
-  pageState.size = limit;
-  metaState.total = total;
-  metaState.page = page;
-  metaState.limit = limit;
-
-  state[key] = items;
+  ResourceStateUtils.applyPagedResponse(key, payload, state, { pageSizeOptions: PAGE_SIZE_OPTIONS });
 }
 
 function renderPagination(key, pageData) {
@@ -2874,7 +2760,7 @@ function renderPagination(key, pageData) {
         </label>
         <div class="pagination-pages">
           <button class="small-button ghost-button pagination-arrow" data-page-prev="${key}" type="button" aria-label="上一页" ${pageData.page <= 1 ? "disabled" : ""}>&lsaquo;</button>
-          ${paginationPageNumbers(pageData).map((page) => {
+          ${ResourceStateUtils.paginationPageNumbers(pageData).map((page) => {
             if (page === "...") {
               return `<span class="pagination-ellipsis">...</span>`;
             }
@@ -2885,22 +2771,6 @@ function renderPagination(key, pageData) {
       </div>
     </div>
   `;
-}
-
-function paginationPageNumbers(pageData) {
-  const totalPages = Math.max(1, Number(pageData.totalPages) || 1);
-  const current = Math.max(1, Number(pageData.page) || 1);
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
-  }
-
-  if (current <= 4) {
-    return [1, 2, 3, 4, 5, "...", totalPages];
-  }
-  if (current >= totalPages - 3) {
-    return [1, "...", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
-  }
-  return [1, "...", current - 1, current, current + 1, "...", totalPages];
 }
 
 function formatUsageRequest(log) {

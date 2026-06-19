@@ -8,6 +8,15 @@
     "renderPolicyRow",
     "renderResourceTablePage",
   ];
+  const REQUIRED_STATE_METHODS = [
+    "defaultResourceView",
+    "toolbarStatusLabel",
+    "applyResourceView",
+    "currentLocalPageData",
+    "currentRemotePageData",
+    "applyPagedResponse",
+    "paginationPageNumbers",
+  ];
 
   function requireResourceViewUtils(resourceViewUtils) {
     const candidate = resourceViewUtils && typeof resourceViewUtils === "object"
@@ -23,7 +32,22 @@
     );
   }
 
+  function requireResourceStateUtils(resourceStateUtils) {
+    const candidate = resourceStateUtils && typeof resourceStateUtils === "object"
+      ? resourceStateUtils
+      : null;
+    const missing = REQUIRED_STATE_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `resource-state.js failed to load before app.js; missing ResourceStateUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   const api = {
+    requireResourceStateUtils,
     requireResourceViewUtils,
   };
 
