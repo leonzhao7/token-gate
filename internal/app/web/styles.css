@@ -1201,6 +1201,12 @@ a {
   box-shadow: var(--shadow-sm);
 }
 
+.search-result-item.active {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  background: color-mix(in srgb, var(--primary-soft) 68%, var(--surface));
+  box-shadow: var(--shadow-sm);
+}
+
 .search-result-copy {
   display: grid;
   gap: 4px;

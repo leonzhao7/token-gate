@@ -5,11 +5,14 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const {
   buildSearchRequestPath,
+  createSearchKeyboardState,
   createSearchRequest,
   createDebouncedTask,
+  flattenSearchResults,
   getSearchResultTarget,
   isSearchDismissKey,
   isSearchShortcut,
+  moveSearchSelection,
   nextSearchSequence,
   normalizeSearchResponse,
 } = require("./search.js");
@@ -204,4 +207,67 @@ test("createDebouncedTask cancels the previous schedule and runs the latest args
 
   scheduled[1].callback();
   assert.deepEqual(received, [["second", 2]]);
+});
+
+test("flattenSearchResults keeps group context and stable item order", () => {
+  const items = flattenSearchResults({
+    groups: [
+      {
+        key: "backends",
+        label: "Backends",
+        items: [
+          { title: "edge-a", targetPage: "backends", targetId: "1" },
+          { title: "edge-b", targetPage: "backends", targetId: "2" },
+        ],
+      },
+      {
+        key: "events",
+        label: "Events",
+        items: [
+          { title: "backend.failed", targetPage: "events", targetId: "9" },
+        ],
+      },
+    ],
+  });
+
+  assert.deepEqual(items, [
+    { groupKey: "backends", itemIndex: 0, title: "edge-a", targetPage: "backends", targetId: "1" },
+    { groupKey: "backends", itemIndex: 1, title: "edge-b", targetPage: "backends", targetId: "2" },
+    { groupKey: "events", itemIndex: 0, title: "backend.failed", targetPage: "events", targetId: "9" },
+  ]);
+});
+
+test("moveSearchSelection wraps in both directions", () => {
+  assert.equal(moveSearchSelection({ currentIndex: -1, delta: 1, itemCount: 3 }), 0);
+  assert.equal(moveSearchSelection({ currentIndex: 2, delta: 1, itemCount: 3 }), 0);
+  assert.equal(moveSearchSelection({ currentIndex: 0, delta: -1, itemCount: 3 }), 2);
+  assert.equal(moveSearchSelection({ currentIndex: 1, delta: -1, itemCount: 3 }), 0);
+  assert.equal(moveSearchSelection({ currentIndex: 0, delta: 1, itemCount: 0 }), -1);
+});
+
+test("createSearchKeyboardState exposes current target from active index", () => {
+  const state = createSearchKeyboardState({
+    results: {
+      groups: [
+        {
+          key: "usage_logs",
+          label: "Usage Logs",
+          items: [
+            { title: "POST /v1/chat/completions", kind: "usage_log", targetPage: "usage-logs", targetId: "req-1" },
+          ],
+        },
+      ],
+    },
+    activeIndex: 0,
+  });
+
+  assert.equal(state.items.length, 1);
+  assert.deepEqual(state.activeItem, {
+    groupKey: "usage_logs",
+    itemIndex: 0,
+    title: "POST /v1/chat/completions",
+    kind: "usage_log",
+    targetPage: "usage-logs",
+    targetId: "req-1",
+  });
 });

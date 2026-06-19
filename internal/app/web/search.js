@@ -145,16 +145,65 @@
     return debouncedTask;
   }
 
+  function flattenSearchResults(results) {
+    const groups = Array.isArray(results?.groups) ? results.groups : [];
+    const items = [];
+    groups.forEach((group) => {
+      const groupKey = String(group?.key || "").trim();
+      const groupItems = Array.isArray(group?.items) ? group.items : [];
+      groupItems.forEach((item, itemIndex) => {
+        if (!item || typeof item !== "object") {
+          return;
+        }
+        items.push({
+          groupKey,
+          itemIndex,
+          ...item,
+        });
+      });
+    });
+    return items;
+  }
+
+  function moveSearchSelection({ currentIndex = -1, delta = 0, itemCount = 0 }) {
+    const total = Math.max(0, Number(itemCount) || 0);
+    if (total === 0) {
+      return -1;
+    }
+    const step = Number(delta) || 0;
+    const current = Number.isFinite(Number(currentIndex)) ? Number(currentIndex) : -1;
+    if (step === 0) {
+      return current >= 0 && current < total ? current : 0;
+    }
+    if (current < 0) {
+      return step > 0 ? 0 : total - 1;
+    }
+    return (current + step + total) % total;
+  }
+
+  function createSearchKeyboardState({ results, activeIndex = -1 }) {
+    const items = flattenSearchResults(results);
+    const nextIndex = moveSearchSelection({ currentIndex: activeIndex, delta: 0, itemCount: items.length });
+    return {
+      items,
+      activeIndex: nextIndex,
+      activeItem: nextIndex >= 0 ? items[nextIndex] || null : null,
+    };
+  }
+
   const api = {
     SEARCH_GROUPS,
     SEARCH_GROUP_MAP,
     buildSearchRequestPath,
     clampSearchLimit,
+    createSearchKeyboardState,
     createSearchRequest,
     createDebouncedTask,
+    flattenSearchResults,
     getSearchResultTarget,
     isSearchDismissKey,
     isSearchShortcut,
+    moveSearchSelection,
     nextSearchSequence,
     normalizeSearchResponse,
   };

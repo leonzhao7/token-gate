@@ -265,6 +265,7 @@ const state = {
       open: false,
       query: "",
       loading: false,
+      activeIndex: -1,
       results: { query: "", total: 0, groups: [] },
       requestSequence: 0,
       activeSequence: 0,
@@ -322,6 +323,33 @@ searchModalRoot?.addEventListener("click", (event) => {
 searchInput?.addEventListener("input", (event) => {
   updateSearchQuery(String(event.currentTarget.value || ""));
   renderSearchShell();
+});
+
+searchInput?.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    moveSearchSelection(1);
+    return;
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    moveSearchSelection(-1);
+    return;
+  }
+  if (event.key === "Enter") {
+    const keyboardState = currentSearchKeyboardState();
+    if (!keyboardState.activeItem) {
+      return;
+    }
+    event.preventDefault();
+    navigateToSearchResult({
+      group: keyboardState.activeItem.groupKey,
+      kind: keyboardState.activeItem.kind || "",
+      title: keyboardState.activeItem.title || "",
+      targetPage: keyboardState.activeItem.targetPage || "",
+      targetId: keyboardState.activeItem.targetId || "",
+    });
+  }
 });
 
 settingsRoot?.addEventListener("click", (event) => {
@@ -1709,6 +1737,7 @@ function closeSearchShell() {
   const previousTrigger = state.ui.search.triggerElement;
   state.ui.search.open = false;
   searchDebounce?.cancel?.();
+  state.ui.search.activeIndex = -1;
   renderSearchShell();
   if (previousTrigger instanceof HTMLElement) {
     previousTrigger.focus();
@@ -1742,6 +1771,7 @@ function updateSearchQuery(value) {
     state.ui.search.requestSequence = clearedSequence;
     state.ui.search.activeSequence = clearedSequence;
     state.ui.search.loading = false;
+    state.ui.search.activeIndex = -1;
     state.ui.search.results = {
       query: "",
       total: 0,
@@ -1775,6 +1805,7 @@ async function executeSearch(request) {
   const trimmedQuery = String(request?.query || "").trim();
   if (!trimmedQuery) {
     state.ui.search.loading = false;
+    state.ui.search.activeIndex = -1;
     state.ui.search.results = {
       query: "",
       total: 0,
@@ -1797,6 +1828,8 @@ async function executeSearch(request) {
     state.ui.search.results = typeof SearchUtils.normalizeSearchResponse === "function"
       ? SearchUtils.normalizeSearchResponse(response)
       : { query: trimmedQuery, total: 0, groups: [] };
+    const keyboardState = currentSearchKeyboardState();
+    state.ui.search.activeIndex = keyboardState.activeIndex;
   } finally {
     if (requestID === state.ui.search.activeSequence) {
       state.ui.search.loading = false;
@@ -1808,6 +1841,8 @@ async function executeSearch(request) {
 function renderSearchResults() {
   const query = state.ui.search.query.trim();
   const results = state.ui.search.results || { total: 0, groups: [] };
+  const keyboardState = currentSearchKeyboardState();
+  const activeItem = keyboardState.activeItem;
 
   if (!query) {
     return `
@@ -1843,9 +1878,9 @@ function renderSearchResults() {
         <small>${group.items.length}</small>
       </header>
       <div class="search-result-list">
-        ${group.items.map((item) => `
+        ${group.items.map((item, itemIndex) => `
           <button
-            class="search-result-item"
+            class="search-result-item ${activeItem && activeItem.groupKey === group.key && activeItem.itemIndex === itemIndex ? "active" : ""}"
             type="button"
             data-search-result="true"
             data-search-group="${escapeHTML(group.key)}"
@@ -1853,6 +1888,7 @@ function renderSearchResults() {
             data-search-page="${escapeHTML(item.targetPage)}"
             data-search-id="${escapeHTML(item.targetId)}"
             data-search-title="${escapeHTML(item.title)}"
+            data-search-index="${escapeHTML(String(itemIndex))}"
           >
             <span class="search-result-copy">
               <strong>${escapeHTML(item.title)}</strong>
@@ -1929,6 +1965,27 @@ function navigateToSearchResult(payload) {
     id: normalized.drawer.id || payload.targetId || payload.id || null,
     title: normalized.drawer.title || payload.title || "",
   }).catch(reportError);
+}
+
+function currentSearchKeyboardState() {
+  return typeof SearchUtils.createSearchKeyboardState === "function"
+    ? SearchUtils.createSearchKeyboardState({
+      results: state.ui.search.results,
+      activeIndex: state.ui.search.activeIndex,
+    })
+    : { items: [], activeIndex: -1, activeItem: null };
+}
+
+function moveSearchSelection(delta) {
+  const keyboardState = currentSearchKeyboardState();
+  state.ui.search.activeIndex = typeof SearchUtils.moveSearchSelection === "function"
+    ? SearchUtils.moveSearchSelection({
+      currentIndex: keyboardState.activeIndex,
+      delta,
+      itemCount: keyboardState.items.length,
+    })
+    : -1;
+  renderSearchShell();
 }
 
 async function openResourceDrawer(target) {
