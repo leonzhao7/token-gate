@@ -137,7 +137,149 @@
     return DRAWER_FOOTER_ACTIONS.map((action) => ({ ...action }));
   }
 
+  function buildDrawerActivitySections(activity) {
+    const normalized = plainObject(activity);
+    return [
+      buildActivitySection("events", "Events", ensureArray(normalized.events), normalizeEventActivityItem),
+      buildActivitySection("usage", "Usage", ensureArray(normalized.usage), normalizeUsageActivityItem),
+      buildActivitySection("backends", "Backends", ensureArray(normalized.backends), normalizeBackendActivityItem),
+    ].filter(Boolean);
+  }
+
+  function buildActivitySection(key, title, values, formatter) {
+    const items = values
+      .map((value) => formatter(value))
+      .filter(Boolean);
+    if (!items.length) {
+      return null;
+    }
+    return {
+      key,
+      title,
+      count: items.length,
+      items,
+    };
+  }
+
+  function normalizeEventActivityItem(event) {
+    const message = stringValue(event?.message);
+    const type = stringValue(event?.type);
+    const severity = stringValue(event?.severity || event?.level).toLowerCase();
+    const category = stringValue(event?.category).toLowerCase();
+    return {
+      title: message || type || "Event",
+      summary: type || "-",
+      tone: toneFromSeverity(severity),
+      chips: compactStrings([severity, category]),
+      meta: compactMeta([
+        { label: "Actor", value: stringValue(event?.actor) },
+        { label: "Time", value: stringValue(event?.created_at), format: "datetime" },
+      ]),
+    };
+  }
+
+  function normalizeUsageActivityItem(entry) {
+    const requestID = stringValue(entry?.request_id || entry?.requestId);
+    const model = stringValue(entry?.model);
+    const method = stringValue(entry?.method).toUpperCase();
+    const path = stringValue(entry?.path);
+    const statusCode = Number(entry?.status_code);
+    const endpoint = stringValue(entry?.endpoint);
+    const durationMS = Number(entry?.duration_ms);
+    return {
+      title: requestID || model || "Usage request",
+      summary: model || "-",
+      tone: toneFromStatus(statusCode),
+      chips: compactStrings([
+        Number.isFinite(statusCode) && statusCode > 0 ? String(statusCode) : "",
+        endpoint,
+      ]),
+      meta: compactMeta([
+        { label: "Route", value: method && path ? `${method} ${path}` : "" },
+        { label: "Backend", value: stringValue(entry?.backend_name || entry?.backendName) },
+        { label: "Client", value: stringValue(entry?.client_name || entry?.clientName) },
+        { label: "Latency", value: Number.isFinite(durationMS) && durationMS > 0 ? `${durationMS} ms` : "" },
+        { label: "Time", value: stringValue(entry?.created_at), format: "datetime" },
+      ]),
+    };
+  }
+
+  function normalizeBackendActivityItem(backend) {
+    const name = stringValue(backend?.name);
+    const baseURL = stringValue(backend?.base_url || backend?.baseURL);
+    const pool = stringValue(backend?.pool);
+    const protocol = stringValue(backend?.protocol);
+    const enabled = typeof backend?.enabled === "boolean" ? backend.enabled : null;
+    const proxyName = stringValue(backend?.socks_proxy?.name || backend?.proxy?.name || backend?.proxy_name || backend?.proxyName);
+    const models = ensureArray(backend?.models);
+    const endpoints = ensureArray(backend?.endpoints);
+    return {
+      title: name || baseURL || "Backend",
+      summary: baseURL || "-",
+      tone: enabled === true ? "success" : enabled === false ? "danger" : "neutral",
+      chips: compactStrings([
+        pool,
+        protocol,
+        enabled === true ? "enabled" : enabled === false ? "disabled" : "",
+      ]),
+      meta: compactMeta([
+        { label: "Proxy", value: proxyName },
+        { label: "Models", value: models.length ? String(models.length) : "" },
+        { label: "Endpoints", value: endpoints.length ? String(endpoints.length) : "" },
+      ]),
+    };
+  }
+
+  function toneFromSeverity(value) {
+    if (value === "error" || value === "danger" || value === "critical") {
+      return "danger";
+    }
+    if (value === "warning" || value === "warn") {
+      return "warning";
+    }
+    if (value === "success") {
+      return "success";
+    }
+    if (value === "info") {
+      return "primary";
+    }
+    return "neutral";
+  }
+
+  function toneFromStatus(value) {
+    if (!Number.isFinite(value) || value <= 0) {
+      return "neutral";
+    }
+    if (value >= 500) {
+      return "danger";
+    }
+    if (value >= 400) {
+      return "warning";
+    }
+    if (value >= 200 && value < 300) {
+      return "success";
+    }
+    return "primary";
+  }
+
+  function compactMeta(items) {
+    return items.filter((item) => stringValue(item?.value));
+  }
+
+  function compactStrings(values) {
+    return values.map((value) => stringValue(value)).filter(Boolean);
+  }
+
+  function ensureArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function stringValue(value) {
+    return String(value ?? "").trim();
+  }
+
   const api = {
+    buildDrawerActivitySections,
     buildDrawerTarget,
     drawerFooterActions,
     drawerTabsForResource,

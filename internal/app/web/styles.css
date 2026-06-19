@@ -1118,18 +1118,148 @@ a {
   gap: 12px;
 }
 
+.drawer-activity-section header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.drawer-activity-section header span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary-soft) 72%, var(--surface));
+  color: var(--text-primary);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
 .quick-detail-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.drawer-activity-section ul,
+.drawer-activity-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.drawer-activity-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 94%, transparent), color-mix(in srgb, var(--surface-muted) 78%, var(--surface) 22%));
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.drawer-activity-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
+  background: color-mix(in srgb, var(--surface-hover) 86%, var(--surface) 14%);
+}
+
+.drawer-activity-card.tone-success {
+  border-color: color-mix(in srgb, var(--success) 28%, var(--border));
+}
+
+.drawer-activity-card.tone-warning {
+  border-color: color-mix(in srgb, var(--warning) 28%, var(--border));
+}
+
+.drawer-activity-card.tone-danger {
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--border));
+}
+
+.drawer-activity-card.tone-primary {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+}
+
+.drawer-activity-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.drawer-activity-card-top strong {
+  display: block;
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.96rem;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+}
+
+.drawer-activity-card p {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.drawer-activity-chip-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.drawer-activity-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.drawer-activity-meta {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.drawer-activity-meta div {
+  display: grid;
+  gap: 3px;
+}
+
+.drawer-activity-meta dt {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.drawer-activity-meta dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .quick-detail-card ul {
   margin: 0;
   padding-left: 18px;
   color: var(--text-primary);
 }
 
-.drawer-activity-section li,
 .quick-detail-card li {
   line-height: 1.6;
   overflow-wrap: anywhere;
@@ -2653,6 +2783,7 @@ button:hover {
   .dashboard-metric-tabs,
   .detail-grid,
   .drawer-kv-grid,
+  .drawer-activity-grid,
   .quick-detail-grid,
   .settings-hero-badges,
   .settings-panel-metrics {

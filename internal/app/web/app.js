@@ -2103,11 +2103,9 @@ function renderDrawerTabPanel(tab, value) {
 
   if (tab === "activity") {
     const activity = value && typeof value === "object" ? value : {};
-    const sections = [
-      renderDrawerActivityList("Events", ensureArray(activity.events).map((item) => item.message || item.type || "-")),
-      renderDrawerActivityList("Usage", ensureArray(activity.usage).map((item) => item.request_id || item.requestId || item.model || "-")),
-      renderDrawerActivityList("Backends", ensureArray(activity.backends).map((item) => item.name || "-")),
-    ].filter(Boolean);
+    const sections = typeof DrawerUtils.buildDrawerActivitySections === "function"
+      ? DrawerUtils.buildDrawerActivitySections(activity).map((section) => renderDrawerActivitySection(section))
+      : [];
     if (!sections.length) {
       return `<div class="drawer-state"><strong>No activity</strong><p class="muted-text">No related activity for this resource yet.</p></div>`;
     }
@@ -2132,18 +2130,59 @@ function renderDrawerTabPanel(tab, value) {
   `;
 }
 
-function renderDrawerActivityList(title, items) {
-  if (!items.length) {
+function renderDrawerActivitySection(section) {
+  if (!section || !Array.isArray(section.items) || !section.items.length) {
     return "";
   }
   return `
     <section class="drawer-activity-section">
-      <header><strong>${escapeHTML(title)}</strong></header>
-      <ul>
-        ${items.slice(0, 8).map((item) => `<li>${escapeHTML(item)}</li>`).join("")}
-      </ul>
+      <header>
+        <strong>${escapeHTML(section.title || "Activity")}</strong>
+        <span>${escapeHTML(String(section.count || section.items.length || 0))}</span>
+      </header>
+      <div class="drawer-activity-grid">
+        ${section.items.slice(0, 8).map((item) => renderDrawerActivityCard(item)).join("")}
+      </div>
     </section>
   `;
+}
+
+function renderDrawerActivityCard(item) {
+  const chips = ensureArray(item?.chips).filter(Boolean);
+  const meta = ensureArray(item?.meta).filter((entry) => entry && entry.label && entry.value);
+  return `
+    <article class="drawer-activity-card tone-${escapeHTML(item?.tone || "neutral")}">
+      <div class="drawer-activity-card-top">
+        <strong>${escapeHTML(item?.title || "-")}</strong>
+        ${chips.length ? `
+          <div class="drawer-activity-chip-row">
+            ${chips.map((chip) => `<span class="drawer-activity-chip">${escapeHTML(chip)}</span>`).join("")}
+          </div>
+        ` : ""}
+      </div>
+      <p>${escapeHTML(item?.summary || "-")}</p>
+      ${meta.length ? `
+        <dl class="drawer-activity-meta">
+          ${meta.map((entry) => `
+            <div>
+              <dt>${escapeHTML(entry.label)}</dt>
+              <dd>${escapeHTML(formatDrawerActivityMetaValue(entry))}</dd>
+            </div>
+          `).join("")}
+        </dl>
+      ` : ""}
+    </article>
+  `;
+}
+
+function formatDrawerActivityMetaValue(entry) {
+  if (!entry || typeof entry !== "object") {
+    return "-";
+  }
+  if (entry.format === "datetime") {
+    return formatDateTime(entry.value);
+  }
+  return String(entry.value || "-");
 }
 
 function renderDrawerFooter() {
