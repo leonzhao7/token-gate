@@ -167,6 +167,7 @@ const ChartsUtils = globalThis.ChartsUtils || {};
 const DrawerUtils = globalThis.DrawerUtils || {};
 const ObservabilityUtils = globalThis.ObservabilityUtils || {};
 const ObservabilityViewUtils = globalThis.ObservabilityViewUtils || {};
+const ResourceViewUtils = globalThis.ResourceViewUtils || {};
 const RendererUtils = globalThis.RendererUtils || {};
 const SettingsUtils = globalThis.SettingsUtils || {};
 const systemThemeQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -2088,40 +2089,26 @@ function renderProxies() {
   const proxies = state.proxies;
   const filtered = applyResourceView("proxies", proxies);
   const pageData = currentLocalPageData("proxies", filtered);
-  const toolbar = renderResourceToolbar({
+  const toolbar = buildResourceToolbarMarkup({
     resourceKey: "proxies",
     searchPlaceholder: "Search proxies",
     count: pageData.total,
   });
 
-  proxyList.innerHTML = `
-    ${toolbar}
-    ${filtered.length === 0 ? emptyState(
-      "还没有 SOCKS5 Proxy",
-      "如果某些 Backend 需要固定出口代理，先在这里添加 SOCKS5 节点，再回到 Backend 里绑定。",
-    ) : `
-      <div class="table-shell">
-        <table class="resource-table">
-          <thead>
-            <tr>
-              <th>Proxy</th>
-              <th>Status</th>
-              <th>Bindings</th>
-              <th>Traffic</th>
-              <th>Latency</th>
-              <th>Last Used</th>
-              <th>Updated</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${pageData.items.map(renderProxyRow).join("")}
-          </tbody>
-        </table>
-      </div>
-    `}
-    ${renderPagination("proxies", pageData)}
-  `;
+  proxyList.innerHTML = typeof ResourceViewUtils.renderResourceTablePage === "function"
+    ? ResourceViewUtils.renderResourceTablePage({
+      toolbar,
+      isEmpty: filtered.length === 0,
+      emptyMarkup: emptyState(
+        "还没有 SOCKS5 Proxy",
+        "如果某些 Backend 需要固定出口代理，先在这里添加 SOCKS5 节点，再回到 Backend 里绑定。",
+      ),
+      headers: ["Proxy", "Status", "Bindings", "Traffic", "Latency", "Last Used", "Updated", "Actions"],
+      rowsMarkup: pageData.items.map(renderProxyRow).join(""),
+      paginationMarkup: renderPagination("proxies", pageData),
+      escapeHTML,
+    })
+    : "";
 
   proxyList.querySelectorAll("[data-toggle-proxy]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2163,40 +2150,26 @@ function renderBackends() {
   const backends = state.backends;
   const filtered = applyResourceView("backends", backends);
   const pageData = currentLocalPageData("backends", filtered);
-  const toolbar = renderResourceToolbar({
+  const toolbar = buildResourceToolbarMarkup({
     resourceKey: "backends",
     searchPlaceholder: "Search backends",
     count: pageData.total,
   });
 
-  backendList.innerHTML = `
-    ${toolbar}
-    ${filtered.length === 0 ? emptyState(
-      "还没有 Backend",
-      "先配置至少一个 OpenAI 或 Claude/Anthropic 上游节点，之后模型路由和故障切换才会生效。",
-    ) : `
-      <div class="table-shell">
-        <table class="resource-table">
-          <thead>
-            <tr>
-              <th>Backend</th>
-              <th>Routing</th>
-              <th>Coverage</th>
-              <th>Requests</th>
-              <th>Avg Latency</th>
-              <th>Last Used</th>
-              <th>Recent 30m</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${pageData.items.map(renderBackendRow).join("")}
-          </tbody>
-        </table>
-      </div>
-    `}
-    ${renderPagination("backends", pageData)}
-  `;
+  backendList.innerHTML = typeof ResourceViewUtils.renderResourceTablePage === "function"
+    ? ResourceViewUtils.renderResourceTablePage({
+      toolbar,
+      isEmpty: filtered.length === 0,
+      emptyMarkup: emptyState(
+        "还没有 Backend",
+        "先配置至少一个 OpenAI 或 Claude/Anthropic 上游节点，之后模型路由和故障切换才会生效。",
+      ),
+      headers: ["Backend", "Routing", "Coverage", "Requests", "Avg Latency", "Last Used", "Recent 30m", "Actions"],
+      rowsMarkup: pageData.items.map(renderBackendRow).join(""),
+      paginationMarkup: renderPagination("backends", pageData),
+      escapeHTML,
+    })
+    : "";
 
   backendList.querySelectorAll("[data-toggle-backend]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2238,39 +2211,26 @@ function renderClients() {
   const clients = state.clients;
   const filtered = applyResourceView("clients", clients);
   const pageData = currentLocalPageData("clients", filtered);
-  const toolbar = renderResourceToolbar({
+  const toolbar = buildResourceToolbarMarkup({
     resourceKey: "clients",
     searchPlaceholder: "Search client keys",
     count: pageData.total,
   });
 
-  clientList.innerHTML = `
-    ${toolbar}
-    ${filtered.length === 0 ? emptyState(
-      "还没有 Client Key",
-      "创建一个客户端 key 后，外部 SDK 或 AI 客户端才能通过 Token Gate 访问后端模型。",
-    ) : `
-      <div class="table-shell">
-        <table class="resource-table">
-          <thead>
-            <tr>
-              <th>Client Key</th>
-              <th>Status</th>
-              <th>Routing</th>
-              <th>Usage</th>
-              <th>Last Used</th>
-              <th>Updated</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${pageData.items.map(renderClientRow).join("")}
-          </tbody>
-        </table>
-      </div>
-    `}
-    ${renderPagination("clients", pageData)}
-  `;
+  clientList.innerHTML = typeof ResourceViewUtils.renderResourceTablePage === "function"
+    ? ResourceViewUtils.renderResourceTablePage({
+      toolbar,
+      isEmpty: filtered.length === 0,
+      emptyMarkup: emptyState(
+        "还没有 Client Key",
+        "创建一个客户端 key 后，外部 SDK 或 AI 客户端才能通过 Token Gate 访问后端模型。",
+      ),
+      headers: ["Client Key", "Status", "Routing", "Usage", "Last Used", "Updated", "Actions"],
+      rowsMarkup: pageData.items.map(renderClientRow).join(""),
+      paginationMarkup: renderPagination("clients", pageData),
+      escapeHTML,
+    })
+    : "";
 
   clientList.querySelectorAll("[data-toggle-client]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2312,39 +2272,26 @@ function renderPolicies() {
   const policies = state.policies;
   const filtered = applyResourceView("policies", policies);
   const pageData = currentLocalPageData("policies", filtered);
-  const toolbar = renderResourceToolbar({
+  const toolbar = buildResourceToolbarMarkup({
     resourceKey: "policies",
     searchPlaceholder: "Search policies",
     count: pageData.total,
   });
 
-  policyList.innerHTML = `
-    ${toolbar}
-    ${filtered.length === 0 ? emptyState(
-      "还没有 Model Policy",
-      "定义模型模式、端点和 placement 策略后，路由行为才会按业务意图收敛。",
-    ) : `
-      <div class="table-shell">
-        <table class="resource-table">
-          <thead>
-            <tr>
-              <th>Pattern</th>
-              <th>Routing</th>
-              <th>Usage</th>
-              <th>Coverage</th>
-              <th>Last Used</th>
-              <th>Updated</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${pageData.items.map(renderPolicyRow).join("")}
-          </tbody>
-        </table>
-      </div>
-    `}
-    ${renderPagination("policies", pageData)}
-  `;
+  policyList.innerHTML = typeof ResourceViewUtils.renderResourceTablePage === "function"
+    ? ResourceViewUtils.renderResourceTablePage({
+      toolbar,
+      isEmpty: filtered.length === 0,
+      emptyMarkup: emptyState(
+        "还没有 Model Policy",
+        "定义模型模式、端点和 placement 策略后，路由行为才会按业务意图收敛。",
+      ),
+      headers: ["Pattern", "Routing", "Usage", "Coverage", "Last Used", "Updated", "Actions"],
+      rowsMarkup: pageData.items.map(renderPolicyRow).join(""),
+      paginationMarkup: renderPagination("policies", pageData),
+      escapeHTML,
+    })
+    : "";
 
   policyList.querySelectorAll("[data-toggle-policy]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2383,141 +2330,80 @@ function renderPolicies() {
 }
 
 function renderProxyRow(proxy) {
-  const id = String(proxy.id);
-  const expanded = state.expandedProxies.has(id);
-  const editing = String(state.editingProxyID) === id;
-  const quickDetails = createQuickDetailMarkup("proxies", proxy);
-  return `
-    <tr class="${editing ? "is-editing" : ""} clickable-row" data-row-open="proxy" data-row-id="${escapeHTML(proxy.id)}" data-row-title="${escapeHTML(proxy.name)}">
-      <td>
-        <button class="row-title" data-toggle-proxy="${proxy.id}" type="button">
-          <span class="chevron">${expanded ? "收起" : "展开"}</span>
-          <span>${escapeHTML(proxy.name)}</span>
-        </button>
-      </td>
-      <td>${statusPill(proxy.enabled, "enabled", "disabled")}</td>
-      <td>${escapeHTML(formatBindingCount(proxy.bound_backend_count))}</td>
-      <td>${escapeHTML(formatDataSize(proxy.traffic_bytes))}</td>
-      <td>${escapeHTML(formatLatency(proxy.avg_latency_ms))}</td>
-      <td>${escapeHTML(formatDateTime(proxy.last_used_at))}</td>
-      <td>${escapeHTML(formatDateTime(proxy.updated_at))}</td>
-      <td>${tableActions("proxy", proxy.id)}</td>
-    </tr>
-    ${expanded ? `
-      <tr class="detail-row">
-        <td colspan="8">
-          ${quickDetails}
-        </td>
-      </tr>
-    ` : ""}
-  `;
+  if (typeof ResourceViewUtils.renderProxyRow === "function") {
+    return ResourceViewUtils.renderProxyRow({
+      proxy,
+      expanded: state.expandedProxies.has(String(proxy.id)),
+      editing: String(state.editingProxyID) === String(proxy.id),
+      quickDetails: buildQuickDetailMarkup("proxies", proxy),
+      statusPill,
+      formatBindingCount,
+      formatDataSize,
+      formatLatency,
+      formatDateTime,
+      tableActions,
+      escapeHTML,
+    });
+  }
+  return "";
 }
 
 function renderBackendRow(backend) {
-  const id = String(backend.id);
-  const expanded = state.expandedBackends.has(id);
-  const editing = String(state.editingBackendID) === id;
-  const recentStats = backend.recent_stats || {};
-  const quickDetails = createQuickDetailMarkup("backends", backend);
-  return `
-    <tr class="${editing ? "is-editing" : ""} clickable-row" data-row-open="backend" data-row-id="${escapeHTML(backend.id)}" data-row-title="${escapeHTML(backend.name)}">
-      <td>
-        <button class="row-title" data-toggle-backend="${backend.id}" type="button">
-          <span class="chevron">${expanded ? "收起" : "展开"}</span>
-          <span>${escapeHTML(backend.name)}</span>
-        </button>
-        <div class="cell-subtitle">${escapeHTML(backend.base_url)}</div>
-      </td>
-      <td>
-        ${statusPill(backend.enabled, "enabled", "disabled")}
-        <div class="cell-subtitle">${escapeHTML(formatBackendRouting(backend))}</div>
-      </td>
-      <td>
-        <div>${escapeHTML(formatBackendCoverage(backend))}</div>
-        <div class="cell-subtitle">${escapeHTML(backendProtocolLabel(backend.protocol))}</div>
-      </td>
-      <td>${escapeHTML(formatUsageCount(backend.request_count))}</td>
-      <td>${escapeHTML(formatLatency(backend.avg_latency_ms))}</td>
-      <td>${escapeHTML(formatDateTime(backend.last_used_at))}</td>
-      <td>${escapeHTML(formatBackendRecentStats(recentStats))}</td>
-      <td>${tableActions("backend", backend.id)}</td>
-    </tr>
-    ${expanded ? `
-      <tr class="detail-row">
-        <td colspan="8">
-          ${quickDetails}
-        </td>
-      </tr>
-    ` : ""}
-  `;
+  if (typeof ResourceViewUtils.renderBackendRow === "function") {
+    return ResourceViewUtils.renderBackendRow({
+      backend,
+      expanded: state.expandedBackends.has(String(backend.id)),
+      editing: String(state.editingBackendID) === String(backend.id),
+      quickDetails: buildQuickDetailMarkup("backends", backend),
+      statusPill,
+      formatBackendRouting,
+      formatBackendCoverage,
+      backendProtocolLabel,
+      formatUsageCount,
+      formatLatency,
+      formatDateTime,
+      formatBackendRecentStats,
+      tableActions,
+      escapeHTML,
+    });
+  }
+  return "";
 }
 
 function renderClientRow(client) {
-  const id = String(client.id);
-  const expanded = state.expandedClients.has(id);
-  const editing = String(state.editingClientID) === id;
-  const quickDetails = createQuickDetailMarkup("clients", client);
-  return `
-    <tr class="${editing ? "is-editing" : ""} clickable-row" data-row-open="client" data-row-id="${escapeHTML(client.id)}" data-row-title="${escapeHTML(client.name)}">
-      <td>
-        <button class="row-title" data-toggle-client="${client.id}" type="button">
-          <span class="chevron">${expanded ? "收起" : "展开"}</span>
-          <span>${escapeHTML(client.name)}</span>
-        </button>
-        <div class="cell-subtitle"><span class="secret-text">${escapeHTML(clientTokenDisplay(client))}</span></div>
-      </td>
-      <td>${statusPill(client.enabled, "enabled", "disabled")}</td>
-      <td>
-        <div>${escapeHTML(client.route_mode_override || "default")}</div>
-        <div class="cell-subtitle">${escapeHTML(client.route_group || "-")}</div>
-      </td>
-      <td>${escapeHTML(formatUsageCount(client.usage_count))}</td>
-      <td>${escapeHTML(formatDateTime(client.last_used_at))}</td>
-      <td>${escapeHTML(formatDateTime(client.updated_at))}</td>
-      <td>${tableActions("client", client.id)}</td>
-    </tr>
-    ${expanded ? `
-      <tr class="detail-row">
-        <td colspan="7">
-          ${quickDetails}
-        </td>
-      </tr>
-    ` : ""}
-  `;
+  if (typeof ResourceViewUtils.renderClientRow === "function") {
+    return ResourceViewUtils.renderClientRow({
+      client,
+      expanded: state.expandedClients.has(String(client.id)),
+      editing: String(state.editingClientID) === String(client.id),
+      quickDetails: buildQuickDetailMarkup("clients", client),
+      clientTokenText: clientTokenDisplay(client),
+      statusPill,
+      formatUsageCount,
+      formatDateTime,
+      tableActions,
+      escapeHTML,
+    });
+  }
+  return "";
 }
 
 function renderPolicyRow(policy) {
-  const id = String(policy.id);
-  const expanded = state.expandedPolicies.has(id);
-  const editing = String(state.editingPolicyID) === id;
-  const quickDetails = createQuickDetailMarkup("policies", policy);
-  return `
-    <tr class="${editing ? "is-editing" : ""} clickable-row" data-row-open="policy" data-row-id="${escapeHTML(policy.id)}" data-row-title="${escapeHTML(policy.pattern)}">
-      <td>
-        <button class="row-title" data-toggle-policy="${policy.id}" type="button">
-          <span class="chevron">${expanded ? "收起" : "展开"}</span>
-          <span>${escapeHTML(policy.pattern)}</span>
-        </button>
-        <div class="cell-subtitle">${escapeHTML(policy.endpoint)}</div>
-      </td>
-      <td>
-        <div><span class="chip">${escapeHTML(policy.placement_policy)}</span></div>
-        <div class="cell-subtitle">${escapeHTML(formatPolicyRouting(policy))}</div>
-      </td>
-      <td>${escapeHTML(formatUsageCount(policy.request_count))}</td>
-      <td>${escapeHTML(formatPolicyCoverage(policy))}</td>
-      <td>${escapeHTML(formatDateTime(policy.last_used_at))}</td>
-      <td>${escapeHTML(formatDateTime(policy.updated_at))}</td>
-      <td>${tableActions("policy", policy.id)}</td>
-    </tr>
-    ${expanded ? `
-      <tr class="detail-row">
-        <td colspan="7">
-          ${quickDetails}
-        </td>
-      </tr>
-    ` : ""}
-  `;
+  if (typeof ResourceViewUtils.renderPolicyRow === "function") {
+    return ResourceViewUtils.renderPolicyRow({
+      policy,
+      expanded: state.expandedPolicies.has(String(policy.id)),
+      editing: String(state.editingPolicyID) === String(policy.id),
+      quickDetails: buildQuickDetailMarkup("policies", policy),
+      formatPolicyRouting,
+      formatUsageCount,
+      formatPolicyCoverage,
+      formatDateTime,
+      tableActions,
+      escapeHTML,
+    });
+  }
+  return "";
 }
 
 function bindResourceRowOpen(container, kind) {
@@ -2557,7 +2443,7 @@ function bindResourceRowOpen(container, kind) {
   });
 }
 
-function renderResourceToolbar({ resourceKey, searchPlaceholder, count }) {
+function buildResourceToolbarMarkup({ resourceKey, searchPlaceholder, count }) {
   const viewState = state.resourceViews[resourceKey] || { query: "", filter: "all", sort: "updated_desc" };
   const defaultView = defaultResourceView(resourceKey);
   const activeFilters = Number(Boolean(String(viewState.query || "").trim()))
@@ -2568,30 +2454,18 @@ function renderResourceToolbar({ resourceKey, searchPlaceholder, count }) {
     ? RendererUtils.createResourceToolbarModel({ resourceKey, searchPlaceholder, count, activeFilters, hasChanges })
     : { searchPlaceholder, count, activeFilters, hasChanges, actions: ["search", "filters", "sort", "reset", "refresh"] };
   const config = RESOURCE_VIEW_CONFIG[resourceKey] || { filterOptions: [], sortOptions: [] };
-  return `
-    <div class="resource-toolbar" data-resource-toolbar="${escapeHTML(resourceKey)}">
-      <div class="resource-toolbar-main">
-        <label class="resource-toolbar-search">
-          <span class="field-label">Search</span>
-          <input type="search" data-toolbar-search="${escapeHTML(resourceKey)}" placeholder="${escapeHTML(model.searchPlaceholder || "")}" value="${escapeHTML(viewState.query || "")}" />
-        </label>
-        <div class="resource-toolbar-meta">
-          <span class="toolbar-pill">${escapeHTML(String(model.count || 0))} items</span>
-          <span class="toolbar-muted">${escapeHTML(toolbarStatusLabel(activeFilters, hasChanges))}</span>
-        </div>
-      </div>
-      <div class="resource-toolbar-actions">
-        <select data-toolbar-filter="${escapeHTML(resourceKey)}">
-          ${config.filterOptions.map((option) => `<option value="${escapeHTML(option.value)}" ${option.value === viewState.filter ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")}
-        </select>
-        <select data-toolbar-sort="${escapeHTML(resourceKey)}">
-          ${config.sortOptions.map((option) => `<option value="${escapeHTML(option.value)}" ${option.value === viewState.sort ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")}
-        </select>
-        <button class="ghost-button small-button" type="button" data-toolbar-reset="${escapeHTML(resourceKey)}" ${hasChanges ? "" : "disabled"}>Reset</button>
-        <button class="ghost-button small-button" type="button" data-toolbar-refresh="${escapeHTML(resourceKey)}">Refresh</button>
-      </div>
-    </div>
-  `;
+  return typeof ResourceViewUtils.renderResourceToolbar === "function"
+    ? ResourceViewUtils.renderResourceToolbar({
+      resourceKey,
+      viewState,
+      model,
+      config,
+      activeFilters,
+      hasChanges,
+      escapeHTML,
+      toolbarStatusLabel,
+    })
+    : "";
 }
 
 function bindResourceToolbar(container, resourceKey, actions) {
@@ -2724,39 +2598,13 @@ function resourceSorter(resourceKey, sortKey) {
   };
 }
 
-function createQuickDetailMarkup(resourceKey, record) {
+function buildQuickDetailMarkup(resourceKey, record) {
   const sections = typeof RendererUtils.createQuickDetailSections === "function"
     ? RendererUtils.createQuickDetailSections(resourceKey, record)
     : [];
-  if (!sections.length) {
-    return `
-      <div class="detail-panel">
-        <p class="muted-text">No quick details for this row yet.</p>
-      </div>
-    `;
-  }
-  return `
-    <div class="detail-panel compact-detail-panel">
-      <div class="quick-detail-grid">
-        ${sections.map((section) => `
-          <section class="quick-detail-card tone-${escapeHTML(section.tone || "neutral")}">
-            <header class="quick-detail-head">
-              <strong>${escapeHTML(section.title)}</strong>
-              <span>${escapeHTML(String(ensureArray(section.items).length))}</span>
-            </header>
-            <dl class="quick-detail-list">
-              ${ensureArray(section.items).map((item) => `
-                <div>
-                  <dt>${escapeHTML(item.label || "-")}</dt>
-                  <dd>${escapeHTML(item.value || "-")}</dd>
-                </div>
-              `).join("")}
-            </dl>
-          </section>
-        `).join("")}
-      </div>
-    </div>
-  `;
+  return typeof ResourceViewUtils.createQuickDetailMarkup === "function"
+    ? ResourceViewUtils.createQuickDetailMarkup({ sections, escapeHTML })
+    : "";
 }
 
 function renderEvents() {
