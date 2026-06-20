@@ -187,6 +187,13 @@ const PaginationUtils = typeof ResourceRuntimeUtils.requirePaginationUtils === "
   : (() => {
     throw new Error("pagination.js failed to load before app.js");
   })();
+const DisplayUtils = typeof ResourceRuntimeUtils.requireDisplayUtils === "function"
+  ? ResourceRuntimeUtils.requireDisplayUtils(globalThis.DisplayUtils)
+  : (() => {
+    throw new Error("display-utils.js failed to load before app.js");
+  })();
+const escapeHTML = DisplayUtils.escapeHTML;
+const formatDateTime = DisplayUtils.formatDateTime;
 const DashboardUtils = globalThis.DashboardUtils || {};
 const DashboardViewUtils = globalThis.DashboardViewUtils || {};
 const ChartsUtils = globalThis.ChartsUtils || {};
@@ -492,7 +499,7 @@ function renderProxyOptions() {
   proxyInput.innerHTML = `
     <option value="0">Direct connection</option>
     ${state.proxies.map((proxy) => `
-      <option value="${proxy.id}">${escapeHTML(proxy.name)} (${escapeHTML(proxy.address)})${proxy.enabled ? "" : " - disabled"}</option>
+      <option value="${proxy.id}">${DisplayUtils.escapeHTML(proxy.name)} (${DisplayUtils.escapeHTML(proxy.address)})${proxy.enabled ? "" : " - disabled"}</option>
     `).join("")}
   `;
   proxyInput.value = state.proxies.some((proxy) => String(proxy.id) === selected) ? selected : "0";
@@ -1007,10 +1014,10 @@ async function refreshAll() {
     api("/admin/api/usage-log-options"),
   ]);
 
-  state.proxies = ensureArray(proxies);
-  state.backends = ensureArray(backends);
-  state.clients = ensureArray(clients);
-  state.policies = ensureArray(policies);
+  state.proxies = DisplayUtils.ensureArray(proxies);
+  state.backends = DisplayUtils.ensureArray(backends);
+  state.clients = DisplayUtils.ensureArray(clients);
+  state.policies = DisplayUtils.ensureArray(policies);
   PaginationUtils.applyPagedResponse("events", events, state, {
     pageSizeOptions: PAGE_SIZE_OPTIONS,
     resourceStateUtils: ResourceStateUtils,
@@ -1021,11 +1028,11 @@ async function refreshAll() {
   });
   state.eventSummary = eventSummary;
   state.usageLogStats = usageLogStats;
-  state.usageLogOptions.backends = ensureArray(usageLogOptions?.backends);
-  state.usageLogOptions.models = ensureArray(usageLogOptions?.models);
-  state.usageLogOptions.clientKeys = ensureArray(usageLogOptions?.client_keys);
-  state.usageLogOptions.policies = ensureArray(usageLogOptions?.policies);
-  state.usageLogOptions.proxies = ensureArray(usageLogOptions?.proxies);
+  state.usageLogOptions.backends = DisplayUtils.ensureArray(usageLogOptions?.backends);
+  state.usageLogOptions.models = DisplayUtils.ensureArray(usageLogOptions?.models);
+  state.usageLogOptions.clientKeys = DisplayUtils.ensureArray(usageLogOptions?.client_keys);
+  state.usageLogOptions.policies = DisplayUtils.ensureArray(usageLogOptions?.policies);
+  state.usageLogOptions.proxies = DisplayUtils.ensureArray(usageLogOptions?.proxies);
   state.ui.lastRefreshAt = new Date().toISOString();
 
   renderProxyOptions();
@@ -1206,11 +1213,11 @@ function buildUsageLogDeleteQuery() {
 }
 
 function renderUsageLogFilterOptions() {
-  renderDatalist(usageLogBackendOptions, state.usageLogOptions.backends);
-  renderDatalist(usageLogModelOptions, state.usageLogOptions.models);
-  renderDatalist(usageLogClientKeyOptions, state.usageLogOptions.clientKeys);
-  renderDatalist(usageLogPolicyOptions, state.usageLogOptions.policies);
-  renderDatalist(usageLogProxyOptions, state.usageLogOptions.proxies);
+  DisplayUtils.renderDatalist(usageLogBackendOptions, state.usageLogOptions.backends);
+  DisplayUtils.renderDatalist(usageLogModelOptions, state.usageLogOptions.models);
+  DisplayUtils.renderDatalist(usageLogClientKeyOptions, state.usageLogOptions.clientKeys);
+  DisplayUtils.renderDatalist(usageLogPolicyOptions, state.usageLogOptions.policies);
+  DisplayUtils.renderDatalist(usageLogProxyOptions, state.usageLogOptions.proxies);
 }
 
 async function refreshDashboardData() {
@@ -1546,9 +1553,9 @@ function renderSparkline(values, { width, height, padding, className = "" }) {
   const linePath = typeof ChartsUtils.createLinePath === "function" ? ChartsUtils.createLinePath(points) : "";
   const areaPath = typeof ChartsUtils.createAreaPath === "function" ? ChartsUtils.createAreaPath(points, { height, padding }) : "";
   return `
-    <svg class="${escapeHTML(className)}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Trend sparkline">
-      <path class="sparkline-area" d="${escapeHTML(areaPath)}"></path>
-      <path class="sparkline-line" d="${escapeHTML(linePath)}"></path>
+    <svg class="${DisplayUtils.escapeHTML(className)}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Trend sparkline">
+      <path class="sparkline-area" d="${DisplayUtils.escapeHTML(areaPath)}"></path>
+      <path class="sparkline-line" d="${DisplayUtils.escapeHTML(linePath)}"></path>
     </svg>
   `;
 }
@@ -1571,12 +1578,12 @@ function renderAreaChart(values, labels, { width, height, padding }) {
             <stop offset="100%" stop-color="var(--primary)" stop-opacity="0.02"></stop>
           </linearGradient>
         </defs>
-        <path class="usage-area-path" d="${escapeHTML(areaPath)}"></path>
-        <path class="usage-line-path" d="${escapeHTML(linePath)}"></path>
+        <path class="usage-area-path" d="${DisplayUtils.escapeHTML(areaPath)}"></path>
+        <path class="usage-line-path" d="${DisplayUtils.escapeHTML(linePath)}"></path>
         ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="3.2"></circle>`).join("")}
       </svg>
       <div class="dashboard-chart-axis">
-        ${labels.map((label) => `<span>${escapeHTML(label)}</span>`).join("")}
+        ${labels.map((label) => `<span>${DisplayUtils.escapeHTML(label)}</span>`).join("")}
       </div>
     </div>
   `;
@@ -1880,7 +1887,7 @@ function renderSearchResults() {
 
 async function fetchAllCollectionPages(basePath) {
   const firstPage = await api(`${basePath}?page=1&limit=50`);
-  const items = ensureArray(firstPage?.items);
+  const items = DisplayUtils.ensureArray(firstPage?.items);
   const total = Number(firstPage?.total) || items.length;
   const limit = PAGE_SIZE_OPTIONS.includes(Number(firstPage?.limit)) ? Number(firstPage.limit) : 50;
   const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -1894,7 +1901,7 @@ async function fetchAllCollectionPages(basePath) {
   }
   const pages = await Promise.all(remaining);
   pages.forEach((payload) => {
-    items.push(...ensureArray(payload?.items));
+    items.push(...DisplayUtils.ensureArray(payload?.items));
   });
   return items;
 }
@@ -2087,7 +2094,7 @@ function renderProxies() {
   proxyList.innerHTML = ResourceViewUtils.renderResourceTablePage({
     toolbar,
     isEmpty: filtered.length === 0,
-    emptyMarkup: emptyState(
+    emptyMarkup: DisplayUtils.emptyState(
       "还没有 SOCKS5 Proxy",
       "如果某些 Backend 需要固定出口代理，先在这里添加 SOCKS5 节点，再回到 Backend 里绑定。",
     ),
@@ -2097,7 +2104,7 @@ function renderProxies() {
       pageSizeOptions: PAGE_SIZE_OPTIONS,
       paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
     }),
-    escapeHTML,
+    escapeHTML: DisplayUtils.escapeHTML,
   });
 
   proxyList.querySelectorAll("[data-toggle-proxy]").forEach((button) => {
@@ -2152,7 +2159,7 @@ function renderBackends() {
   backendList.innerHTML = ResourceViewUtils.renderResourceTablePage({
     toolbar,
     isEmpty: filtered.length === 0,
-    emptyMarkup: emptyState(
+    emptyMarkup: DisplayUtils.emptyState(
       "还没有 Backend",
       "先配置至少一个 OpenAI 或 Claude/Anthropic 上游节点，之后模型路由和故障切换才会生效。",
     ),
@@ -2162,7 +2169,7 @@ function renderBackends() {
       pageSizeOptions: PAGE_SIZE_OPTIONS,
       paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
     }),
-    escapeHTML,
+    escapeHTML: DisplayUtils.escapeHTML,
   });
 
   backendList.querySelectorAll("[data-toggle-backend]").forEach((button) => {
@@ -2217,7 +2224,7 @@ function renderClients() {
   clientList.innerHTML = ResourceViewUtils.renderResourceTablePage({
     toolbar,
     isEmpty: filtered.length === 0,
-    emptyMarkup: emptyState(
+    emptyMarkup: DisplayUtils.emptyState(
       "还没有 Client Key",
       "创建一个客户端 key 后，外部 SDK 或 AI 客户端才能通过 Token Gate 访问后端模型。",
     ),
@@ -2227,7 +2234,7 @@ function renderClients() {
       pageSizeOptions: PAGE_SIZE_OPTIONS,
       paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
     }),
-    escapeHTML,
+    escapeHTML: DisplayUtils.escapeHTML,
   });
 
   clientList.querySelectorAll("[data-toggle-client]").forEach((button) => {
@@ -2282,7 +2289,7 @@ function renderPolicies() {
   policyList.innerHTML = ResourceViewUtils.renderResourceTablePage({
     toolbar,
     isEmpty: filtered.length === 0,
-    emptyMarkup: emptyState(
+    emptyMarkup: DisplayUtils.emptyState(
       "还没有 Model Policy",
       "定义模型模式、端点和 placement 策略后，路由行为才会按业务意图收敛。",
     ),
@@ -2292,7 +2299,7 @@ function renderPolicies() {
       pageSizeOptions: PAGE_SIZE_OPTIONS,
       paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
     }),
-    escapeHTML,
+    escapeHTML: DisplayUtils.escapeHTML,
   });
 
   policyList.querySelectorAll("[data-toggle-policy]").forEach((button) => {
@@ -2337,13 +2344,13 @@ function renderProxyRow(proxy) {
     expanded: state.expandedProxies.has(String(proxy.id)),
     editing: String(state.editingProxyID) === String(proxy.id),
     quickDetails: buildQuickDetailMarkup("proxies", proxy),
-    statusPill,
-    formatBindingCount,
-    formatDataSize,
-    formatLatency,
-    formatDateTime,
-    tableActions,
-    escapeHTML,
+    statusPill: DisplayUtils.statusPill,
+    formatBindingCount: DisplayUtils.formatBindingCount,
+    formatDataSize: DisplayUtils.formatDataSize,
+    formatLatency: DisplayUtils.formatLatency,
+    formatDateTime: DisplayUtils.formatDateTime,
+    tableActions: DisplayUtils.tableActions,
+    escapeHTML: DisplayUtils.escapeHTML,
   });
 }
 
@@ -2353,16 +2360,16 @@ function renderBackendRow(backend) {
     expanded: state.expandedBackends.has(String(backend.id)),
     editing: String(state.editingBackendID) === String(backend.id),
     quickDetails: buildQuickDetailMarkup("backends", backend),
-    statusPill,
-    formatBackendRouting,
-    formatBackendCoverage,
-    backendProtocolLabel,
-    formatUsageCount,
-    formatLatency,
-    formatDateTime,
-    formatBackendRecentStats,
-    tableActions,
-    escapeHTML,
+    statusPill: DisplayUtils.statusPill,
+    formatBackendRouting: DisplayUtils.formatBackendRouting,
+    formatBackendCoverage: DisplayUtils.formatBackendCoverage,
+    backendProtocolLabel: DisplayUtils.backendProtocolLabel,
+    formatUsageCount: DisplayUtils.formatUsageCount,
+    formatLatency: DisplayUtils.formatLatency,
+    formatDateTime: DisplayUtils.formatDateTime,
+    formatBackendRecentStats: DisplayUtils.formatBackendRecentStats,
+    tableActions: DisplayUtils.tableActions,
+    escapeHTML: DisplayUtils.escapeHTML,
   });
 }
 
@@ -2372,12 +2379,12 @@ function renderClientRow(client) {
     expanded: state.expandedClients.has(String(client.id)),
     editing: String(state.editingClientID) === String(client.id),
     quickDetails: buildQuickDetailMarkup("clients", client),
-    clientTokenText: clientTokenDisplay(client),
-    statusPill,
-    formatUsageCount,
-    formatDateTime,
-    tableActions,
-    escapeHTML,
+    clientTokenText: DisplayUtils.clientTokenDisplay(client),
+    statusPill: DisplayUtils.statusPill,
+    formatUsageCount: DisplayUtils.formatUsageCount,
+    formatDateTime: DisplayUtils.formatDateTime,
+    tableActions: DisplayUtils.tableActions,
+    escapeHTML: DisplayUtils.escapeHTML,
   });
 }
 
@@ -2387,12 +2394,12 @@ function renderPolicyRow(policy) {
     expanded: state.expandedPolicies.has(String(policy.id)),
     editing: String(state.editingPolicyID) === String(policy.id),
     quickDetails: buildQuickDetailMarkup("policies", policy),
-    formatPolicyRouting,
-    formatUsageCount,
-    formatPolicyCoverage,
-    formatDateTime,
-    tableActions,
-    escapeHTML,
+    formatPolicyRouting: DisplayUtils.formatPolicyRouting,
+    formatUsageCount: DisplayUtils.formatUsageCount,
+    formatPolicyCoverage: DisplayUtils.formatPolicyCoverage,
+    formatDateTime: DisplayUtils.formatDateTime,
+    tableActions: DisplayUtils.tableActions,
+    escapeHTML: DisplayUtils.escapeHTML,
   });
 }
 
@@ -2456,7 +2463,7 @@ function buildResourceToolbarMarkup({ resourceKey, searchPlaceholder, count }) {
     config,
     activeFilters,
     hasChanges,
-    escapeHTML,
+    escapeHTML: DisplayUtils.escapeHTML,
     toolbarStatusLabel: ResourceStateUtils.toolbarStatusLabel,
   });
 }
@@ -2516,7 +2523,7 @@ function buildQuickDetailMarkup(resourceKey, record) {
   const sections = typeof RendererUtils.createQuickDetailSections === "function"
     ? RendererUtils.createQuickDetailSections(resourceKey, record)
     : [];
-  return ResourceViewUtils.createQuickDetailMarkup({ sections, escapeHTML });
+  return ResourceViewUtils.createQuickDetailMarkup({ sections, escapeHTML: DisplayUtils.escapeHTML });
 }
 
 function renderEvents() {
@@ -2539,16 +2546,16 @@ function renderEvents() {
       pageData,
       timelineItems: pageTimeline,
       summary,
-      formatDateTime,
+      formatDateTime: DisplayUtils.formatDateTime,
       renderPagination(key, data) {
         return PaginationUtils.renderPagination(key, data, {
           pageSizeOptions: PAGE_SIZE_OPTIONS,
           paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
         });
       },
-      emptyState,
+      emptyState: DisplayUtils.emptyState,
       feedToneClass,
-      escapeHTML,
+      escapeHTML: DisplayUtils.escapeHTML,
     })
     : "";
 
@@ -2599,16 +2606,16 @@ function renderUsageLogs() {
       statsCards,
       pageRows,
       expandedUsageLogs: state.expandedUsageLogs,
-      formatDateTime,
+      formatDateTime: DisplayUtils.formatDateTime,
       renderPagination(key, data) {
         return PaginationUtils.renderPagination(key, data, {
           pageSizeOptions: PAGE_SIZE_OPTIONS,
           paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
         });
       },
-      emptyState,
+      emptyState: DisplayUtils.emptyState,
       renderUsageLogInlineDetail,
-      escapeHTML,
+      escapeHTML: DisplayUtils.escapeHTML,
     })
     : "";
 
@@ -2651,9 +2658,9 @@ function renderUsageLogRow(row) {
     return ObservabilityViewUtils.renderUsageLogRow({
       row,
       expanded: state.expandedUsageLogs.has(String(row.id)),
-      formatDateTime,
+      formatDateTime: DisplayUtils.formatDateTime,
       renderInlineDetail: () => renderUsageLogInlineDetail(row),
-      escapeHTML,
+      escapeHTML: DisplayUtils.escapeHTML,
     });
   }
   return "";
@@ -2679,7 +2686,7 @@ function renderUsageLogInlineDetail(row) {
       row,
       previewItems,
       formatInlinePreview: ObservabilityViewUtils.formatInlinePreview,
-      escapeHTML,
+      escapeHTML: DisplayUtils.escapeHTML,
     });
   }
   return "";
@@ -2727,146 +2734,6 @@ function formatUsageDetail(log) {
   return parts.join(" · ") || "-";
 }
 
-function formatModelMapping(mapping) {
-  if (!mapping || typeof mapping !== "object") {
-    return "-";
-  }
-  const items = Object.entries(mapping).map(([from, to]) => `${from} -> ${to}`);
-  return items.length === 0 ? "-" : items.join(", ");
-}
-
-function ensureArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function formatBackendRecentStats(stats = {}) {
-  const windowMinutes = Number(stats.window_minutes) || 30;
-  const successes = Number(stats.successes) || 0;
-  const failures = Number(stats.failures) || 0;
-  return `${windowMinutes}m ${successes} ok / ${failures} fail`;
-}
-
-function formatDateTime(value) {
-  const raw = String(value || "").trim();
-  if (!raw) {
-    return "-";
-  }
-
-  const date = new Date(raw);
-  if (!Number.isFinite(date.getTime())) {
-    return raw;
-  }
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  const seconds = String(date.getSeconds()).padStart(2, "0");
-  const milliseconds = String(date.getMilliseconds()).padStart(3, "0");
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
-}
-
-function clientTokenDisplay(client) {
-  if (client.masked_token) {
-    return client.masked_token;
-  }
-  if (client.token) {
-    return client.token;
-  }
-  if (client.token_prefix) {
-    return `${client.token_prefix} (历史记录仅保存 prefix)`;
-  }
-  return "-";
-}
-
-function formatUsageCount(value) {
-  const count = Number(value || 0);
-  if (!Number.isFinite(count) || count <= 0) {
-    return "0 requests";
-  }
-  return `${count} requests`;
-}
-
-function formatBindingCount(value) {
-  const count = Number(value || 0);
-  if (!Number.isFinite(count) || count <= 0) {
-    return "0 backends";
-  }
-  return `${count} backends`;
-}
-
-function formatBackendCoverage(backend) {
-  const modelCount = Number.isFinite(Number(backend?.model_count))
-    ? Number(backend.model_count)
-    : ensureArray(backend?.models).filter(Boolean).length;
-  const endpointCount = Number.isFinite(Number(backend?.endpoint_count))
-    ? Number(backend.endpoint_count)
-    : ensureArray(backend?.endpoints).filter(Boolean).length;
-  return `${modelCount} models / ${endpointCount} endpoints`;
-}
-
-function formatPolicyCoverage(policy) {
-  const backendCount = Number(policy?.backend_count || 0);
-  const modelCount = Number(policy?.model_count || 0);
-  return `${Number.isFinite(backendCount) ? backendCount : 0} backends / ${Number.isFinite(modelCount) ? modelCount : 0} models`;
-}
-
-function formatLatency(value) {
-  const latency = Number(value || 0);
-  if (!Number.isFinite(latency) || latency <= 0) {
-    return "-";
-  }
-  return `${Math.round(latency)} ms`;
-}
-
-function formatDataSize(value) {
-  const size = Number(value || 0);
-  if (!Number.isFinite(size) || size <= 0) {
-    return "0 B";
-  }
-  const units = ["B", "KB", "MB", "GB"];
-  let amount = size;
-  let unitIndex = 0;
-  while (amount >= 1024 && unitIndex < units.length - 1) {
-    amount /= 1024;
-    unitIndex += 1;
-  }
-  const rounded = amount >= 10 || unitIndex === 0 ? Math.round(amount) : Math.round(amount * 10) / 10;
-  return `${rounded} ${units[unitIndex]}`;
-}
-
-function proxyLabel(proxyID, proxy) {
-  if (!proxyID || Number(proxyID) === 0) {
-    return "direct";
-  }
-  if (!proxy) {
-    return `missing proxy #${proxyID}`;
-  }
-  return `${proxy.name}${proxy.enabled ? "" : " (disabled)"}`;
-}
-
-function formatBackendRouting(backend) {
-  const parts = [
-    backend?.pool ? `pool ${backend.pool}` : "",
-    proxyLabel(backend?.proxy_id, backend?.proxy),
-  ].filter(Boolean);
-  return parts.join(" | ") || "-";
-}
-
-function formatPolicyRouting(policy) {
-  const parts = [
-    policy?.backend_pool ? `pool ${policy.backend_pool}` : "",
-    Number.isFinite(Number(policy?.priority)) ? `priority ${policy.priority}` : "",
-    policy?.failover_enabled ? "failover on" : "failover off",
-  ].filter(Boolean);
-  return parts.join(" | ") || "-";
-}
-
-function backendProtocolLabel(protocol) {
-  return protocol === "anthropic" ? "Claude / Anthropic" : "OpenAI";
-}
-
 function toggleExpanded(set, id) {
   const normalizedID = String(id);
   if (set.has(normalizedID)) {
@@ -2874,75 +2741,6 @@ function toggleExpanded(set, id) {
     return;
   }
   set.add(normalizedID);
-}
-
-function statusPill(enabled, onText, offText) {
-  const active = Boolean(enabled);
-  return `<span class="status-pill ${active ? "ok" : "off"}">${escapeHTML(active ? onText : offText)}</span>`;
-}
-
-function compactList(values) {
-  const items = ensureArray(values).filter(Boolean);
-  if (items.length === 0) {
-    return `<span class="muted-text">-</span>`;
-  }
-
-  const visible = items.slice(0, 2);
-  const rest = items.length - visible.length;
-  return `
-    <div class="compact-list">
-      ${visible.map((item) => `<span>${escapeHTML(item)}</span>`).join("")}
-      ${rest > 0 ? `<span class="more-count">+${rest}</span>` : ""}
-    </div>
-  `;
-}
-
-function chipList(values, className = "") {
-  const items = ensureArray(values).filter(Boolean);
-  if (items.length === 0) {
-    return `<span class="muted-text">-</span>`;
-  }
-
-  const modifier = className ? ` ${escapeHTML(className)}` : "";
-  return items.map((item) => `<span class="chip${modifier}">${escapeHTML(item)}</span>`).join("");
-}
-
-function tableActions(type, id) {
-  const normalizedID = escapeHTML(id);
-  const attributes = {
-    proxy: ["data-edit-proxy", "data-delete-proxy"],
-    backend: ["data-edit-backend", "data-delete-backend"],
-    client: ["data-edit-client", "data-delete-client"],
-    policy: ["data-edit-policy", "data-delete-policy"],
-  }[type];
-
-  if (!attributes) {
-    return "";
-  }
-
-  const [editAttribute, deleteAttribute] = attributes;
-  return `
-    <div class="table-actions">
-      <button class="small-button" ${editAttribute}="${normalizedID}" type="button">编辑</button>
-      <button class="small-button danger-button" ${deleteAttribute}="${normalizedID}" type="button">删除</button>
-    </div>
-  `;
-}
-
-function emptyState(title, description) {
-  return `
-    <article class="empty-state">
-      <strong>${escapeHTML(title)}</strong>
-      <p class="empty-copy">${escapeHTML(description)}</p>
-    </article>
-  `;
-}
-
-function renderDatalist(element, values) {
-  element.innerHTML = ensureArray(values)
-    .filter(Boolean)
-    .map((value) => `<option value="${escapeHTML(value)}"></option>`)
-    .join("");
 }
 
 async function api(path, method = "GET", body) {
@@ -2966,15 +2764,6 @@ async function api(path, method = "GET", body) {
 function reportError(error) {
   console.error(error);
   alert(error?.message || "操作失败");
-}
-
-function escapeHTML(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 activatePage(pageIDFromHash());

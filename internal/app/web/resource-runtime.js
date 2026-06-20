@@ -61,6 +61,13 @@
     "applyPagedResponse",
     "renderPagination",
   ];
+  const REQUIRED_DISPLAY_METHODS = [
+    "formatDateTime",
+    "escapeHTML",
+    "emptyState",
+    "renderDatalist",
+    "statusPill",
+  ];
 
   function requireResourceViewUtils(resourceViewUtils) {
     const candidate = resourceViewUtils && typeof resourceViewUtils === "object"
@@ -174,7 +181,22 @@
     );
   }
 
+  function requireDisplayUtils(displayUtils) {
+    const candidate = displayUtils && typeof displayUtils === "object"
+      ? displayUtils
+      : null;
+    const missing = REQUIRED_DISPLAY_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `display-utils.js failed to load before app.js; missing DisplayUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   const api = {
+    requireDisplayUtils,
     requirePaginationUtils,
     requireDrawerViewUtils,
     requireResourceCrudUtils,
