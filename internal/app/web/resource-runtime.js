@@ -118,8 +118,7 @@
     "primeUsageLogDetail",
   ];
   const REQUIRED_RESOURCE_LIST_RUNTIME_METHODS = [
-    "bindResourceToolbar",
-    "bindResourceRowOpen",
+    "bindResourceListInteractions",
     "renderLocalResourceTable",
   ];
 

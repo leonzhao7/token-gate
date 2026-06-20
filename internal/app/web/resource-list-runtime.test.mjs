@@ -402,6 +402,274 @@ test("resource list runtime binds toolbar controls through state updates and cal
   assert.deepEqual(creates, ["create"]);
 });
 
+test("resource list runtime binds shared list interactions through delegated helpers and callbacks", async () => {
+  const container = createResourceListContainer({
+    toggleSelector: "[data-toggle-backend]",
+    toggleDatasetKey: "toggleBackend",
+    toggleValue: "42",
+    editSelector: "[data-edit-backend]",
+    editDatasetKey: "editBackend",
+    editValue: "42",
+    deleteSelector: "[data-delete-backend]",
+    deleteDatasetKey: "deleteBackend",
+    deleteValue: "42",
+  });
+  const calls = {
+    bindResourceRowOpen: [],
+    bindResourceToolbar: [],
+    bindPagination: [],
+    toggleExpanded: [],
+    startEdit: [],
+    api: [],
+    resetForm: [],
+    refreshAll: 0,
+    reportError: [],
+    confirm: [],
+  };
+  const expandedSet = new Set(["7"]);
+  let editingID = "42";
+
+  ResourceListRuntimeUtils.bindResourceListInteractions({
+    container,
+    resourceKey: "backends",
+    kind: "backend",
+    state: {
+      expandedBackends: expandedSet,
+      editingBackendID: editingID,
+      resourceViews: {
+        backends: {
+          query: "",
+          filter: "all",
+          sort: "updated_desc",
+        },
+      },
+      pagination: {
+        backends: { page: 1, size: 10 },
+      },
+    },
+    getExpandedSet() {
+      return expandedSet;
+    },
+    getEditingID() {
+      return editingID;
+    },
+    renderList() {
+      calls.renderList = (calls.renderList || 0) + 1;
+    },
+    startEdit(id) {
+      calls.startEdit.push(id);
+    },
+    resetForm() {
+      calls.resetForm.push("reset");
+    },
+    refreshAll() {
+      calls.refreshAll += 1;
+      return Promise.resolve();
+    },
+    confirm(message) {
+      calls.confirm.push(message);
+      return true;
+    },
+    deleteMessage: "确认删除这个 Backend？",
+    deletePath(id) {
+      return `/admin/api/backends/${id}`;
+    },
+    toggleExpanded(set, id) {
+      calls.toggleExpanded.push({ set, id });
+    },
+    api(path, method) {
+      calls.api.push({ path, method });
+      return Promise.resolve();
+    },
+    bindResourceRowOpen(input) {
+      calls.bindResourceRowOpen.push(input);
+    },
+    bindResourceToolbar(input) {
+      calls.bindResourceToolbar.push(input);
+    },
+    paginationUtils: {
+      bindPagination(containerArg, resourceKeyArg, renderListArg, stateArg, optionsArg) {
+        calls.bindPagination.push({
+          container: containerArg,
+          resourceKey: resourceKeyArg,
+          renderList: renderListArg,
+          state: stateArg,
+          options: optionsArg,
+        });
+      },
+    },
+    drawerUtils: { drawerDisplayTitle() { return "Backend"; } },
+    drawerViewUtils: { drawerDisplayTitle() { return "Backend"; } },
+    openResourceDrawer() {
+      return Promise.resolve();
+    },
+    resourceStateUtils: {
+      defaultResourceView() {
+        return { query: "", filter: "all", sort: "updated_desc" };
+      },
+    },
+    renderResourceListByKey() {},
+    refreshResourceList() {
+      return Promise.resolve();
+    },
+    reportError(error) {
+      calls.reportError.push(error);
+    },
+    onCreate() {},
+  });
+
+  assert.equal(calls.bindResourceRowOpen.length, 1);
+  assert.equal(calls.bindResourceRowOpen[0].container, container);
+  assert.equal(calls.bindResourceRowOpen[0].kind, "backend");
+  assert.equal(calls.bindResourceToolbar.length, 1);
+  assert.equal(calls.bindResourceToolbar[0].container, container);
+  assert.equal(calls.bindResourceToolbar[0].resourceKey, "backends");
+  assert.equal(calls.bindPagination.length, 1);
+  assert.equal(calls.bindPagination[0].container, container);
+  assert.equal(calls.bindPagination[0].resourceKey, "backends");
+
+  await container.listeners["[data-toggle-backend]"][0].click();
+  assert.equal(calls.toggleExpanded.length, 1);
+  assert.equal(calls.toggleExpanded[0].set, expandedSet);
+  assert.equal(calls.toggleExpanded[0].id, "42");
+  assert.equal(calls.renderList, 1);
+
+  await container.listeners["[data-edit-backend]"][0].click();
+  assert.deepEqual(calls.startEdit, ["42"]);
+
+  await container.listeners["[data-delete-backend]"][0].click();
+  await Promise.resolve();
+  assert.deepEqual(calls.confirm, ["确认删除这个 Backend？"]);
+  assert.deepEqual(calls.api, [{
+    path: "/admin/api/backends/42",
+    method: "DELETE",
+  }]);
+  assert.deepEqual(calls.resetForm, ["reset"]);
+  assert.equal(expandedSet.has("42"), false);
+  assert.equal(calls.refreshAll, 1);
+  assert.deepEqual(calls.reportError, []);
+});
+
+test("resource list runtime reports missing dataset ids before triggering side effects", async () => {
+  const container = createResourceListContainer({
+    toggleSelector: "[data-toggle-backend]",
+    toggleDatasetKey: "togglePolicy",
+    toggleValue: "42",
+    editSelector: "[data-edit-backend]",
+    editDatasetKey: "editPolicy",
+    editValue: "42",
+    deleteSelector: "[data-delete-backend]",
+    deleteDatasetKey: "deletePolicy",
+    deleteValue: "42",
+  });
+  const calls = {
+    toggleExpanded: 0,
+    startEdit: 0,
+    api: 0,
+    refreshAll: 0,
+    resetForm: 0,
+    reportError: [],
+    confirm: 0,
+  };
+  const expandedSet = new Set(["42"]);
+
+  ResourceListRuntimeUtils.bindResourceListInteractions({
+    container,
+    resourceKey: "backends",
+    kind: "backend",
+    state: {
+      resourceViews: {
+        backends: {
+          query: "",
+          filter: "all",
+          sort: "updated_desc",
+        },
+      },
+      pagination: {
+        backends: { page: 1, size: 10 },
+      },
+    },
+    getExpandedSet() {
+      return expandedSet;
+    },
+    getEditingID() {
+      return "42";
+    },
+    renderList() {},
+    startEdit() {
+      calls.startEdit += 1;
+    },
+    resetForm() {
+      calls.resetForm += 1;
+    },
+    refreshAll() {
+      calls.refreshAll += 1;
+      return Promise.resolve();
+    },
+    confirm() {
+      calls.confirm += 1;
+      return true;
+    },
+    deleteMessage: "确认删除这个 Backend？",
+    deletePath(id) {
+      return `/admin/api/backends/${id}`;
+    },
+    toggleExpanded() {
+      calls.toggleExpanded += 1;
+    },
+    api() {
+      calls.api += 1;
+      return Promise.resolve();
+    },
+    bindResourceRowOpen() {},
+    bindResourceToolbar() {},
+    paginationUtils: {
+      bindPagination() {},
+    },
+    drawerUtils: { drawerDisplayTitle() { return "Backend"; } },
+    drawerViewUtils: { drawerDisplayTitle() { return "Backend"; } },
+    openResourceDrawer() {
+      return Promise.resolve();
+    },
+    resourceStateUtils: {
+      defaultResourceView() {
+        return { query: "", filter: "all", sort: "updated_desc" };
+      },
+    },
+    renderResourceListByKey() {},
+    refreshResourceList() {
+      return Promise.resolve();
+    },
+    reportError(error) {
+      calls.reportError.push(error);
+    },
+    onCreate() {},
+  });
+
+  try {
+    await container.listeners["[data-toggle-backend]"][0].click();
+  } catch {}
+  try {
+    await container.listeners["[data-edit-backend]"][0].click();
+  } catch {}
+  try {
+    await container.listeners["[data-delete-backend]"][0].click();
+    await Promise.resolve();
+  } catch {}
+
+  assert.equal(calls.toggleExpanded, 0);
+  assert.equal(calls.startEdit, 0);
+  assert.equal(calls.confirm, 0);
+  assert.equal(calls.api, 0);
+  assert.equal(calls.refreshAll, 0);
+  assert.equal(calls.resetForm, 0);
+  assert.equal(expandedSet.has("42"), true);
+  assert.equal(calls.reportError.length, 3);
+  assert.match(String(calls.reportError[0]?.message || ""), /missing backend toggle target id/i);
+  assert.match(String(calls.reportError[1]?.message || ""), /missing backend edit target id/i);
+  assert.match(String(calls.reportError[2]?.message || ""), /missing backend delete target id/i);
+});
+
 test("resource list runtime binds row open interactions and ignores nested buttons", async () => {
   const row = createRowStub({
     rowId: "42",
@@ -519,6 +787,46 @@ function createToolbarContainer(resourceKey) {
         `[data-toolbar-create="${resourceKey}"]`,
       ]);
       return known.has(selector) ? ensureEntry(selector) : null;
+    },
+  };
+}
+
+function createResourceListContainer({
+  toggleSelector,
+  toggleDatasetKey,
+  toggleValue,
+  editSelector,
+  editDatasetKey,
+  editValue,
+  deleteSelector,
+  deleteDatasetKey,
+  deleteValue,
+}) {
+  const listeners = {
+    [toggleSelector]: [],
+    [editSelector]: [],
+    [deleteSelector]: [],
+  };
+  const buttons = new Map([
+    [toggleSelector, [{ dataset: { [toggleDatasetKey]: toggleValue } }]],
+    [editSelector, [{ dataset: { [editDatasetKey]: editValue } }]],
+    [deleteSelector, [{ dataset: { [deleteDatasetKey]: deleteValue } }]],
+  ]);
+
+  return {
+    listeners,
+    querySelector() {
+      return null;
+    },
+    querySelectorAll(selector) {
+      return (buttons.get(selector) || []).map((button) => ({
+        dataset: button.dataset,
+        addEventListener(type, listener) {
+          listeners[selector].push({
+            [type]: (...args) => listener(...args),
+          });
+        },
+      }));
     },
   };
 }

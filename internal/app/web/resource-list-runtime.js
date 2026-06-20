@@ -120,6 +120,109 @@
     });
   }
 
+  function bindButtons(container, selector, listener) {
+    container.querySelectorAll(selector).forEach((button) => {
+      button.addEventListener("click", () => {
+        listener(button);
+      });
+    });
+  }
+
+  function readDatasetTargetID(button, action, kind) {
+    const datasetKey = `${action}${capitalize(kind)}`;
+    const targetID = String(button?.dataset?.[datasetKey] || "").trim();
+    if (targetID) {
+      return targetID;
+    }
+    throw new Error(`missing ${kind} ${action} target id on dataset key ${datasetKey}`);
+  }
+
+  function bindResourceListInteractions({
+    container,
+    resourceKey,
+    kind,
+    state,
+    getExpandedSet,
+    getEditingID,
+    renderList,
+    startEdit,
+    resetForm,
+    refreshAll,
+    confirm,
+    deleteMessage,
+    deletePath,
+    toggleExpanded,
+    api,
+    bindResourceRowOpen: bindRowOpen = bindResourceRowOpen,
+    bindResourceToolbar: bindToolbar = bindResourceToolbar,
+    paginationUtils,
+    drawerUtils,
+    drawerViewUtils,
+    openResourceDrawer,
+    resourceStateUtils,
+    renderResourceListByKey,
+    refreshResourceList,
+    reportError,
+    onCreate,
+  }) {
+    bindButtons(container, `[data-toggle-${kind}]`, (button) => {
+      try {
+        toggleExpanded(getExpandedSet(), readDatasetTargetID(button, "toggle", kind));
+        renderList();
+      } catch (error) {
+        reportError(error);
+      }
+    });
+
+    bindButtons(container, `[data-edit-${kind}]`, (button) => {
+      try {
+        startEdit(readDatasetTargetID(button, "edit", kind));
+      } catch (error) {
+        reportError(error);
+      }
+    });
+
+    bindRowOpen({
+      container,
+      kind,
+      drawerUtils,
+      drawerViewUtils,
+      openResourceDrawer,
+      reportError,
+    });
+
+    bindButtons(container, `[data-delete-${kind}]`, (button) => {
+      Promise.resolve().then(async () => {
+        try {
+          const targetID = readDatasetTargetID(button, "delete", kind);
+          if (!confirm(deleteMessage)) {
+            return;
+          }
+          await api(deletePath(targetID), "DELETE");
+          if (String(getEditingID()) === String(targetID)) {
+            resetForm();
+          }
+          getExpandedSet().delete(String(targetID));
+          await refreshAll();
+        } catch (error) {
+          reportError(error);
+        }
+      });
+    });
+
+    paginationUtils.bindPagination(container, resourceKey, renderList, state, { reportError });
+    bindToolbar({
+      container,
+      resourceKey,
+      state,
+      resourceStateUtils,
+      renderResourceListByKey,
+      refreshResourceList,
+      reportError,
+      onCreate,
+    });
+  }
+
   function renderLocalResourceTable({
     resourceKey,
     items,
@@ -172,11 +275,17 @@
   }
 
   const api = {
+    bindResourceListInteractions,
     bindResourceRowOpen,
     bindResourceToolbar,
     buildResourceToolbarMarkup,
     renderLocalResourceTable,
   };
+
+  function capitalize(value) {
+    const raw = String(value || "");
+    return raw ? raw[0].toUpperCase() + raw.slice(1) : "";
+  }
 
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api;

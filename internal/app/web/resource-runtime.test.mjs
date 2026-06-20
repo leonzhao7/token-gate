@@ -469,8 +469,7 @@ test("requireObservabilityRuntimeUtils accepts a narrow observability runtime ap
 test("requireResourceListRuntimeUtils returns the resource list runtime api when app.js dependencies exist", () => {
   const runtime = requireResourceListRuntimeUtils(ResourceListRuntimeUtils);
 
-  assert.equal(typeof runtime.bindResourceToolbar, "function");
-  assert.equal(typeof runtime.bindResourceRowOpen, "function");
+  assert.equal(typeof runtime.bindResourceListInteractions, "function");
   assert.equal(typeof runtime.renderLocalResourceTable, "function");
 });
 
@@ -483,15 +482,13 @@ test("requireResourceListRuntimeUtils throws a clear error when resource list ru
 
 test("requireResourceListRuntimeUtils accepts a narrow resource list runtime api contract", () => {
   const runtime = requireResourceListRuntimeUtils({
-    bindResourceToolbar() {},
-    bindResourceRowOpen() {},
+    bindResourceListInteractions() {},
     renderLocalResourceTable() {
       return { filtered: [], pageData: { items: [], page: 1, size: 10, total: 0, totalPages: 1 } };
     },
   });
 
-  assert.equal(typeof runtime.bindResourceToolbar, "function");
-  assert.equal(typeof runtime.bindResourceRowOpen, "function");
+  assert.equal(typeof runtime.bindResourceListInteractions, "function");
 });
 
 test("createAppVmContext injects search runtime helpers by default", () => {

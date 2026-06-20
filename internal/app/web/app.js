@@ -2019,55 +2019,37 @@ function renderProxies() {
     pageSizeOptions: PAGE_SIZE_OPTIONS,
   });
 
-  proxyList.querySelectorAll("[data-toggle-proxy]").forEach((button) => {
-    button.addEventListener("click", () => {
-      toggleExpanded(state.expandedProxies, button.dataset.toggleProxy);
-      renderProxies();
-    });
-  });
-
-  proxyList.querySelectorAll("[data-edit-proxy]").forEach((button) => {
-    button.addEventListener("click", () => {
-      startEditProxy(button.dataset.editProxy);
-    });
-  });
-  ResourceListRuntimeUtils.bindResourceRowOpen({
+  ResourceListRuntimeUtils.bindResourceListInteractions({
     container: proxyList,
+    resourceKey: "proxies",
     kind: "proxy",
+    state,
+    getExpandedSet() {
+      return state.expandedProxies;
+    },
+    getEditingID() {
+      return state.editingProxyID;
+    },
+    renderList: renderProxies,
+    startEdit: startEditProxy,
+    resetForm: resetProxyForm,
+    refreshAll,
+    confirm,
+    deleteMessage: "确认删除这个 SOCKS5 Proxy？已绑定的 Backend 会自动改为直连。",
+    deletePath(id) {
+      return `/admin/api/socks-proxies/${id}`;
+    },
+    toggleExpanded,
+    api,
     drawerUtils: DrawerUtils,
     drawerViewUtils: DrawerViewUtils,
     openResourceDrawer,
-    reportError,
-  });
-
-  proxyList.querySelectorAll("[data-delete-proxy]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      try {
-        if (!confirm("确认删除这个 SOCKS5 Proxy？已绑定的 Backend 会自动改为直连。")) {
-          return;
-        }
-        await api(`/admin/api/socks-proxies/${button.dataset.deleteProxy}`, "DELETE");
-        if (String(state.editingProxyID) === button.dataset.deleteProxy) {
-          resetProxyForm();
-        }
-        state.expandedProxies.delete(button.dataset.deleteProxy);
-        await refreshAll();
-      } catch (error) {
-        reportError(error);
-      }
-    });
-  });
-
-  PaginationUtils.bindPagination(proxyList, "proxies", renderProxies, state, { reportError });
-  ResourceListRuntimeUtils.bindResourceToolbar({
-    container: proxyList,
-    resourceKey: "proxies",
-    state,
     resourceStateUtils: ResourceStateUtils,
     renderResourceListByKey,
     refreshResourceList,
     reportError,
     onCreate: startCreateProxy,
+    paginationUtils: PaginationUtils,
   });
 }
 
@@ -2091,55 +2073,37 @@ function renderBackends() {
     pageSizeOptions: PAGE_SIZE_OPTIONS,
   });
 
-  backendList.querySelectorAll("[data-toggle-backend]").forEach((button) => {
-    button.addEventListener("click", () => {
-      toggleExpanded(state.expandedBackends, button.dataset.toggleBackend);
-      renderBackends();
-    });
-  });
-
-  backendList.querySelectorAll("[data-edit-backend]").forEach((button) => {
-    button.addEventListener("click", () => {
-      startEditBackend(button.dataset.editBackend);
-    });
-  });
-  ResourceListRuntimeUtils.bindResourceRowOpen({
+  ResourceListRuntimeUtils.bindResourceListInteractions({
     container: backendList,
+    resourceKey: "backends",
     kind: "backend",
+    state,
+    getExpandedSet() {
+      return state.expandedBackends;
+    },
+    getEditingID() {
+      return state.editingBackendID;
+    },
+    renderList: renderBackends,
+    startEdit: startEditBackend,
+    resetForm: resetBackendForm,
+    refreshAll,
+    confirm,
+    deleteMessage: "确认删除这个 Backend？",
+    deletePath(id) {
+      return `/admin/api/backends/${id}`;
+    },
+    toggleExpanded,
+    api,
     drawerUtils: DrawerUtils,
     drawerViewUtils: DrawerViewUtils,
     openResourceDrawer,
-    reportError,
-  });
-
-  backendList.querySelectorAll("[data-delete-backend]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      try {
-        if (!confirm("确认删除这个 Backend？")) {
-          return;
-        }
-        await api(`/admin/api/backends/${button.dataset.deleteBackend}`, "DELETE");
-        if (String(state.editingBackendID) === button.dataset.deleteBackend) {
-          resetBackendForm();
-        }
-        state.expandedBackends.delete(button.dataset.deleteBackend);
-        await refreshAll();
-      } catch (error) {
-        reportError(error);
-      }
-    });
-  });
-
-  PaginationUtils.bindPagination(backendList, "backends", renderBackends, state, { reportError });
-  ResourceListRuntimeUtils.bindResourceToolbar({
-    container: backendList,
-    resourceKey: "backends",
-    state,
     resourceStateUtils: ResourceStateUtils,
     renderResourceListByKey,
     refreshResourceList,
     reportError,
     onCreate: startCreateBackend,
+    paginationUtils: PaginationUtils,
   });
 }
 
@@ -2163,55 +2127,37 @@ function renderClients() {
     pageSizeOptions: PAGE_SIZE_OPTIONS,
   });
 
-  clientList.querySelectorAll("[data-toggle-client]").forEach((button) => {
-    button.addEventListener("click", () => {
-      toggleExpanded(state.expandedClients, button.dataset.toggleClient);
-      renderClients();
-    });
-  });
-
-  clientList.querySelectorAll("[data-edit-client]").forEach((button) => {
-    button.addEventListener("click", () => {
-      startEditClient(button.dataset.editClient);
-    });
-  });
-  ResourceListRuntimeUtils.bindResourceRowOpen({
+  ResourceListRuntimeUtils.bindResourceListInteractions({
     container: clientList,
+    resourceKey: "clients",
     kind: "client",
+    state,
+    getExpandedSet() {
+      return state.expandedClients;
+    },
+    getEditingID() {
+      return state.editingClientID;
+    },
+    renderList: renderClients,
+    startEdit: startEditClient,
+    resetForm: resetClientForm,
+    refreshAll,
+    confirm,
+    deleteMessage: "确认删除这个 Client Key？",
+    deletePath(id) {
+      return `/admin/api/client-keys/${id}`;
+    },
+    toggleExpanded,
+    api,
     drawerUtils: DrawerUtils,
     drawerViewUtils: DrawerViewUtils,
     openResourceDrawer,
-    reportError,
-  });
-
-  clientList.querySelectorAll("[data-delete-client]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      try {
-        if (!confirm("确认删除这个 Client Key？")) {
-          return;
-        }
-        await api(`/admin/api/client-keys/${button.dataset.deleteClient}`, "DELETE");
-        if (String(state.editingClientID) === button.dataset.deleteClient) {
-          resetClientForm();
-        }
-        state.expandedClients.delete(button.dataset.deleteClient);
-        await refreshAll();
-      } catch (error) {
-        reportError(error);
-      }
-    });
-  });
-
-  PaginationUtils.bindPagination(clientList, "clients", renderClients, state, { reportError });
-  ResourceListRuntimeUtils.bindResourceToolbar({
-    container: clientList,
-    resourceKey: "clients",
-    state,
     resourceStateUtils: ResourceStateUtils,
     renderResourceListByKey,
     refreshResourceList,
     reportError,
     onCreate: startCreateClient,
+    paginationUtils: PaginationUtils,
   });
 }
 
@@ -2235,55 +2181,37 @@ function renderPolicies() {
     pageSizeOptions: PAGE_SIZE_OPTIONS,
   });
 
-  policyList.querySelectorAll("[data-toggle-policy]").forEach((button) => {
-    button.addEventListener("click", () => {
-      toggleExpanded(state.expandedPolicies, button.dataset.togglePolicy);
-      renderPolicies();
-    });
-  });
-
-  policyList.querySelectorAll("[data-edit-policy]").forEach((button) => {
-    button.addEventListener("click", () => {
-      startEditPolicy(button.dataset.editPolicy);
-    });
-  });
-  ResourceListRuntimeUtils.bindResourceRowOpen({
+  ResourceListRuntimeUtils.bindResourceListInteractions({
     container: policyList,
+    resourceKey: "policies",
     kind: "policy",
+    state,
+    getExpandedSet() {
+      return state.expandedPolicies;
+    },
+    getEditingID() {
+      return state.editingPolicyID;
+    },
+    renderList: renderPolicies,
+    startEdit: startEditPolicy,
+    resetForm: resetPolicyForm,
+    refreshAll,
+    confirm,
+    deleteMessage: "确认删除这个 Model Policy？",
+    deletePath(id) {
+      return `/admin/api/model-policies/${id}`;
+    },
+    toggleExpanded,
+    api,
     drawerUtils: DrawerUtils,
     drawerViewUtils: DrawerViewUtils,
     openResourceDrawer,
-    reportError,
-  });
-
-  policyList.querySelectorAll("[data-delete-policy]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      try {
-        if (!confirm("确认删除这个 Model Policy？")) {
-          return;
-        }
-        await api(`/admin/api/model-policies/${button.dataset.deletePolicy}`, "DELETE");
-        if (String(state.editingPolicyID) === button.dataset.deletePolicy) {
-          resetPolicyForm();
-        }
-        state.expandedPolicies.delete(button.dataset.deletePolicy);
-        await refreshAll();
-      } catch (error) {
-        reportError(error);
-      }
-    });
-  });
-
-  PaginationUtils.bindPagination(policyList, "policies", renderPolicies, state, { reportError });
-  ResourceListRuntimeUtils.bindResourceToolbar({
-    container: policyList,
-    resourceKey: "policies",
-    state,
     resourceStateUtils: ResourceStateUtils,
     renderResourceListByKey,
     refreshResourceList,
     reportError,
     onCreate: startCreatePolicy,
+    paginationUtils: PaginationUtils,
   });
 }
 
