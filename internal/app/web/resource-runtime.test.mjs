@@ -192,6 +192,53 @@ test("app.js keeps backend proxy option rendering outside shared crud utils", ()
   assert.equal(proxySelect.value, "0");
 });
 
+test("app.js wires backend proxy options through backend form lifecycle helpers", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils, requireResourceCrudUtils },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+  });
+
+  loadAppWithoutBootstrap(context);
+  vm.runInContext(`
+    state.proxies = [
+      { id: 7, name: "tokyo", address: "10.0.0.7:1080", enabled: true },
+      { id: 8, name: "sydney", address: "10.0.0.8:1080", enabled: false }
+    ];
+    state.backends = [{
+      id: 3,
+      name: "edge-a",
+      pool: "premium",
+      protocol: "openai",
+      base_url: "https://edge-a.example",
+      api_key: "secret",
+      proxy_id: 7,
+      models: ["gpt-4.1"],
+      model_mapping: {},
+      endpoints: ["responses"],
+      weight: 1,
+      enabled: true
+    }];
+    startCreateBackend();
+  `, context);
+
+  const proxySelect = context.__elements.get("form:proxy_id");
+  assert.match(proxySelect.innerHTML, /Direct connection/);
+  assert.match(proxySelect.innerHTML, /tokyo \(10\.0\.0\.7:1080\)/);
+  assert.equal(proxySelect.value, "0");
+
+  vm.runInContext(`
+    startEditBackend(3);
+  `, context);
+  assert.equal(proxySelect.value, "7");
+
+  vm.runInContext(`
+    resetBackendForm();
+  `, context);
+  assert.equal(proxySelect.value, "0");
+});
+
 test("app.js initializes resource view defaults through ResourceStateUtils", () => {
   const calls = [];
   const instrumentedResourceStateUtils = {
@@ -305,6 +352,18 @@ function createAppVmContext({
     element.matches = () => false;
     element.querySelector = (selector) => getElement(selector);
     element.querySelectorAll = () => [];
+    element.reset = () => {
+      Object.values(element.elements).forEach((field) => {
+        if (field && typeof field === "object") {
+          if ("value" in field) {
+            field.value = "";
+          }
+          if ("checked" in field) {
+            field.checked = false;
+          }
+        }
+      });
+    };
     return element;
   }
 

@@ -436,9 +436,20 @@ const parseModelMapping = ResourceCrudUtils.parseModelMapping;
 const startCreateProxy = () => resourceCrud.startCreate("proxies");
 const startEditProxy = (id) => resourceCrud.startEdit("proxies", id);
 const resetProxyForm = () => resourceCrud.reset("proxies");
-const startCreateBackend = () => resourceCrud.startCreate("backends");
-const startEditBackend = (id) => resourceCrud.startEdit("backends", id);
-const resetBackendForm = () => resourceCrud.reset("backends");
+function startCreateBackend() {
+  renderProxyOptions();
+  resourceCrud.startCreate("backends");
+}
+
+function startEditBackend(id) {
+  renderProxyOptions();
+  resourceCrud.startEdit("backends", id);
+}
+
+function resetBackendForm() {
+  resourceCrud.reset("backends");
+  renderProxyOptions();
+}
 const startCreateClient = () => resourceCrud.startCreate("clients");
 const startEditClient = (id) => resourceCrud.startEdit("clients", id);
 const resetClientForm = () => resourceCrud.reset("clients");
