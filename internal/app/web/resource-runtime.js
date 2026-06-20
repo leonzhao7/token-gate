@@ -72,6 +72,17 @@
     "startDashboardLoading",
     "renderDashboardShell",
   ];
+  const REQUIRED_SEARCH_RUNTIME_METHODS = [
+    "openSearchShell",
+    "closeSearchShell",
+    "updateSearchQuery",
+    "triggerSearch",
+    "executeSearch",
+    "renderSearchResults",
+    "navigateToSearchResult",
+    "currentSearchKeyboardState",
+    "moveSearchSelection",
+  ];
 
   function requireResourceViewUtils(resourceViewUtils) {
     const candidate = resourceViewUtils && typeof resourceViewUtils === "object"
@@ -213,10 +224,25 @@
     );
   }
 
+  function requireSearchRuntimeUtils(searchRuntimeUtils) {
+    const candidate = searchRuntimeUtils && typeof searchRuntimeUtils === "object"
+      ? searchRuntimeUtils
+      : null;
+    const missing = REQUIRED_SEARCH_RUNTIME_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `search-runtime.js failed to load before app.js; missing SearchRuntimeUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   const api = {
     requireDashboardRuntimeUtils,
     requireDisplayUtils,
     requirePaginationUtils,
+    requireSearchRuntimeUtils,
     requireDrawerViewUtils,
     requireResourceCrudUtils,
     requireResourceStateUtils,
