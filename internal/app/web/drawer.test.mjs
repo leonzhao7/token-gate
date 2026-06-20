@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const {
   buildDrawerActivitySections,
+  drawerDisplayTitle,
   buildDrawerTarget,
   drawerFooterActions,
   drawerTabsForResource,
@@ -60,6 +61,16 @@ test("buildDrawerTarget returns detail and delete endpoints for supported resour
     deletePath: "",
     page: "events",
   });
+});
+
+test("drawerDisplayTitle uses canonical resource titles for all supported drawer resources", () => {
+  assert.equal(drawerDisplayTitle("backends"), "Backend");
+  assert.equal(drawerDisplayTitle("clients"), "Client Key");
+  assert.equal(drawerDisplayTitle("policies"), "Policy");
+  assert.equal(drawerDisplayTitle("proxies"), "Proxy");
+  assert.equal(drawerDisplayTitle("events"), "Event");
+  assert.equal(drawerDisplayTitle("usage_logs"), "Usage Log");
+  assert.equal(drawerDisplayTitle("unknown"), "Resource");
 });
 
 test("drawerTabsForResource keeps events on the standard drawer layout", () => {

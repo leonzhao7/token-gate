@@ -172,6 +172,11 @@ const ShellViewUtils = typeof ResourceRuntimeUtils.requireShellViewUtils === "fu
   : (() => {
     throw new Error("shell-view.js failed to load before app.js");
   })();
+const DrawerViewUtils = typeof ResourceRuntimeUtils.requireDrawerViewUtils === "function"
+  ? ResourceRuntimeUtils.requireDrawerViewUtils(globalThis.DrawerViewUtils)
+  : (() => {
+    throw new Error("drawer-view.js failed to load before app.js");
+  })();
 const DashboardUtils = globalThis.DashboardUtils || {};
 const DashboardViewUtils = globalThis.DashboardViewUtils || {};
 const ChartsUtils = globalThis.ChartsUtils || {};
@@ -591,13 +596,6 @@ drawerRoot?.addEventListener("click", (event) => {
   if (event.target === drawerRoot) {
     closeDrawerShell();
   }
-});
-
-drawerTabRoot?.querySelectorAll("[data-drawer-tab]").forEach((button) => {
-  button.addEventListener("click", () => {
-    state.ui.drawer.tab = button.dataset.drawerTab || "overview";
-    renderDrawerShell();
-  });
 });
 
 saveTokenBtn.addEventListener("click", () => {
@@ -1378,16 +1376,58 @@ function renderDrawerShell() {
   if (!drawerRoot) {
     return;
   }
-  const isOpen = Boolean(state.ui.drawer.open);
-  drawerRoot.classList.toggle("hidden", !isOpen);
-  drawerRoot.setAttribute("aria-hidden", String(!isOpen));
+  const tabs = typeof DrawerUtils.drawerTabsForResource === "function"
+    ? DrawerUtils.drawerTabsForResource(state.ui.drawer.kind)
+    : [];
+  const footerActions = typeof DrawerUtils.drawerFooterActions === "function"
+    ? DrawerUtils.drawerFooterActions()
+    : [
+      { key: "edit", label: "Edit", tone: "ghost", disabled: false },
+      { key: "delete", label: "Delete", tone: "danger", disabled: false },
+      { key: "save", label: "Save", tone: "primary", disabled: true },
+    ];
+  const activitySections = state.ui.drawer.tab === "activity" && typeof DrawerUtils.buildDrawerActivitySections === "function"
+    ? DrawerUtils.buildDrawerActivitySections(state.ui.drawer.data?.activity || {})
+    : [];
+  const resolveDrawerTitle = typeof DrawerUtils.drawerDisplayTitle === "function"
+    ? DrawerUtils.drawerDisplayTitle
+    : undefined;
+  const shell = DrawerViewUtils.renderDrawerShell({
+    drawer: state.ui.drawer,
+    tabs,
+    footerActions,
+    activitySections,
+    escapeHTML,
+    formatDateTime,
+    resolveTitle: resolveDrawerTitle,
+  });
+
+  drawerRoot.classList.toggle("hidden", !shell.isOpen);
+  drawerRoot.setAttribute("aria-hidden", shell.ariaHidden);
   if (drawerTitle) {
-    const detailTitle = state.ui.drawer.title || drawerDisplayTitle(state.ui.drawer.kind);
-    drawerTitle.textContent = detailTitle ? `${detailTitle} Detail` : "Detail Drawer";
+    drawerTitle.textContent = shell.title;
   }
-  renderDrawerTabs();
-  renderDrawerBody();
-  renderDrawerFooter();
+  if (drawerTabRoot) {
+    drawerTabRoot.innerHTML = shell.tabs;
+    drawerTabRoot.querySelectorAll("[data-drawer-tab]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.ui.drawer.tab = button.dataset.drawerTab || "overview";
+        renderDrawerShell();
+      });
+    });
+  }
+  if (drawerBodyRoot) {
+    drawerBodyRoot.innerHTML = shell.body;
+  }
+  if (drawerFooterRoot) {
+    drawerFooterRoot.innerHTML = shell.footer;
+    drawerFooterRoot.querySelector('[data-drawer-footer="edit"]')?.addEventListener("click", () => {
+      openDrawerEditor();
+    });
+    drawerFooterRoot.querySelector('[data-drawer-footer="delete"]')?.addEventListener("click", () => {
+      deleteDrawerResource().catch(reportError);
+    });
+  }
 }
 
 function closeDrawerShell() {
@@ -1944,201 +1984,6 @@ async function openResourceDrawer(target) {
   }
 }
 
-function renderDrawerTabs() {
-  if (!drawerTabRoot) {
-    return;
-  }
-  const tabs = typeof DrawerUtils.drawerTabsForResource === "function"
-    ? DrawerUtils.drawerTabsForResource(state.ui.drawer.kind)
-    : [];
-  drawerTabRoot.innerHTML = tabs.map((tab) => `
-    <button class="ghost-button ${tab.key === state.ui.drawer.tab ? "active" : ""}" type="button" data-drawer-tab="${escapeHTML(tab.key)}">
-      ${escapeHTML(tab.label)}
-    </button>
-  `).join("");
-  drawerTabRoot.querySelectorAll("[data-drawer-tab]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.ui.drawer.tab = button.dataset.drawerTab || "overview";
-      renderDrawerShell();
-    });
-  });
-}
-
-function renderDrawerBody() {
-  if (!drawerBodyRoot) {
-    return;
-  }
-  if (state.ui.drawer.loading) {
-    drawerBodyRoot.innerHTML = `
-      <div class="drawer-state">
-        <strong>Loading detail</strong>
-        <p class="muted-text">Fetching ${escapeHTML(drawerDisplayTitle(state.ui.drawer.kind))} detail.</p>
-      </div>
-    `;
-    return;
-  }
-  if (state.ui.drawer.error) {
-    drawerBodyRoot.innerHTML = `
-      <div class="drawer-state drawer-state-error">
-        <strong>Drawer unavailable</strong>
-        <p class="muted-text">${escapeHTML(state.ui.drawer.error)}</p>
-      </div>
-    `;
-    return;
-  }
-  const data = state.ui.drawer.data || {};
-  const activeTab = state.ui.drawer.tab || "overview";
-  drawerBodyRoot.innerHTML = renderDrawerTabPanel(activeTab, data[activeTab]);
-}
-
-function renderDrawerTabPanel(tab, value) {
-  if (tab === "raw") {
-    const raw = value == null ? {} : value;
-    return `
-      <div class="drawer-code-block">
-        <pre>${escapeHTML(JSON.stringify(raw, null, 2))}</pre>
-      </div>
-    `;
-  }
-
-  if (tab === "request" || tab === "response") {
-    const objectValue = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-    const entries = Object.entries(objectValue);
-    if (!entries.length) {
-      return `<div class="drawer-state"><strong>No ${escapeHTML(tab)}</strong><p class="muted-text">This tab has no data yet.</p></div>`;
-    }
-    return `
-      <div class="drawer-kv-grid">
-        ${entries.map(([key, entryValue]) => `
-          <article class="drawer-kv-card">
-            <small>${escapeHTML(humanizeKey(key))}</small>
-            <strong>${escapeHTML(formatDrawerValue(entryValue))}</strong>
-          </article>
-        `).join("")}
-      </div>
-    `;
-  }
-
-  if (tab === "activity") {
-    const activity = value && typeof value === "object" ? value : {};
-    const sections = typeof DrawerUtils.buildDrawerActivitySections === "function"
-      ? DrawerUtils.buildDrawerActivitySections(activity).map((section) => renderDrawerActivitySection(section))
-      : [];
-    if (!sections.length) {
-      return `<div class="drawer-state"><strong>No activity</strong><p class="muted-text">No related activity for this resource yet.</p></div>`;
-    }
-    return `<div class="drawer-section-stack">${sections.join("")}</div>`;
-  }
-
-  const objectValue = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  const entries = Object.entries(objectValue);
-  if (!entries.length) {
-    return `<div class="drawer-state"><strong>No ${escapeHTML(tab)}</strong><p class="muted-text">This tab has no data yet.</p></div>`;
-  }
-
-  return `
-    <div class="drawer-kv-grid">
-      ${entries.map(([key, entryValue]) => `
-        <article class="drawer-kv-card">
-          <small>${escapeHTML(humanizeKey(key))}</small>
-          <strong>${escapeHTML(formatDrawerValue(entryValue))}</strong>
-        </article>
-      `).join("")}
-    </div>
-  `;
-}
-
-function renderDrawerActivitySection(section) {
-  if (!section || !Array.isArray(section.items) || !section.items.length) {
-    return "";
-  }
-  return `
-    <section class="drawer-activity-section">
-      <header>
-        <strong>${escapeHTML(section.title || "Activity")}</strong>
-        <span>${escapeHTML(String(section.count || section.items.length || 0))}</span>
-      </header>
-      <div class="drawer-activity-grid">
-        ${section.items.slice(0, 8).map((item) => renderDrawerActivityCard(item)).join("")}
-      </div>
-    </section>
-  `;
-}
-
-function renderDrawerActivityCard(item) {
-  const chips = ensureArray(item?.chips).filter(Boolean);
-  const meta = ensureArray(item?.meta).filter((entry) => entry && entry.label && entry.value);
-  return `
-    <article class="drawer-activity-card tone-${escapeHTML(item?.tone || "neutral")}">
-      <div class="drawer-activity-card-top">
-        <strong>${escapeHTML(item?.title || "-")}</strong>
-        ${chips.length ? `
-          <div class="drawer-activity-chip-row">
-            ${chips.map((chip) => `<span class="drawer-activity-chip">${escapeHTML(chip)}</span>`).join("")}
-          </div>
-        ` : ""}
-      </div>
-      <p>${escapeHTML(item?.summary || "-")}</p>
-      ${meta.length ? `
-        <dl class="drawer-activity-meta">
-          ${meta.map((entry) => `
-            <div>
-              <dt>${escapeHTML(entry.label)}</dt>
-              <dd>${escapeHTML(formatDrawerActivityMetaValue(entry))}</dd>
-            </div>
-          `).join("")}
-        </dl>
-      ` : ""}
-    </article>
-  `;
-}
-
-function formatDrawerActivityMetaValue(entry) {
-  if (!entry || typeof entry !== "object") {
-    return "-";
-  }
-  if (entry.format === "datetime") {
-    return formatDateTime(entry.value);
-  }
-  return String(entry.value || "-");
-}
-
-function renderDrawerFooter() {
-  if (!drawerFooterRoot) {
-    return;
-  }
-  if (!state.ui.drawer.open) {
-    drawerFooterRoot.innerHTML = "";
-    return;
-  }
-  const actions = typeof DrawerUtils.drawerFooterActions === "function"
-    ? DrawerUtils.drawerFooterActions()
-    : [
-      { key: "edit", label: "Edit", tone: "ghost", disabled: false },
-      { key: "delete", label: "Delete", tone: "danger", disabled: false },
-      { key: "save", label: "Save", tone: "primary", disabled: true },
-    ];
-  const visibleActions = state.ui.drawer.kind === "usage_logs"
-    ? [{ key: "save", label: "Save", tone: "primary", disabled: true }]
-    : actions;
-  drawerFooterRoot.innerHTML = visibleActions.map((action) => `
-    <button
-      class="${action.tone === "ghost" ? "ghost-button" : action.tone === "danger" ? "danger-button" : ""}"
-      type="button"
-      data-drawer-footer="${escapeHTML(action.key)}"
-      ${action.disabled ? "disabled aria-disabled=\"true\" title=\"Read-only detail drawer\"" : ""}
-    >
-      ${escapeHTML(action.label)}
-    </button>
-  `).join("");
-  drawerFooterRoot.querySelector('[data-drawer-footer="edit"]')?.addEventListener("click", () => {
-    openDrawerEditor();
-  });
-  drawerFooterRoot.querySelector('[data-drawer-footer="delete"]')?.addEventListener("click", () => {
-    deleteDrawerResource().catch(reportError);
-  });
-}
-
 function openDrawerEditor() {
   const drawer = state.ui.drawer;
   if (drawer.kind === "backends") {
@@ -2166,41 +2011,15 @@ async function deleteDrawerResource() {
   if (!state.ui.drawer.deletePath) {
     return;
   }
-  if (!confirm(`确认删除 ${drawerDisplayTitle(state.ui.drawer.kind)}？`)) {
+  const resourceTitle = typeof DrawerUtils.drawerDisplayTitle === "function"
+    ? DrawerUtils.drawerDisplayTitle(state.ui.drawer.kind)
+    : DrawerViewUtils.drawerDisplayTitle(state.ui.drawer.kind);
+  if (!confirm(`确认删除 ${resourceTitle}？`)) {
     return;
   }
   await api(state.ui.drawer.deletePath, "DELETE");
   closeDrawerShell();
   await refreshAll();
-}
-
-function drawerDisplayTitle(kind) {
-  const titles = {
-    backends: "Backend",
-    clients: "Client Key",
-    policies: "Policy",
-    proxies: "Proxy",
-  };
-  return titles[kind] || "Resource";
-}
-
-function formatDrawerValue(value) {
-  if (Array.isArray(value)) {
-    return value.join(", ") || "-";
-  }
-  if (value && typeof value === "object") {
-    return JSON.stringify(value);
-  }
-  if (value === null || typeof value === "undefined" || value === "") {
-    return "-";
-  }
-  return String(value);
-}
-
-function humanizeKey(value) {
-  return String(value || "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function trapFocusWithin(container, event) {
@@ -2541,7 +2360,12 @@ function renderPolicyRow(policy) {
 function bindResourceRowOpen(container, kind) {
   container.querySelectorAll("[data-row-open]").forEach((row) => {
     row.setAttribute("tabindex", "0");
-    row.setAttribute("aria-label", `Open ${row.dataset.rowTitle || drawerDisplayTitle(kind)} detail`);
+    const resourceTitle = row.dataset.rowTitle || (
+      typeof DrawerUtils.drawerDisplayTitle === "function"
+        ? DrawerUtils.drawerDisplayTitle(kind)
+        : DrawerViewUtils.drawerDisplayTitle(kind)
+    );
+    row.setAttribute("aria-label", `Open ${resourceTitle} detail`);
     row.setAttribute("aria-haspopup", "dialog");
     row.setAttribute("aria-controls", "drawerRoot");
     row.addEventListener("click", (event) => {

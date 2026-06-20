@@ -108,6 +108,11 @@
     };
   }
 
+  function drawerDisplayTitle(resourceKey) {
+    const normalized = normalizeResourceKind(resourceKey);
+    return RESOURCE_DEFINITIONS[normalized]?.title || "Resource";
+  }
+
   function drawerTabsForResource(resourceKey) {
     const normalized = normalizeResourceKind(resourceKey);
     if (normalized === "usage_logs") {
@@ -280,6 +285,7 @@
 
   const api = {
     buildDrawerActivitySections,
+    drawerDisplayTitle,
     buildDrawerTarget,
     drawerFooterActions,
     drawerTabsForResource,

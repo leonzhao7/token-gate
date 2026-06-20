@@ -37,6 +37,10 @@
     "renderSearchShellView",
     "renderThemeView",
   ];
+  const REQUIRED_DRAWER_VIEW_METHODS = [
+    "drawerDisplayTitle",
+    "renderDrawerShell",
+  ];
 
   function requireResourceViewUtils(resourceViewUtils) {
     const candidate = resourceViewUtils && typeof resourceViewUtils === "object"
@@ -108,7 +112,22 @@
     );
   }
 
+  function requireDrawerViewUtils(drawerViewUtils) {
+    const candidate = drawerViewUtils && typeof drawerViewUtils === "object"
+      ? drawerViewUtils
+      : null;
+    const missing = REQUIRED_DRAWER_VIEW_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `drawer-view.js failed to load before app.js; missing DrawerViewUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   const api = {
+    requireDrawerViewUtils,
     requireResourceCrudUtils,
     requireResourceStateUtils,
     requireResourceViewUtils,

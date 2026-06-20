@@ -12,9 +12,11 @@ const { requireResourceStateUtils } = require("./resource-runtime.js");
 const { requireResourceCrudUtils } = require("./resource-runtime.js");
 const { requireShellStateUtils } = require("./resource-runtime.js");
 const { requireShellViewUtils } = require("./resource-runtime.js");
+const { requireDrawerViewUtils } = require("./resource-runtime.js");
 const ResourceCrudUtils = require("./resource-crud.js");
 const ShellStateUtils = require("./shell-state.js");
 const ShellViewUtils = require("./shell-view.js");
+const DrawerViewUtils = require("./drawer-view.js");
 
 test("requireResourceViewUtils returns the resource view api when all required functions exist", () => {
   const resourceView = requireResourceViewUtils(ResourceViewUtils);
@@ -104,12 +106,14 @@ test("app.js fails clearly during startup when resource view utils are missing",
       requireResourceCrudUtils,
       requireShellStateUtils,
       requireShellViewUtils,
+      requireDrawerViewUtils,
     },
     ResourceViewUtils: null,
     ResourceStateUtils,
     ResourceCrudUtils,
     ShellStateUtils,
     ShellViewUtils,
+    DrawerViewUtils,
   });
 
   assert.throws(
@@ -126,12 +130,14 @@ test("app.js fails clearly during startup when resource state utils are missing"
       requireResourceCrudUtils,
       requireShellStateUtils,
       requireShellViewUtils,
+      requireDrawerViewUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils: null,
     ResourceCrudUtils,
     ShellStateUtils,
     ShellViewUtils,
+    DrawerViewUtils,
   });
 
   assert.throws(
@@ -148,12 +154,14 @@ test("app.js fails clearly during startup when resource crud utils are missing",
       requireResourceCrudUtils,
       requireShellStateUtils,
       requireShellViewUtils,
+      requireDrawerViewUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
     ResourceCrudUtils: null,
     ShellStateUtils,
     ShellViewUtils,
+    DrawerViewUtils,
   });
 
   assert.throws(
@@ -170,12 +178,14 @@ test("app.js fails clearly during startup when shell state utils are missing", (
       requireResourceCrudUtils,
       requireShellStateUtils,
       requireShellViewUtils,
+      requireDrawerViewUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
     ResourceCrudUtils,
     ShellStateUtils: null,
     ShellViewUtils,
+    DrawerViewUtils,
   });
 
   assert.throws(
@@ -192,17 +202,64 @@ test("app.js fails clearly during startup when shell view utils are missing", ()
       requireResourceCrudUtils,
       requireShellStateUtils,
       requireShellViewUtils,
+      requireDrawerViewUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
     ResourceCrudUtils,
     ShellStateUtils,
     ShellViewUtils: null,
+    DrawerViewUtils,
   });
 
   assert.throws(
     () => loadAppWithoutBootstrap(context),
     /shell-view\.js.*load.*before app\.js/i,
+  );
+});
+
+test("requireDrawerViewUtils throws a clear error when drawer-view utils are unavailable", () => {
+  assert.throws(
+    () => requireDrawerViewUtils(null),
+    /drawer-view\.js.*load.*before app\.js/i,
+  );
+});
+
+test("requireDrawerViewUtils accepts a narrow drawer view api contract", () => {
+  const drawerView = requireDrawerViewUtils({
+    drawerDisplayTitle(kind) {
+      return kind || "Resource";
+    },
+    renderDrawerShell() {
+      return { isOpen: false, ariaHidden: "true", title: "Detail Drawer", tabs: "", body: "", footer: "" };
+    },
+  });
+
+  assert.equal(typeof drawerView.drawerDisplayTitle, "function");
+  assert.equal(typeof drawerView.renderDrawerShell, "function");
+});
+
+test("app.js fails clearly during startup when drawer view utils are missing", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+      requireDrawerViewUtils,
+    },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
+    DrawerViewUtils: null,
+  });
+
+  assert.throws(
+    () => loadAppWithoutBootstrap(context),
+    /drawer-view\.js.*load.*before app\.js/i,
   );
 });
 
@@ -214,12 +271,14 @@ test("app.js integrates the validated resource view module for proxy list render
       requireResourceCrudUtils,
       requireShellStateUtils,
       requireShellViewUtils,
+      requireDrawerViewUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
     ResourceCrudUtils,
     ShellStateUtils,
     ShellViewUtils,
+    DrawerViewUtils,
   });
 
   loadAppWithoutBootstrap(context);
@@ -251,12 +310,14 @@ test("app.js keeps backend proxy option rendering outside shared crud utils", ()
       requireResourceCrudUtils,
       requireShellStateUtils,
       requireShellViewUtils,
+      requireDrawerViewUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
     ResourceCrudUtils,
     ShellStateUtils,
     ShellViewUtils,
+    DrawerViewUtils,
   });
 
   loadAppWithoutBootstrap(context);
@@ -290,12 +351,14 @@ test("app.js wires backend proxy options through backend form lifecycle helpers"
       requireResourceCrudUtils,
       requireShellStateUtils,
       requireShellViewUtils,
+      requireDrawerViewUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
     ResourceCrudUtils,
     ShellStateUtils,
     ShellViewUtils,
+    DrawerViewUtils,
   });
 
   loadAppWithoutBootstrap(context);
@@ -353,12 +416,14 @@ test("app.js initializes resource view defaults through ResourceStateUtils", () 
       requireResourceCrudUtils,
       requireShellStateUtils,
       requireShellViewUtils,
+      requireDrawerViewUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils: instrumentedResourceStateUtils,
     ResourceCrudUtils,
     ShellStateUtils,
     ShellViewUtils,
+    DrawerViewUtils,
   });
 
   loadAppWithoutBootstrap(context);
@@ -374,6 +439,7 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   const resourceRuntimeIndex = html.indexOf("./resource-runtime.js");
   const resourceStateIndex = html.indexOf("./resource-state.js");
   const resourceCrudIndex = html.indexOf("./resource-crud.js");
+  const drawerViewIndex = html.indexOf("./drawer-view.js");
   const appIndex = html.indexOf("./app.js");
 
   assert.ok(shellStateIndex >= 0);
@@ -384,7 +450,8 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   assert.ok(resourceRuntimeIndex > resourceViewIndex);
   assert.ok(resourceStateIndex > resourceRuntimeIndex);
   assert.ok(resourceCrudIndex > resourceStateIndex);
-  assert.ok(appIndex > resourceCrudIndex);
+  assert.ok(drawerViewIndex > resourceCrudIndex);
+  assert.ok(appIndex > drawerViewIndex);
 });
 
 function loadAppWithoutBootstrap(context) {
@@ -401,6 +468,7 @@ function createAppVmContext({
   ResourceCrudUtils: resourceCrudUtils,
   ShellStateUtils: shellStateUtils = ShellStateUtils,
   ShellViewUtils: shellViewUtils = ShellViewUtils,
+  DrawerViewUtils: drawerViewUtils = DrawerViewUtils,
 }) {
   const elements = new Map();
   const HTMLElement = class HTMLElement {};
@@ -551,6 +619,7 @@ function createAppVmContext({
     ResourceCrudUtils: resourceCrudUtils,
     ShellStateUtils: shellStateUtils,
     ShellViewUtils: shellViewUtils,
+    DrawerViewUtils: drawerViewUtils,
     ThemeUtils: {},
     SearchUtils: {},
     DashboardUtils: {},
