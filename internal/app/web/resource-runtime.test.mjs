@@ -262,13 +262,16 @@ test("app.js initializes resource view defaults through ResourceStateUtils", () 
 
 test("index.html loads resource runtime dependencies before app.js", () => {
   const html = fs.readFileSync(new URL("./index.html", import.meta.url), "utf8");
+  const shellViewIndex = html.indexOf("./shell-view.js");
   const resourceViewIndex = html.indexOf("./resource-view.js");
   const resourceRuntimeIndex = html.indexOf("./resource-runtime.js");
   const resourceStateIndex = html.indexOf("./resource-state.js");
   const resourceCrudIndex = html.indexOf("./resource-crud.js");
   const appIndex = html.indexOf("./app.js");
 
+  assert.ok(shellViewIndex >= 0);
   assert.ok(resourceViewIndex >= 0);
+  assert.ok(resourceViewIndex > shellViewIndex);
   assert.ok(resourceRuntimeIndex > resourceViewIndex);
   assert.ok(resourceStateIndex > resourceRuntimeIndex);
   assert.ok(resourceCrudIndex > resourceStateIndex);

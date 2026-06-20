@@ -161,6 +161,7 @@ const RESOURCE_VIEW_CONFIG = {
 };
 const ThemeUtils = globalThis.ThemeUtils || {};
 const SearchUtils = globalThis.SearchUtils || {};
+const ShellViewUtils = globalThis.ShellViewUtils || {};
 const DashboardUtils = globalThis.DashboardUtils || {};
 const DashboardViewUtils = globalThis.DashboardViewUtils || {};
 const ChartsUtils = globalThis.ChartsUtils || {};
@@ -1176,11 +1177,24 @@ function startDashboardLoading() {
 }
 
 function pageIDFromHash() {
+  if (typeof ShellViewUtils.pageIDFromHash === "function") {
+    return ShellViewUtils.pageIDFromHash(window.location.hash, pages);
+  }
   const id = window.location.hash.slice(1);
   return pages.some((page) => page.id === id) ? id : "overview";
 }
 
 function activatePage(id) {
+  if (typeof ShellViewUtils.activatePageView === "function") {
+    ShellViewUtils.activatePageView({
+      pages,
+      pageLinks,
+      id,
+      pageTitle,
+      pageBreadcrumb,
+    });
+    return;
+  }
   const nextID = pages.some((page) => page.id === id) ? id : "overview";
   for (const page of pages) {
     page.classList.toggle("active", page.id === nextID);
@@ -1243,31 +1257,28 @@ function applyResolvedTheme() {
 }
 
 function renderTheme() {
-  rootElement.dataset.theme = state.ui.theme;
-  rootElement.dataset.themePreference = state.ui.themePreference;
-  appShell?.setAttribute("data-theme", state.ui.theme);
-  if (themeToggleBtn) {
-    const buttonState = typeof ThemeUtils.getThemeToggleState === "function"
-      ? ThemeUtils.getThemeToggleState({
-        preference: state.ui.themePreference,
-        theme: state.ui.theme,
-      })
-      : {
-        label: state.ui.theme,
-        hint: "Switch theme mode",
-        pressed: state.ui.theme === "dark",
-      };
-    if (themeToggleLabel) {
-      themeToggleLabel.textContent = buttonState.label;
-    } else {
-      themeToggleBtn.textContent = buttonState.label;
-    }
-    themeToggleBtn.title = buttonState.hint;
-    if (buttonState.pressed === "mixed") {
-      themeToggleBtn.setAttribute("aria-pressed", "mixed");
-    } else {
-      themeToggleBtn.setAttribute("aria-pressed", String(Boolean(buttonState.pressed)));
-    }
+  if (typeof ShellViewUtils.renderThemeView === "function") {
+    ShellViewUtils.renderThemeView({
+      rootElement,
+      appShell,
+      themeToggleBtn,
+      themeToggleLabel,
+      theme: state.ui.theme,
+      preference: state.ui.themePreference,
+      getThemeToggleState(input) {
+        return typeof ThemeUtils.getThemeToggleState === "function"
+          ? ThemeUtils.getThemeToggleState(input)
+          : {
+            label: input.theme,
+            hint: "Switch theme mode",
+            pressed: input.theme === "dark",
+          };
+      },
+    });
+  } else {
+    rootElement.dataset.theme = state.ui.theme;
+    rootElement.dataset.themePreference = state.ui.themePreference;
+    appShell?.setAttribute("data-theme", state.ui.theme);
   }
   renderSettings();
 }
@@ -1408,6 +1419,18 @@ function closeDrawerShell() {
 
 function renderSearchShell() {
   if (!searchModalRoot) {
+    return;
+  }
+  if (typeof ShellViewUtils.renderSearchShellView === "function") {
+    ShellViewUtils.renderSearchShellView({
+      searchModalRoot,
+      searchOpenBtn,
+      searchInput,
+      searchResultsRoot,
+      isOpen: Boolean(state.ui.search.open),
+      query: state.ui.search.query,
+      resultsMarkup: renderSearchResults(),
+    });
     return;
   }
   const isOpen = Boolean(state.ui.search.open);
@@ -1801,70 +1824,16 @@ async function executeSearch(request) {
 }
 
 function renderSearchResults() {
-  const query = state.ui.search.query.trim();
-  const results = state.ui.search.results || { total: 0, groups: [] };
-  const keyboardState = currentSearchKeyboardState();
-  const activeItem = keyboardState.activeItem;
-
-  if (!query) {
-    return `
-      <div class="search-empty-state">
-        <strong>Search everything</strong>
-        <p class="muted-text">按 <kbd>Ctrl</kbd> + <kbd>K</kbd> 或 <kbd>⌘</kbd> + <kbd>K</kbd> 快速打开，支持资源与观测数据统一搜索。</p>
-      </div>
-    `;
+  if (typeof ShellViewUtils.renderSearchResults === "function") {
+    return ShellViewUtils.renderSearchResults({
+      query: state.ui.search.query,
+      loading: state.ui.search.loading,
+      results: state.ui.search.results || { total: 0, groups: [] },
+      keyboardState: currentSearchKeyboardState(),
+      escapeHTML,
+    });
   }
-
-  if (state.ui.search.loading) {
-    return `
-      <div class="search-empty-state">
-        <strong>Searching “${escapeHTML(query)}”</strong>
-        <p class="muted-text">正在查询 backends、keys、policies、proxies、usage logs 与 events。</p>
-      </div>
-    `;
-  }
-
-  if (!results.total) {
-    return `
-      <div class="search-empty-state">
-        <strong>No results</strong>
-        <p class="muted-text">没有找到与 “${escapeHTML(query)}” 相关的结果。</p>
-      </div>
-    `;
-  }
-
-  return results.groups.map((group) => `
-    <section class="search-result-group">
-      <header class="search-result-group-head">
-        <span>${escapeHTML(group.label)}</span>
-        <small>${group.items.length}</small>
-      </header>
-      <div class="search-result-list">
-        ${group.items.map((item, itemIndex) => `
-          <button
-            class="search-result-item ${activeItem && activeItem.groupKey === group.key && activeItem.itemIndex === itemIndex ? "active" : ""}"
-            type="button"
-            data-search-result="true"
-            data-search-group="${escapeHTML(group.key)}"
-            data-search-kind="${escapeHTML(item.kind)}"
-            data-search-page="${escapeHTML(item.targetPage)}"
-            data-search-id="${escapeHTML(item.targetId)}"
-            data-search-title="${escapeHTML(item.title)}"
-            data-search-index="${escapeHTML(String(itemIndex))}"
-          >
-            <span class="search-result-copy">
-              <strong>${escapeHTML(item.title)}</strong>
-              ${item.subtitle ? `<span>${escapeHTML(item.subtitle)}</span>` : ""}
-            </span>
-            <span class="search-result-meta">
-              ${item.status ? `<em class="search-status-pill">${escapeHTML(item.status)}</em>` : ""}
-              ${item.meta ? `<small>${escapeHTML(item.meta)}</small>` : ""}
-            </span>
-          </button>
-        `).join("")}
-      </div>
-    </section>
-  `).join("");
+  return "";
 }
 
 async function fetchAllCollectionPages(basePath) {
