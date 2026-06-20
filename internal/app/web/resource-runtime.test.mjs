@@ -10,7 +10,11 @@ const ResourceStateUtils = require("./resource-state.js");
 const { requireResourceViewUtils } = require("./resource-runtime.js");
 const { requireResourceStateUtils } = require("./resource-runtime.js");
 const { requireResourceCrudUtils } = require("./resource-runtime.js");
+const { requireShellStateUtils } = require("./resource-runtime.js");
+const { requireShellViewUtils } = require("./resource-runtime.js");
 const ResourceCrudUtils = require("./resource-crud.js");
+const ShellStateUtils = require("./shell-state.js");
+const ShellViewUtils = require("./shell-view.js");
 
 test("requireResourceViewUtils returns the resource view api when all required functions exist", () => {
   const resourceView = requireResourceViewUtils(ResourceViewUtils);
@@ -94,9 +98,18 @@ test("requireResourceCrudUtils reports exact missing helper names for partial cr
 
 test("app.js fails clearly during startup when resource view utils are missing", () => {
   const context = createAppVmContext({
-    ResourceRuntimeUtils: { requireResourceViewUtils },
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+    },
     ResourceViewUtils: null,
     ResourceStateUtils,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
   });
 
   assert.throws(
@@ -107,9 +120,18 @@ test("app.js fails clearly during startup when resource view utils are missing",
 
 test("app.js fails clearly during startup when resource state utils are missing", () => {
   const context = createAppVmContext({
-    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils },
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+    },
     ResourceViewUtils,
     ResourceStateUtils: null,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
   });
 
   assert.throws(
@@ -120,10 +142,18 @@ test("app.js fails clearly during startup when resource state utils are missing"
 
 test("app.js fails clearly during startup when resource crud utils are missing", () => {
   const context = createAppVmContext({
-    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils, requireResourceCrudUtils },
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+    },
     ResourceViewUtils,
     ResourceStateUtils,
     ResourceCrudUtils: null,
+    ShellStateUtils,
+    ShellViewUtils,
   });
 
   assert.throws(
@@ -132,12 +162,64 @@ test("app.js fails clearly during startup when resource crud utils are missing",
   );
 });
 
-test("app.js integrates the validated resource view module for proxy list rendering", () => {
+test("app.js fails clearly during startup when shell state utils are missing", () => {
   const context = createAppVmContext({
-    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils, requireResourceCrudUtils },
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+    },
     ResourceViewUtils,
     ResourceStateUtils,
     ResourceCrudUtils,
+    ShellStateUtils: null,
+    ShellViewUtils,
+  });
+
+  assert.throws(
+    () => loadAppWithoutBootstrap(context),
+    /shell-state\.js.*load.*before app\.js/i,
+  );
+});
+
+test("app.js fails clearly during startup when shell view utils are missing", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+    },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils: null,
+  });
+
+  assert.throws(
+    () => loadAppWithoutBootstrap(context),
+    /shell-view\.js.*load.*before app\.js/i,
+  );
+});
+
+test("app.js integrates the validated resource view module for proxy list rendering", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+    },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
   });
 
   loadAppWithoutBootstrap(context);
@@ -163,10 +245,18 @@ test("app.js integrates the validated resource view module for proxy list render
 
 test("app.js keeps backend proxy option rendering outside shared crud utils", () => {
   const context = createAppVmContext({
-    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils, requireResourceCrudUtils },
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+    },
     ResourceViewUtils,
     ResourceStateUtils,
     ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
   });
 
   loadAppWithoutBootstrap(context);
@@ -194,10 +284,18 @@ test("app.js keeps backend proxy option rendering outside shared crud utils", ()
 
 test("app.js wires backend proxy options through backend form lifecycle helpers", () => {
   const context = createAppVmContext({
-    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils, requireResourceCrudUtils },
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+    },
     ResourceViewUtils,
     ResourceStateUtils,
     ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
   });
 
   loadAppWithoutBootstrap(context);
@@ -249,10 +347,18 @@ test("app.js initializes resource view defaults through ResourceStateUtils", () 
     },
   };
   const context = createAppVmContext({
-    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils, requireResourceCrudUtils },
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+    },
     ResourceViewUtils,
     ResourceStateUtils: instrumentedResourceStateUtils,
     ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
   });
 
   loadAppWithoutBootstrap(context);
@@ -263,13 +369,16 @@ test("app.js initializes resource view defaults through ResourceStateUtils", () 
 test("index.html loads resource runtime dependencies before app.js", () => {
   const html = fs.readFileSync(new URL("./index.html", import.meta.url), "utf8");
   const shellViewIndex = html.indexOf("./shell-view.js");
+  const shellStateIndex = html.indexOf("./shell-state.js");
   const resourceViewIndex = html.indexOf("./resource-view.js");
   const resourceRuntimeIndex = html.indexOf("./resource-runtime.js");
   const resourceStateIndex = html.indexOf("./resource-state.js");
   const resourceCrudIndex = html.indexOf("./resource-crud.js");
   const appIndex = html.indexOf("./app.js");
 
+  assert.ok(shellStateIndex >= 0);
   assert.ok(shellViewIndex >= 0);
+  assert.ok(shellViewIndex > shellStateIndex);
   assert.ok(resourceViewIndex >= 0);
   assert.ok(resourceViewIndex > shellViewIndex);
   assert.ok(resourceRuntimeIndex > resourceViewIndex);
@@ -290,6 +399,8 @@ function createAppVmContext({
   ResourceViewUtils: resourceViewUtils,
   ResourceStateUtils: resourceStateUtils,
   ResourceCrudUtils: resourceCrudUtils,
+  ShellStateUtils: shellStateUtils = ShellStateUtils,
+  ShellViewUtils: shellViewUtils = ShellViewUtils,
 }) {
   const elements = new Map();
   const HTMLElement = class HTMLElement {};
@@ -438,6 +549,8 @@ function createAppVmContext({
     ResourceViewUtils: resourceViewUtils,
     ResourceStateUtils: resourceStateUtils,
     ResourceCrudUtils: resourceCrudUtils,
+    ShellStateUtils: shellStateUtils,
+    ShellViewUtils: shellViewUtils,
     ThemeUtils: {},
     SearchUtils: {},
     DashboardUtils: {},

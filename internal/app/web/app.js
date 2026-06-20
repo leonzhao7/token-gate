@@ -161,15 +161,23 @@ const RESOURCE_VIEW_CONFIG = {
 };
 const ThemeUtils = globalThis.ThemeUtils || {};
 const SearchUtils = globalThis.SearchUtils || {};
-const ShellStateUtils = globalThis.ShellStateUtils || {};
-const ShellViewUtils = globalThis.ShellViewUtils || {};
+const ResourceRuntimeUtils = globalThis.ResourceRuntimeUtils || {};
+const ShellStateUtils = typeof ResourceRuntimeUtils.requireShellStateUtils === "function"
+  ? ResourceRuntimeUtils.requireShellStateUtils(globalThis.ShellStateUtils)
+  : (() => {
+    throw new Error("shell-state.js failed to load before app.js");
+  })();
+const ShellViewUtils = typeof ResourceRuntimeUtils.requireShellViewUtils === "function"
+  ? ResourceRuntimeUtils.requireShellViewUtils(globalThis.ShellViewUtils)
+  : (() => {
+    throw new Error("shell-view.js failed to load before app.js");
+  })();
 const DashboardUtils = globalThis.DashboardUtils || {};
 const DashboardViewUtils = globalThis.DashboardViewUtils || {};
 const ChartsUtils = globalThis.ChartsUtils || {};
 const DrawerUtils = globalThis.DrawerUtils || {};
 const ObservabilityUtils = globalThis.ObservabilityUtils || {};
 const ObservabilityViewUtils = globalThis.ObservabilityViewUtils || {};
-const ResourceRuntimeUtils = globalThis.ResourceRuntimeUtils || {};
 const ResourceViewUtils = typeof ResourceRuntimeUtils.requireResourceViewUtils === "function"
   ? ResourceRuntimeUtils.requireResourceViewUtils(globalThis.ResourceViewUtils)
   : (() => {
@@ -1178,51 +1186,25 @@ function startDashboardLoading() {
 }
 
 function pageIDFromHash() {
-  if (typeof ShellViewUtils.pageIDFromHash === "function") {
-    return ShellViewUtils.pageIDFromHash(window.location.hash, pages);
-  }
-  const id = window.location.hash.slice(1);
-  return pages.some((page) => page.id === id) ? id : "overview";
+  return ShellViewUtils.pageIDFromHash(window.location.hash, pages);
 }
 
 function activatePage(id) {
-  if (typeof ShellViewUtils.activatePageView === "function") {
-    ShellViewUtils.activatePageView({
-      pages,
-      pageLinks,
-      id,
-      pageTitle,
-      pageBreadcrumb,
-    });
-    return;
-  }
-  const nextID = pages.some((page) => page.id === id) ? id : "overview";
-  for (const page of pages) {
-    page.classList.toggle("active", page.id === nextID);
-  }
-  for (const link of pageLinks) {
-    link.classList.toggle("active", link.dataset.pageLink === nextID);
-  }
-
-  const activePage = pages.find((page) => page.id === nextID);
-  if (activePage) {
-    pageTitle.textContent = activePage.dataset.pageTitle || "透明代理控制台";
-    pageBreadcrumb.textContent = activePage.dataset.pageBreadcrumb || "Dashboard";
-  }
+  ShellViewUtils.activatePageView({
+    pages,
+    pageLinks,
+    id,
+    pageTitle,
+    pageBreadcrumb,
+  });
 }
 
 function navigateToPage(id) {
-  const navigation = typeof ShellStateUtils.buildPageNavigation === "function"
-    ? ShellStateUtils.buildPageNavigation({
-      currentHash: window.location.hash,
-      requestedID: id,
-      pages,
-    })
-    : {
-      nextID: pages.some((page) => page.id === id) ? id : "overview",
-      nextHash: `#${pages.some((page) => page.id === id) ? id : "overview"}`,
-      shouldUpdateHash: window.location.hash !== `#${pages.some((page) => page.id === id) ? id : "overview"}`,
-    };
+  const navigation = ShellStateUtils.buildPageNavigation({
+    currentHash: window.location.hash,
+    requestedID: id,
+    pages,
+  });
   if (navigation.shouldUpdateHash) {
     window.location.hash = navigation.nextHash;
     return;
@@ -1231,15 +1213,13 @@ function navigateToPage(id) {
 }
 
 function initializeThemeState() {
-  const resolved = typeof ShellStateUtils.createThemeRuntimeState === "function"
-    ? ShellStateUtils.createThemeRuntimeState({
-      storedPreference: localStorage.getItem(THEME_PREFERENCE_KEY),
-      systemPrefersDark: Boolean(systemThemeQuery?.matches),
-      resolveThemeState({ storedPreference, systemPrefersDark }) {
-        return resolveThemeState(storedPreference, systemPrefersDark);
-      },
-    })
-    : resolveThemeState(localStorage.getItem(THEME_PREFERENCE_KEY), Boolean(systemThemeQuery?.matches));
+  const resolved = ShellStateUtils.createThemeRuntimeState({
+    storedPreference: localStorage.getItem(THEME_PREFERENCE_KEY),
+    systemPrefersDark: Boolean(systemThemeQuery?.matches),
+    resolveThemeState({ storedPreference, systemPrefersDark }) {
+      return resolveThemeState(storedPreference, systemPrefersDark);
+    },
+  });
   state.ui.themePreference = resolved.preference;
   state.ui.theme = resolved.theme;
   rootElement.dataset.themePreference = resolved.preference;
@@ -1261,9 +1241,7 @@ function resolveThemeState(storedPreference, systemPrefersDark = Boolean(systemT
 }
 
 function persistThemePreference(preference) {
-  const operation = typeof ShellStateUtils.createThemeStorageOperation === "function"
-    ? ShellStateUtils.createThemeStorageOperation(preference)
-    : { type: preference === "system" ? "remove" : "set", value: preference };
+  const operation = ShellStateUtils.createThemeStorageOperation(preference);
   if (operation.type === "remove") {
     localStorage.removeItem(THEME_PREFERENCE_KEY);
     return;
@@ -1278,29 +1256,23 @@ function applyResolvedTheme() {
 }
 
 function renderTheme() {
-  if (typeof ShellViewUtils.renderThemeView === "function") {
-    ShellViewUtils.renderThemeView({
-      rootElement,
-      appShell,
-      themeToggleBtn,
-      themeToggleLabel,
-      theme: state.ui.theme,
-      preference: state.ui.themePreference,
-      getThemeToggleState(input) {
-        return typeof ThemeUtils.getThemeToggleState === "function"
-          ? ThemeUtils.getThemeToggleState(input)
-          : {
-            label: input.theme,
-            hint: "Switch theme mode",
-            pressed: input.theme === "dark",
-          };
-      },
-    });
-  } else {
-    rootElement.dataset.theme = state.ui.theme;
-    rootElement.dataset.themePreference = state.ui.themePreference;
-    appShell?.setAttribute("data-theme", state.ui.theme);
-  }
+  ShellViewUtils.renderThemeView({
+    rootElement,
+    appShell,
+    themeToggleBtn,
+    themeToggleLabel,
+    theme: state.ui.theme,
+    preference: state.ui.themePreference,
+    getThemeToggleState(input) {
+      return typeof ThemeUtils.getThemeToggleState === "function"
+        ? ThemeUtils.getThemeToggleState(input)
+        : {
+          label: input.theme,
+          hint: "Switch theme mode",
+          pressed: input.theme === "dark",
+        };
+    },
+  });
   renderSettings();
 }
 
@@ -1321,24 +1293,8 @@ function renderSettings() {
 }
 
 function buildSettingsSnapshot() {
-  if (typeof ShellStateUtils.createSettingsSnapshot === "function") {
-    return ShellStateUtils.createSettingsSnapshot({
-      adminTokenValue: localStorage.getItem(ADMIN_TOKEN_KEY) || "",
-      themePreference: state.ui.themePreference,
-      resolvedTheme: state.ui.theme,
-      sidebarCollapsed: appShell?.classList.contains("sidebar-collapsed"),
-      lastRefreshLabel: state.ui.lastRefreshAt ? formatDateTime(state.ui.lastRefreshAt) : "",
-      backends: state.backends,
-      clients: state.clients,
-      policies: state.policies,
-      proxies: state.proxies,
-      usageLogStats: state.usageLogStats,
-      usageLogMeta: state.paginationMeta.usageLogs,
-      eventSummary: state.eventSummary,
-    });
-  }
-  return {
-    adminTokenPresent: Boolean((localStorage.getItem(ADMIN_TOKEN_KEY) || "").trim()),
+  return ShellStateUtils.createSettingsSnapshot({
+    adminTokenValue: localStorage.getItem(ADMIN_TOKEN_KEY) || "",
     themePreference: state.ui.themePreference,
     resolvedTheme: state.ui.theme,
     sidebarCollapsed: appShell?.classList.contains("sidebar-collapsed"),
@@ -1350,7 +1306,7 @@ function buildSettingsSnapshot() {
     usageLogStats: state.usageLogStats,
     usageLogMeta: state.paginationMeta.usageLogs,
     eventSummary: state.eventSummary,
-  };
+  });
 }
 
 async function handleSettingsAction(action) {
@@ -1458,31 +1414,15 @@ function renderSearchShell() {
   if (!searchModalRoot) {
     return;
   }
-  if (typeof ShellViewUtils.renderSearchShellView === "function") {
-    ShellViewUtils.renderSearchShellView({
-      searchModalRoot,
-      searchOpenBtn,
-      searchInput,
-      searchResultsRoot,
-      isOpen: Boolean(state.ui.search.open),
-      query: state.ui.search.query,
-      resultsMarkup: renderSearchResults(),
-    });
-    return;
-  }
-  const isOpen = Boolean(state.ui.search.open);
-  searchModalRoot.classList.toggle("hidden", !isOpen);
-  searchModalRoot.setAttribute("aria-hidden", String(!isOpen));
-  searchOpenBtn?.setAttribute("aria-expanded", String(isOpen));
-  if (searchOpenBtn && searchOpenBtn.value !== state.ui.search.query) {
-    searchOpenBtn.value = state.ui.search.query;
-  }
-  if (searchInput && searchInput.value !== state.ui.search.query) {
-    searchInput.value = state.ui.search.query;
-  }
-  if (searchResultsRoot) {
-    searchResultsRoot.innerHTML = renderSearchResults();
-  }
+  ShellViewUtils.renderSearchShellView({
+    searchModalRoot,
+    searchOpenBtn,
+    searchInput,
+    searchResultsRoot,
+    isOpen: Boolean(state.ui.search.open),
+    query: state.ui.search.query,
+    resultsMarkup: renderSearchResults(),
+  });
 }
 
 function renderDashboardSummaryRow() {
@@ -1874,16 +1814,13 @@ async function executeSearch(request) {
 }
 
 function renderSearchResults() {
-  if (typeof ShellViewUtils.renderSearchResults === "function") {
-    return ShellViewUtils.renderSearchResults({
-      query: state.ui.search.query,
-      loading: state.ui.search.loading,
-      results: state.ui.search.results || { total: 0, groups: [] },
-      keyboardState: currentSearchKeyboardState(),
-      escapeHTML,
-    });
-  }
-  return "";
+  return ShellViewUtils.renderSearchResults({
+    query: state.ui.search.query,
+    loading: state.ui.search.loading,
+    results: state.ui.search.results || { total: 0, groups: [] },
+    keyboardState: currentSearchKeyboardState(),
+    escapeHTML,
+  });
 }
 
 async function fetchAllCollectionPages(basePath) {

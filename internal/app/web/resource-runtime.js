@@ -24,6 +24,19 @@
     "readForm",
     "splitList",
   ];
+  const REQUIRED_SHELL_STATE_METHODS = [
+    "buildPageNavigation",
+    "createSettingsSnapshot",
+    "createThemeRuntimeState",
+    "createThemeStorageOperation",
+  ];
+  const REQUIRED_SHELL_VIEW_METHODS = [
+    "activatePageView",
+    "pageIDFromHash",
+    "renderSearchResults",
+    "renderSearchShellView",
+    "renderThemeView",
+  ];
 
   function requireResourceViewUtils(resourceViewUtils) {
     const candidate = resourceViewUtils && typeof resourceViewUtils === "object"
@@ -67,10 +80,40 @@
     );
   }
 
+  function requireShellStateUtils(shellStateUtils) {
+    const candidate = shellStateUtils && typeof shellStateUtils === "object"
+      ? shellStateUtils
+      : null;
+    const missing = REQUIRED_SHELL_STATE_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `shell-state.js failed to load before app.js; missing ShellStateUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
+  function requireShellViewUtils(shellViewUtils) {
+    const candidate = shellViewUtils && typeof shellViewUtils === "object"
+      ? shellViewUtils
+      : null;
+    const missing = REQUIRED_SHELL_VIEW_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `shell-view.js failed to load before app.js; missing ShellViewUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   const api = {
     requireResourceCrudUtils,
     requireResourceStateUtils,
     requireResourceViewUtils,
+    requireShellStateUtils,
+    requireShellViewUtils,
   };
 
   if (typeof module !== "undefined" && module.exports) {
