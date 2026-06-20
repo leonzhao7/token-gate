@@ -54,6 +54,13 @@
     "cycleThemePreference",
     "toggleSidebarCollapsed",
   ];
+  const REQUIRED_PAGINATION_METHODS = [
+    "bindPagination",
+    "currentLocalPageData",
+    "currentRemotePageData",
+    "applyPagedResponse",
+    "renderPagination",
+  ];
 
   function requireResourceViewUtils(resourceViewUtils) {
     const candidate = resourceViewUtils && typeof resourceViewUtils === "object"
@@ -153,7 +160,22 @@
     );
   }
 
+  function requirePaginationUtils(paginationUtils) {
+    const candidate = paginationUtils && typeof paginationUtils === "object"
+      ? paginationUtils
+      : null;
+    const missing = REQUIRED_PAGINATION_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `pagination.js failed to load before app.js; missing PaginationUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   const api = {
+    requirePaginationUtils,
     requireDrawerViewUtils,
     requireResourceCrudUtils,
     requireResourceStateUtils,

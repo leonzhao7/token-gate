@@ -182,6 +182,11 @@ const ShellRuntimeUtils = typeof ResourceRuntimeUtils.requireShellRuntimeUtils =
   : (() => {
     throw new Error("shell-runtime.js failed to load before app.js");
   })();
+const PaginationUtils = typeof ResourceRuntimeUtils.requirePaginationUtils === "function"
+  ? ResourceRuntimeUtils.requirePaginationUtils(globalThis.PaginationUtils)
+  : (() => {
+    throw new Error("pagination.js failed to load before app.js");
+  })();
 const DashboardUtils = globalThis.DashboardUtils || {};
 const DashboardViewUtils = globalThis.DashboardViewUtils || {};
 const ChartsUtils = globalThis.ChartsUtils || {};
@@ -1006,8 +1011,14 @@ async function refreshAll() {
   state.backends = ensureArray(backends);
   state.clients = ensureArray(clients);
   state.policies = ensureArray(policies);
-  applyPagedResponse("events", events);
-  applyPagedResponse("usageLogs", usageLogs);
+  PaginationUtils.applyPagedResponse("events", events, state, {
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    resourceStateUtils: ResourceStateUtils,
+  });
+  PaginationUtils.applyPagedResponse("usageLogs", usageLogs, state, {
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    resourceStateUtils: ResourceStateUtils,
+  });
   state.eventSummary = eventSummary;
   state.usageLogStats = usageLogStats;
   state.usageLogOptions.backends = ensureArray(usageLogOptions?.backends);
@@ -2063,7 +2074,10 @@ function trapFocusWithin(container, event) {
 function renderProxies() {
   const proxies = state.proxies;
   const filtered = applyResourceView("proxies", proxies);
-  const pageData = currentLocalPageData("proxies", filtered);
+  const pageData = PaginationUtils.currentLocalPageData("proxies", filtered, state, {
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    resourceStateUtils: ResourceStateUtils,
+  });
   const toolbar = buildResourceToolbarMarkup({
     resourceKey: "proxies",
     searchPlaceholder: "Search proxies",
@@ -2079,7 +2093,10 @@ function renderProxies() {
     ),
     headers: ["Proxy", "Status", "Bindings", "Traffic", "Latency", "Last Used", "Updated", "Actions"],
     rowsMarkup: pageData.items.map(renderProxyRow).join(""),
-    paginationMarkup: renderPagination("proxies", pageData),
+    paginationMarkup: PaginationUtils.renderPagination("proxies", pageData, {
+      pageSizeOptions: PAGE_SIZE_OPTIONS,
+      paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
+    }),
     escapeHTML,
   });
 
@@ -2115,14 +2132,17 @@ function renderProxies() {
     });
   });
 
-  bindPagination(proxyList, "proxies", renderProxies);
+  PaginationUtils.bindPagination(proxyList, "proxies", renderProxies, state, { reportError });
   bindResourceToolbar(proxyList, "proxies", { create: startCreateProxy });
 }
 
 function renderBackends() {
   const backends = state.backends;
   const filtered = applyResourceView("backends", backends);
-  const pageData = currentLocalPageData("backends", filtered);
+  const pageData = PaginationUtils.currentLocalPageData("backends", filtered, state, {
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    resourceStateUtils: ResourceStateUtils,
+  });
   const toolbar = buildResourceToolbarMarkup({
     resourceKey: "backends",
     searchPlaceholder: "Search backends",
@@ -2138,7 +2158,10 @@ function renderBackends() {
     ),
     headers: ["Backend", "Routing", "Coverage", "Requests", "Avg Latency", "Last Used", "Recent 30m", "Actions"],
     rowsMarkup: pageData.items.map(renderBackendRow).join(""),
-    paginationMarkup: renderPagination("backends", pageData),
+    paginationMarkup: PaginationUtils.renderPagination("backends", pageData, {
+      pageSizeOptions: PAGE_SIZE_OPTIONS,
+      paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
+    }),
     escapeHTML,
   });
 
@@ -2174,14 +2197,17 @@ function renderBackends() {
     });
   });
 
-  bindPagination(backendList, "backends", renderBackends);
+  PaginationUtils.bindPagination(backendList, "backends", renderBackends, state, { reportError });
   bindResourceToolbar(backendList, "backends", { create: startCreateBackend });
 }
 
 function renderClients() {
   const clients = state.clients;
   const filtered = applyResourceView("clients", clients);
-  const pageData = currentLocalPageData("clients", filtered);
+  const pageData = PaginationUtils.currentLocalPageData("clients", filtered, state, {
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    resourceStateUtils: ResourceStateUtils,
+  });
   const toolbar = buildResourceToolbarMarkup({
     resourceKey: "clients",
     searchPlaceholder: "Search client keys",
@@ -2197,7 +2223,10 @@ function renderClients() {
     ),
     headers: ["Client Key", "Status", "Routing", "Usage", "Last Used", "Updated", "Actions"],
     rowsMarkup: pageData.items.map(renderClientRow).join(""),
-    paginationMarkup: renderPagination("clients", pageData),
+    paginationMarkup: PaginationUtils.renderPagination("clients", pageData, {
+      pageSizeOptions: PAGE_SIZE_OPTIONS,
+      paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
+    }),
     escapeHTML,
   });
 
@@ -2233,14 +2262,17 @@ function renderClients() {
     });
   });
 
-  bindPagination(clientList, "clients", renderClients);
+  PaginationUtils.bindPagination(clientList, "clients", renderClients, state, { reportError });
   bindResourceToolbar(clientList, "clients", { create: startCreateClient });
 }
 
 function renderPolicies() {
   const policies = state.policies;
   const filtered = applyResourceView("policies", policies);
-  const pageData = currentLocalPageData("policies", filtered);
+  const pageData = PaginationUtils.currentLocalPageData("policies", filtered, state, {
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    resourceStateUtils: ResourceStateUtils,
+  });
   const toolbar = buildResourceToolbarMarkup({
     resourceKey: "policies",
     searchPlaceholder: "Search policies",
@@ -2256,7 +2288,10 @@ function renderPolicies() {
     ),
     headers: ["Pattern", "Routing", "Usage", "Coverage", "Last Used", "Updated", "Actions"],
     rowsMarkup: pageData.items.map(renderPolicyRow).join(""),
-    paginationMarkup: renderPagination("policies", pageData),
+    paginationMarkup: PaginationUtils.renderPagination("policies", pageData, {
+      pageSizeOptions: PAGE_SIZE_OPTIONS,
+      paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
+    }),
     escapeHTML,
   });
 
@@ -2292,7 +2327,7 @@ function renderPolicies() {
     });
   });
 
-  bindPagination(policyList, "policies", renderPolicies);
+  PaginationUtils.bindPagination(policyList, "policies", renderPolicies, state, { reportError });
   bindResourceToolbar(policyList, "policies", { create: startCreatePolicy });
 }
 
@@ -2487,7 +2522,10 @@ function buildQuickDetailMarkup(resourceKey, record) {
 function renderEvents() {
   const events = state.events;
   syncEventFilterInputs();
-  const pageData = currentRemotePageData("events", events);
+  const pageData = PaginationUtils.currentRemotePageData("events", events, state, {
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    resourceStateUtils: ResourceStateUtils,
+  });
   const pageTimeline = typeof ObservabilityUtils.createEventTimelineItems === "function"
     ? ObservabilityUtils.createEventTimelineItems(pageData.items)
     : [];
@@ -2502,14 +2540,19 @@ function renderEvents() {
       timelineItems: pageTimeline,
       summary,
       formatDateTime,
-      renderPagination,
+      renderPagination(key, data) {
+        return PaginationUtils.renderPagination(key, data, {
+          pageSizeOptions: PAGE_SIZE_OPTIONS,
+          paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
+        });
+      },
       emptyState,
       feedToneClass,
       escapeHTML,
     })
     : "";
 
-  bindPagination(eventList, "events", refreshAll);
+  PaginationUtils.bindPagination(eventList, "events", refreshAll, state, { reportError });
   eventList.querySelectorAll("[data-event-row]").forEach((row) => {
     const openEventDrawer = () => {
       openResourceDrawer({
@@ -2541,7 +2584,10 @@ function renderUsageLogs() {
   const rows = typeof ObservabilityUtils.createUsageLogRows === "function"
     ? ObservabilityUtils.createUsageLogRows(logs)
     : [];
-  const pageData = currentRemotePageData("usageLogs", logs);
+  const pageData = PaginationUtils.currentRemotePageData("usageLogs", logs, state, {
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    resourceStateUtils: ResourceStateUtils,
+  });
   const pageRows = typeof ObservabilityUtils.createUsageLogRows === "function"
     ? ObservabilityUtils.createUsageLogRows(pageData.items)
     : [];
@@ -2554,14 +2600,19 @@ function renderUsageLogs() {
       pageRows,
       expandedUsageLogs: state.expandedUsageLogs,
       formatDateTime,
-      renderPagination,
+      renderPagination(key, data) {
+        return PaginationUtils.renderPagination(key, data, {
+          pageSizeOptions: PAGE_SIZE_OPTIONS,
+          paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
+        });
+      },
       emptyState,
       renderUsageLogInlineDetail,
       escapeHTML,
     })
     : "";
 
-  bindPagination(usageLogList, "usageLogs", refreshAll);
+  PaginationUtils.bindPagination(usageLogList, "usageLogs", refreshAll, state, { reportError });
   usageLogList.querySelectorAll("[data-toggle-usage-log]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -2651,77 +2702,6 @@ async function primeUsageLogDetail(id) {
       renderUsageLogs();
     }
   }
-}
-
-function bindPagination(container, key, rerender) {
-  container.querySelector(`[data-page-size="${key}"]`)?.addEventListener("change", async (event) => {
-    state.pagination[key].size = Number(event.currentTarget.value || 10);
-    state.pagination[key].page = 1;
-    await Promise.resolve(rerender()).catch(reportError);
-  });
-
-  container.querySelector(`[data-page-prev="${key}"]`)?.addEventListener("click", async () => {
-    state.pagination[key].page = Math.max(1, state.pagination[key].page - 1);
-    await Promise.resolve(rerender()).catch(reportError);
-  });
-
-  container.querySelector(`[data-page-next="${key}"]`)?.addEventListener("click", async () => {
-    state.pagination[key].page += 1;
-    await Promise.resolve(rerender()).catch(reportError);
-  });
-
-  container.querySelectorAll(`[data-page-number="${key}"]`).forEach((button) => {
-    button.addEventListener("click", async () => {
-      state.pagination[key].page = Number(button.dataset.pageValue || 1);
-      await Promise.resolve(rerender()).catch(reportError);
-    });
-  });
-}
-
-function currentLocalPageData(key, items) {
-  return ResourceStateUtils.currentLocalPageData(key, items, state, { pageSizeOptions: PAGE_SIZE_OPTIONS });
-}
-
-function currentRemotePageData(key, items) {
-  return ResourceStateUtils.currentRemotePageData(key, items, state, { pageSizeOptions: PAGE_SIZE_OPTIONS });
-}
-
-function applyPagedResponse(key, payload) {
-  ResourceStateUtils.applyPagedResponse(key, payload, state, { pageSizeOptions: PAGE_SIZE_OPTIONS });
-}
-
-function renderPagination(key, pageData) {
-  const pageState = state.pagination[key];
-  if (!pageState || pageData.total <= 0) {
-    return "";
-  }
-
-  return `
-    <div class="pagination-bar" data-pagination="${key}">
-      <div class="pagination-meta">
-        <span>共 ${pageData.total} 条</span>
-        <span>第 ${pageData.page} / ${pageData.totalPages} 页</span>
-      </div>
-      <div class="pagination-controls">
-        <label class="pagination-size">
-          <span>每页</span>
-          <select data-page-size="${key}">
-            ${PAGE_SIZE_OPTIONS.map((size) => `<option value="${size}" ${pageData.size === size ? "selected" : ""}>${size}</option>`).join("")}
-          </select>
-        </label>
-        <div class="pagination-pages">
-          <button class="small-button ghost-button pagination-arrow" data-page-prev="${key}" type="button" aria-label="上一页" ${pageData.page <= 1 ? "disabled" : ""}>&lsaquo;</button>
-          ${ResourceStateUtils.paginationPageNumbers(pageData).map((page) => {
-            if (page === "...") {
-              return `<span class="pagination-ellipsis">...</span>`;
-            }
-            return `<button class="small-button ${page === pageData.page ? "pagination-number active" : "ghost-button pagination-number"}" data-page-number="${key}" data-page-value="${page}" type="button">${page}</button>`;
-          }).join("")}
-          <button class="small-button ghost-button pagination-arrow" data-page-next="${key}" type="button" aria-label="下一页" ${pageData.page >= pageData.totalPages ? "disabled" : ""}>&rsaquo;</button>
-        </div>
-      </div>
-    </div>
-  `;
 }
 
 function formatUsageRequest(log) {

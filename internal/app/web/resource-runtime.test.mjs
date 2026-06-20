@@ -14,11 +14,13 @@ const { requireShellStateUtils } = require("./resource-runtime.js");
 const { requireShellViewUtils } = require("./resource-runtime.js");
 const { requireDrawerViewUtils } = require("./resource-runtime.js");
 const { requireShellRuntimeUtils } = require("./resource-runtime.js");
+const { requirePaginationUtils } = require("./resource-runtime.js");
 const ResourceCrudUtils = require("./resource-crud.js");
 const ShellStateUtils = require("./shell-state.js");
 const ShellViewUtils = require("./shell-view.js");
 const DrawerViewUtils = require("./drawer-view.js");
 const ShellRuntimeUtils = require("./shell-runtime.js");
+const PaginationUtils = require("./pagination.js");
 const ThemeUtils = require("./theme.js");
 const SettingsUtils = require("./settings.js");
 
@@ -111,6 +113,8 @@ test("app.js fails clearly during startup when resource view utils are missing",
       requireShellStateUtils,
       requireShellViewUtils,
       requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
     },
     ResourceViewUtils: null,
     ResourceStateUtils,
@@ -135,6 +139,8 @@ test("app.js fails clearly during startup when resource state utils are missing"
       requireShellStateUtils,
       requireShellViewUtils,
       requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils: null,
@@ -159,6 +165,8 @@ test("app.js fails clearly during startup when resource crud utils are missing",
       requireShellStateUtils,
       requireShellViewUtils,
       requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
@@ -183,6 +191,8 @@ test("app.js fails clearly during startup when shell state utils are missing", (
       requireShellStateUtils,
       requireShellViewUtils,
       requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
@@ -207,6 +217,8 @@ test("app.js fails clearly during startup when shell view utils are missing", ()
       requireShellStateUtils,
       requireShellViewUtils,
       requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
@@ -241,6 +253,42 @@ test("requireDrawerViewUtils accepts a narrow drawer view api contract", () => {
 
   assert.equal(typeof drawerView.drawerDisplayTitle, "function");
   assert.equal(typeof drawerView.renderDrawerShell, "function");
+});
+
+test("requirePaginationUtils returns the pagination api when app.js dependencies exist", () => {
+  const pagination = requirePaginationUtils(PaginationUtils);
+
+  assert.equal(typeof pagination.bindPagination, "function");
+  assert.equal(typeof pagination.currentLocalPageData, "function");
+  assert.equal(typeof pagination.currentRemotePageData, "function");
+  assert.equal(typeof pagination.applyPagedResponse, "function");
+  assert.equal(typeof pagination.renderPagination, "function");
+});
+
+test("requirePaginationUtils throws a clear error when pagination utils are unavailable", () => {
+  assert.throws(
+    () => requirePaginationUtils(null),
+    /pagination\.js.*load.*before app\.js/i,
+  );
+});
+
+test("requirePaginationUtils accepts a narrow pagination api contract", () => {
+  const pagination = requirePaginationUtils({
+    bindPagination() {},
+    currentLocalPageData() {
+      return {};
+    },
+    currentRemotePageData() {
+      return {};
+    },
+    applyPagedResponse() {},
+    renderPagination() {
+      return "";
+    },
+  });
+
+  assert.equal(typeof pagination.bindPagination, "function");
+  assert.equal(typeof pagination.renderPagination, "function");
 });
 
 test("requireShellRuntimeUtils returns the shell runtime api when app.js dependencies exist", () => {
@@ -298,6 +346,8 @@ test("app.js fails clearly during startup when drawer view utils are missing", (
       requireShellStateUtils,
       requireShellViewUtils,
       requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
@@ -339,6 +389,34 @@ test("app.js fails clearly during startup when shell runtime utils are missing",
   );
 });
 
+test("app.js fails clearly during startup when pagination utils are missing", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+      requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
+    },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
+    DrawerViewUtils,
+    ShellRuntimeUtils,
+    PaginationUtils: null,
+  });
+
+  assert.throws(
+    () => loadAppWithoutBootstrap(context),
+    /pagination\.js.*load.*before app\.js/i,
+  );
+});
+
 test("app.js integrates the validated resource view module for proxy list rendering", () => {
   const context = createAppVmContext({
     ResourceRuntimeUtils: {
@@ -348,6 +426,8 @@ test("app.js integrates the validated resource view module for proxy list render
       requireShellStateUtils,
       requireShellViewUtils,
       requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
@@ -387,6 +467,8 @@ test("app.js keeps backend proxy option rendering outside shared crud utils", ()
       requireShellStateUtils,
       requireShellViewUtils,
       requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
@@ -428,6 +510,8 @@ test("app.js wires backend proxy options through backend form lifecycle helpers"
       requireShellStateUtils,
       requireShellViewUtils,
       requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
@@ -493,6 +577,8 @@ test("app.js initializes resource view defaults through ResourceStateUtils", () 
       requireShellStateUtils,
       requireShellViewUtils,
       requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils: instrumentedResourceStateUtils,
@@ -517,6 +603,7 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   const resourceStateIndex = html.indexOf("./resource-state.js");
   const resourceCrudIndex = html.indexOf("./resource-crud.js");
   const drawerViewIndex = html.indexOf("./drawer-view.js");
+  const paginationIndex = html.indexOf("./pagination.js");
   const appIndex = html.indexOf("./app.js");
 
   assert.ok(shellStateIndex >= 0);
@@ -529,7 +616,8 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   assert.ok(resourceStateIndex > resourceRuntimeIndex);
   assert.ok(resourceCrudIndex > resourceStateIndex);
   assert.ok(drawerViewIndex > resourceCrudIndex);
-  assert.ok(appIndex > drawerViewIndex);
+  assert.ok(paginationIndex > drawerViewIndex);
+  assert.ok(appIndex > paginationIndex);
 });
 
 function loadAppWithoutBootstrap(context) {
@@ -548,6 +636,7 @@ function createAppVmContext({
   ShellViewUtils: shellViewUtils = ShellViewUtils,
   DrawerViewUtils: drawerViewUtils = DrawerViewUtils,
   ShellRuntimeUtils: shellRuntimeUtils = ShellRuntimeUtils,
+  PaginationUtils: paginationUtils = PaginationUtils,
   ThemeUtils: themeUtils = ThemeUtils,
   SettingsUtils: settingsUtils = SettingsUtils,
 }) {
@@ -702,6 +791,7 @@ function createAppVmContext({
       requireShellViewUtils,
       requireDrawerViewUtils,
       requireShellRuntimeUtils,
+      requirePaginationUtils,
       ...(ResourceRuntimeUtils || {}),
     },
     ResourceViewUtils: resourceViewUtils,
@@ -711,6 +801,7 @@ function createAppVmContext({
     ShellViewUtils: shellViewUtils,
     DrawerViewUtils: drawerViewUtils,
     ShellRuntimeUtils: shellRuntimeUtils,
+    PaginationUtils: paginationUtils,
     ThemeUtils: themeUtils,
     SearchUtils: {},
     DashboardUtils: {},
