@@ -207,6 +207,11 @@ const ObservabilityRuntimeUtils = typeof ResourceRuntimeUtils.requireObservabili
   : (() => {
     throw new Error("observability-runtime.js failed to load before app.js");
   })();
+const ResourceListRuntimeUtils = typeof ResourceRuntimeUtils.requireResourceListRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireResourceListRuntimeUtils(globalThis.ResourceListRuntimeUtils)
+  : (() => {
+    throw new Error("resource-list-runtime.js failed to load before app.js");
+  })();
 const escapeHTML = DisplayUtils.escapeHTML;
 const formatDateTime = DisplayUtils.formatDateTime;
 const DashboardUtils = globalThis.DashboardUtils || {};
@@ -1995,32 +2000,23 @@ function trapFocusWithin(container, event) {
 }
 
 function renderProxies() {
-  const proxies = state.proxies;
-  const filtered = applyResourceView("proxies", proxies);
-  const pageData = PaginationUtils.currentLocalPageData("proxies", filtered, state, {
-    pageSizeOptions: PAGE_SIZE_OPTIONS,
-    resourceStateUtils: ResourceStateUtils,
-  });
-  const toolbar = buildResourceToolbarMarkup({
+  ResourceListRuntimeUtils.renderLocalResourceTable({
     resourceKey: "proxies",
+    items: state.proxies,
+    state,
+    container: proxyList,
     searchPlaceholder: "Search proxies",
-    count: pageData.total,
-  });
-
-  proxyList.innerHTML = ResourceViewUtils.renderResourceTablePage({
-    toolbar,
-    isEmpty: filtered.length === 0,
-    emptyMarkup: DisplayUtils.emptyState(
-      "还没有 SOCKS5 Proxy",
-      "如果某些 Backend 需要固定出口代理，先在这里添加 SOCKS5 节点，再回到 Backend 里绑定。",
-    ),
+    emptyTitle: "还没有 SOCKS5 Proxy",
+    emptyDescription: "如果某些 Backend 需要固定出口代理，先在这里添加 SOCKS5 节点，再回到 Backend 里绑定。",
     headers: ["Proxy", "Status", "Bindings", "Traffic", "Latency", "Last Used", "Updated", "Actions"],
-    rowsMarkup: pageData.items.map(renderProxyRow).join(""),
-    paginationMarkup: PaginationUtils.renderPagination("proxies", pageData, {
-      pageSizeOptions: PAGE_SIZE_OPTIONS,
-      paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
-    }),
-    escapeHTML: DisplayUtils.escapeHTML,
+    rowRenderer: renderProxyRow,
+    resourceViewConfig: RESOURCE_VIEW_CONFIG,
+    rendererUtils: RendererUtils,
+    resourceViewUtils: ResourceViewUtils,
+    resourceStateUtils: ResourceStateUtils,
+    paginationUtils: PaginationUtils,
+    displayUtils: DisplayUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
   });
 
   proxyList.querySelectorAll("[data-toggle-proxy]").forEach((button) => {
@@ -2035,7 +2031,14 @@ function renderProxies() {
       startEditProxy(button.dataset.editProxy);
     });
   });
-  bindResourceRowOpen(proxyList, "proxy");
+  ResourceListRuntimeUtils.bindResourceRowOpen({
+    container: proxyList,
+    kind: "proxy",
+    drawerUtils: DrawerUtils,
+    drawerViewUtils: DrawerViewUtils,
+    openResourceDrawer,
+    reportError,
+  });
 
   proxyList.querySelectorAll("[data-delete-proxy]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -2056,36 +2059,36 @@ function renderProxies() {
   });
 
   PaginationUtils.bindPagination(proxyList, "proxies", renderProxies, state, { reportError });
-  bindResourceToolbar(proxyList, "proxies", { create: startCreateProxy });
+  ResourceListRuntimeUtils.bindResourceToolbar({
+    container: proxyList,
+    resourceKey: "proxies",
+    state,
+    resourceStateUtils: ResourceStateUtils,
+    renderResourceListByKey,
+    refreshResourceList,
+    reportError,
+    onCreate: startCreateProxy,
+  });
 }
 
 function renderBackends() {
-  const backends = state.backends;
-  const filtered = applyResourceView("backends", backends);
-  const pageData = PaginationUtils.currentLocalPageData("backends", filtered, state, {
-    pageSizeOptions: PAGE_SIZE_OPTIONS,
-    resourceStateUtils: ResourceStateUtils,
-  });
-  const toolbar = buildResourceToolbarMarkup({
+  ResourceListRuntimeUtils.renderLocalResourceTable({
     resourceKey: "backends",
+    items: state.backends,
+    state,
+    container: backendList,
     searchPlaceholder: "Search backends",
-    count: pageData.total,
-  });
-
-  backendList.innerHTML = ResourceViewUtils.renderResourceTablePage({
-    toolbar,
-    isEmpty: filtered.length === 0,
-    emptyMarkup: DisplayUtils.emptyState(
-      "还没有 Backend",
-      "先配置至少一个 OpenAI 或 Claude/Anthropic 上游节点，之后模型路由和故障切换才会生效。",
-    ),
+    emptyTitle: "还没有 Backend",
+    emptyDescription: "先配置至少一个 OpenAI 或 Claude/Anthropic 上游节点，之后模型路由和故障切换才会生效。",
     headers: ["Backend", "Routing", "Coverage", "Requests", "Avg Latency", "Last Used", "Recent 30m", "Actions"],
-    rowsMarkup: pageData.items.map(renderBackendRow).join(""),
-    paginationMarkup: PaginationUtils.renderPagination("backends", pageData, {
-      pageSizeOptions: PAGE_SIZE_OPTIONS,
-      paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
-    }),
-    escapeHTML: DisplayUtils.escapeHTML,
+    rowRenderer: renderBackendRow,
+    resourceViewConfig: RESOURCE_VIEW_CONFIG,
+    rendererUtils: RendererUtils,
+    resourceViewUtils: ResourceViewUtils,
+    resourceStateUtils: ResourceStateUtils,
+    paginationUtils: PaginationUtils,
+    displayUtils: DisplayUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
   });
 
   backendList.querySelectorAll("[data-toggle-backend]").forEach((button) => {
@@ -2100,7 +2103,14 @@ function renderBackends() {
       startEditBackend(button.dataset.editBackend);
     });
   });
-  bindResourceRowOpen(backendList, "backend");
+  ResourceListRuntimeUtils.bindResourceRowOpen({
+    container: backendList,
+    kind: "backend",
+    drawerUtils: DrawerUtils,
+    drawerViewUtils: DrawerViewUtils,
+    openResourceDrawer,
+    reportError,
+  });
 
   backendList.querySelectorAll("[data-delete-backend]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -2121,36 +2131,36 @@ function renderBackends() {
   });
 
   PaginationUtils.bindPagination(backendList, "backends", renderBackends, state, { reportError });
-  bindResourceToolbar(backendList, "backends", { create: startCreateBackend });
+  ResourceListRuntimeUtils.bindResourceToolbar({
+    container: backendList,
+    resourceKey: "backends",
+    state,
+    resourceStateUtils: ResourceStateUtils,
+    renderResourceListByKey,
+    refreshResourceList,
+    reportError,
+    onCreate: startCreateBackend,
+  });
 }
 
 function renderClients() {
-  const clients = state.clients;
-  const filtered = applyResourceView("clients", clients);
-  const pageData = PaginationUtils.currentLocalPageData("clients", filtered, state, {
-    pageSizeOptions: PAGE_SIZE_OPTIONS,
-    resourceStateUtils: ResourceStateUtils,
-  });
-  const toolbar = buildResourceToolbarMarkup({
+  ResourceListRuntimeUtils.renderLocalResourceTable({
     resourceKey: "clients",
+    items: state.clients,
+    state,
+    container: clientList,
     searchPlaceholder: "Search client keys",
-    count: pageData.total,
-  });
-
-  clientList.innerHTML = ResourceViewUtils.renderResourceTablePage({
-    toolbar,
-    isEmpty: filtered.length === 0,
-    emptyMarkup: DisplayUtils.emptyState(
-      "还没有 Client Key",
-      "创建一个客户端 key 后，外部 SDK 或 AI 客户端才能通过 Token Gate 访问后端模型。",
-    ),
+    emptyTitle: "还没有 Client Key",
+    emptyDescription: "创建一个客户端 key 后，外部 SDK 或 AI 客户端才能通过 Token Gate 访问后端模型。",
     headers: ["Client Key", "Status", "Routing", "Usage", "Last Used", "Updated", "Actions"],
-    rowsMarkup: pageData.items.map(renderClientRow).join(""),
-    paginationMarkup: PaginationUtils.renderPagination("clients", pageData, {
-      pageSizeOptions: PAGE_SIZE_OPTIONS,
-      paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
-    }),
-    escapeHTML: DisplayUtils.escapeHTML,
+    rowRenderer: renderClientRow,
+    resourceViewConfig: RESOURCE_VIEW_CONFIG,
+    rendererUtils: RendererUtils,
+    resourceViewUtils: ResourceViewUtils,
+    resourceStateUtils: ResourceStateUtils,
+    paginationUtils: PaginationUtils,
+    displayUtils: DisplayUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
   });
 
   clientList.querySelectorAll("[data-toggle-client]").forEach((button) => {
@@ -2165,7 +2175,14 @@ function renderClients() {
       startEditClient(button.dataset.editClient);
     });
   });
-  bindResourceRowOpen(clientList, "client");
+  ResourceListRuntimeUtils.bindResourceRowOpen({
+    container: clientList,
+    kind: "client",
+    drawerUtils: DrawerUtils,
+    drawerViewUtils: DrawerViewUtils,
+    openResourceDrawer,
+    reportError,
+  });
 
   clientList.querySelectorAll("[data-delete-client]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -2186,36 +2203,36 @@ function renderClients() {
   });
 
   PaginationUtils.bindPagination(clientList, "clients", renderClients, state, { reportError });
-  bindResourceToolbar(clientList, "clients", { create: startCreateClient });
+  ResourceListRuntimeUtils.bindResourceToolbar({
+    container: clientList,
+    resourceKey: "clients",
+    state,
+    resourceStateUtils: ResourceStateUtils,
+    renderResourceListByKey,
+    refreshResourceList,
+    reportError,
+    onCreate: startCreateClient,
+  });
 }
 
 function renderPolicies() {
-  const policies = state.policies;
-  const filtered = applyResourceView("policies", policies);
-  const pageData = PaginationUtils.currentLocalPageData("policies", filtered, state, {
-    pageSizeOptions: PAGE_SIZE_OPTIONS,
-    resourceStateUtils: ResourceStateUtils,
-  });
-  const toolbar = buildResourceToolbarMarkup({
+  ResourceListRuntimeUtils.renderLocalResourceTable({
     resourceKey: "policies",
+    items: state.policies,
+    state,
+    container: policyList,
     searchPlaceholder: "Search policies",
-    count: pageData.total,
-  });
-
-  policyList.innerHTML = ResourceViewUtils.renderResourceTablePage({
-    toolbar,
-    isEmpty: filtered.length === 0,
-    emptyMarkup: DisplayUtils.emptyState(
-      "还没有 Model Policy",
-      "定义模型模式、端点和 placement 策略后，路由行为才会按业务意图收敛。",
-    ),
+    emptyTitle: "还没有 Model Policy",
+    emptyDescription: "定义模型模式、端点和 placement 策略后，路由行为才会按业务意图收敛。",
     headers: ["Pattern", "Routing", "Usage", "Coverage", "Last Used", "Updated", "Actions"],
-    rowsMarkup: pageData.items.map(renderPolicyRow).join(""),
-    paginationMarkup: PaginationUtils.renderPagination("policies", pageData, {
-      pageSizeOptions: PAGE_SIZE_OPTIONS,
-      paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
-    }),
-    escapeHTML: DisplayUtils.escapeHTML,
+    rowRenderer: renderPolicyRow,
+    resourceViewConfig: RESOURCE_VIEW_CONFIG,
+    rendererUtils: RendererUtils,
+    resourceViewUtils: ResourceViewUtils,
+    resourceStateUtils: ResourceStateUtils,
+    paginationUtils: PaginationUtils,
+    displayUtils: DisplayUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
   });
 
   policyList.querySelectorAll("[data-toggle-policy]").forEach((button) => {
@@ -2230,7 +2247,14 @@ function renderPolicies() {
       startEditPolicy(button.dataset.editPolicy);
     });
   });
-  bindResourceRowOpen(policyList, "policy");
+  ResourceListRuntimeUtils.bindResourceRowOpen({
+    container: policyList,
+    kind: "policy",
+    drawerUtils: DrawerUtils,
+    drawerViewUtils: DrawerViewUtils,
+    openResourceDrawer,
+    reportError,
+  });
 
   policyList.querySelectorAll("[data-delete-policy]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -2251,7 +2275,16 @@ function renderPolicies() {
   });
 
   PaginationUtils.bindPagination(policyList, "policies", renderPolicies, state, { reportError });
-  bindResourceToolbar(policyList, "policies", { create: startCreatePolicy });
+  ResourceListRuntimeUtils.bindResourceToolbar({
+    container: policyList,
+    resourceKey: "policies",
+    state,
+    resourceStateUtils: ResourceStateUtils,
+    renderResourceListByKey,
+    refreshResourceList,
+    reportError,
+    onCreate: startCreatePolicy,
+  });
 }
 
 function renderProxyRow(proxy) {
@@ -2319,100 +2352,6 @@ function renderPolicyRow(policy) {
   });
 }
 
-function bindResourceRowOpen(container, kind) {
-  container.querySelectorAll("[data-row-open]").forEach((row) => {
-    row.setAttribute("tabindex", "0");
-    const resourceTitle = row.dataset.rowTitle || (
-      typeof DrawerUtils.drawerDisplayTitle === "function"
-        ? DrawerUtils.drawerDisplayTitle(kind)
-        : DrawerViewUtils.drawerDisplayTitle(kind)
-    );
-    row.setAttribute("aria-label", `Open ${resourceTitle} detail`);
-    row.setAttribute("aria-haspopup", "dialog");
-    row.setAttribute("aria-controls", "drawerRoot");
-    row.addEventListener("click", (event) => {
-      if (event.target.closest("button")) {
-        return;
-      }
-      openResourceDrawer({
-        kind,
-        page: row.closest(".page")?.id || "",
-        id: row.dataset.rowId || "",
-        title: row.dataset.rowTitle || "",
-        triggerElement: row,
-      }).catch(reportError);
-    });
-    row.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") {
-        return;
-      }
-      if (event.target.closest("button")) {
-        return;
-      }
-      event.preventDefault();
-      openResourceDrawer({
-        kind,
-        page: row.closest(".page")?.id || "",
-        id: row.dataset.rowId || "",
-        title: row.dataset.rowTitle || "",
-        triggerElement: row,
-      }).catch(reportError);
-    });
-  });
-}
-
-function buildResourceToolbarMarkup({ resourceKey, searchPlaceholder, count }) {
-  const viewState = state.resourceViews[resourceKey] || ResourceStateUtils.defaultResourceView(resourceKey);
-  const defaultView = ResourceStateUtils.defaultResourceView(resourceKey);
-  const activeFilters = Number(Boolean(String(viewState.query || "").trim()))
-    + Number((viewState.filter || "all") !== defaultView.filter)
-    + Number((viewState.sort || "") !== defaultView.sort);
-  const hasChanges = activeFilters > 0;
-  const model = typeof RendererUtils.createResourceToolbarModel === "function"
-    ? RendererUtils.createResourceToolbarModel({ resourceKey, searchPlaceholder, count, activeFilters, hasChanges })
-    : { searchPlaceholder, count, activeFilters, hasChanges, actions: ["search", "filters", "sort", "reset", "refresh"] };
-  const config = RESOURCE_VIEW_CONFIG[resourceKey] || { filterOptions: [], sortOptions: [] };
-  return ResourceViewUtils.renderResourceToolbar({
-    resourceKey,
-    viewState,
-    model,
-    config,
-    activeFilters,
-    hasChanges,
-    escapeHTML: DisplayUtils.escapeHTML,
-    toolbarStatusLabel: ResourceStateUtils.toolbarStatusLabel,
-  });
-}
-
-function bindResourceToolbar(container, resourceKey, actions) {
-  container.querySelector(`[data-toolbar-search="${resourceKey}"]`)?.addEventListener("input", (event) => {
-    state.resourceViews[resourceKey].query = String(event.currentTarget.value || "");
-    state.pagination[resourceKey].page = 1;
-    renderResourceListByKey(resourceKey);
-  });
-  container.querySelector(`[data-toolbar-filter="${resourceKey}"]`)?.addEventListener("change", (event) => {
-    state.resourceViews[resourceKey].filter = String(event.currentTarget.value || "all");
-    state.pagination[resourceKey].page = 1;
-    renderResourceListByKey(resourceKey);
-  });
-  container.querySelector(`[data-toolbar-sort="${resourceKey}"]`)?.addEventListener("change", (event) => {
-    state.resourceViews[resourceKey].sort = String(event.currentTarget.value || "");
-    state.pagination[resourceKey].page = 1;
-    renderResourceListByKey(resourceKey);
-  });
-  container.querySelector(`[data-toolbar-reset="${resourceKey}"]`)?.addEventListener("click", () => {
-    state.resourceViews[resourceKey] = ResourceStateUtils.defaultResourceView(resourceKey);
-    state.pagination[resourceKey].page = 1;
-    renderResourceListByKey(resourceKey);
-  });
-  container.querySelector(`[data-toolbar-refresh="${resourceKey}"]`)?.addEventListener("click", () => {
-    refreshResourceList(resourceKey).catch(reportError);
-  });
-  container.querySelector(`[data-toolbar-create="${resourceKey}"]`)?.addEventListener("click", () => {
-    actions.create();
-  });
-}
-
 function renderResourceListByKey(resourceKey) {
   if (resourceKey === "proxies") {
     renderProxies();
@@ -2429,10 +2368,6 @@ function renderResourceListByKey(resourceKey) {
   if (resourceKey === "policies") {
     renderPolicies();
   }
-}
-
-function applyResourceView(resourceKey, items) {
-  return ResourceStateUtils.applyResourceView(resourceKey, items, state.resourceViews);
 }
 
 function buildQuickDetailMarkup(resourceKey, record) {

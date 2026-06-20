@@ -62,11 +62,24 @@
     "renderPagination",
   ];
   const REQUIRED_DISPLAY_METHODS = [
+    "backendProtocolLabel",
+    "clientTokenDisplay",
+    "ensureArray",
+    "formatBackendCoverage",
+    "formatBackendRecentStats",
+    "formatBackendRouting",
+    "formatBindingCount",
+    "formatDataSize",
     "formatDateTime",
+    "formatLatency",
+    "formatPolicyCoverage",
+    "formatPolicyRouting",
+    "formatUsageCount",
     "escapeHTML",
     "emptyState",
     "renderDatalist",
     "statusPill",
+    "tableActions",
   ];
   const REQUIRED_DASHBOARD_RUNTIME_METHODS = [
     "startDashboardLoading",
@@ -103,6 +116,11 @@
     "renderUsageLogs",
     "renderUsageLogInlineDetail",
     "primeUsageLogDetail",
+  ];
+  const REQUIRED_RESOURCE_LIST_RUNTIME_METHODS = [
+    "bindResourceToolbar",
+    "bindResourceRowOpen",
+    "renderLocalResourceTable",
   ];
 
   function requireResourceViewUtils(resourceViewUtils) {
@@ -273,11 +291,26 @@
     );
   }
 
+  function requireResourceListRuntimeUtils(resourceListRuntimeUtils) {
+    const candidate = resourceListRuntimeUtils && typeof resourceListRuntimeUtils === "object"
+      ? resourceListRuntimeUtils
+      : null;
+    const missing = REQUIRED_RESOURCE_LIST_RUNTIME_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `resource-list-runtime.js failed to load before app.js; missing ResourceListRuntimeUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   const api = {
     requireDashboardRuntimeUtils,
     requireDisplayUtils,
     requireObservabilityRuntimeUtils,
     requirePaginationUtils,
+    requireResourceListRuntimeUtils,
     requireSearchRuntimeUtils,
     requireDrawerViewUtils,
     requireResourceCrudUtils,
