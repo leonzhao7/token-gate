@@ -16,6 +16,7 @@ const { requireDrawerViewUtils } = require("./resource-runtime.js");
 const { requireShellRuntimeUtils } = require("./resource-runtime.js");
 const { requirePaginationUtils } = require("./resource-runtime.js");
 const { requireDisplayUtils } = require("./resource-runtime.js");
+const { requireDashboardRuntimeUtils } = require("./resource-runtime.js");
 const ResourceCrudUtils = require("./resource-crud.js");
 const ShellStateUtils = require("./shell-state.js");
 const ShellViewUtils = require("./shell-view.js");
@@ -23,6 +24,7 @@ const DrawerViewUtils = require("./drawer-view.js");
 const ShellRuntimeUtils = require("./shell-runtime.js");
 const PaginationUtils = require("./pagination.js");
 const DisplayUtils = require("./display-utils.js");
+const DashboardRuntimeUtils = require("./dashboard-runtime.js");
 const ThemeUtils = require("./theme.js");
 const SettingsUtils = require("./settings.js");
 
@@ -341,6 +343,32 @@ test("requireDisplayUtils reports exact missing helper names for partial modules
   );
 });
 
+test("requireDashboardRuntimeUtils returns the dashboard runtime api when app.js dependencies exist", () => {
+  const runtime = requireDashboardRuntimeUtils(DashboardRuntimeUtils);
+
+  assert.equal(typeof runtime.startDashboardLoading, "function");
+  assert.equal(typeof runtime.renderDashboardShell, "function");
+});
+
+test("requireDashboardRuntimeUtils throws a clear error when dashboard runtime utils are unavailable", () => {
+  assert.throws(
+    () => requireDashboardRuntimeUtils(null),
+    /dashboard-runtime\.js.*load.*before app\.js/i,
+  );
+});
+
+test("requireDashboardRuntimeUtils accepts a narrow dashboard runtime api contract", () => {
+  const runtime = requireDashboardRuntimeUtils({
+    startDashboardLoading() {},
+    renderDashboardShell() {
+      return null;
+    },
+  });
+
+  assert.equal(typeof runtime.startDashboardLoading, "function");
+  assert.equal(typeof runtime.renderDashboardShell, "function");
+});
+
 test("requireShellRuntimeUtils returns the shell runtime api when app.js dependencies exist", () => {
   const runtime = requireShellRuntimeUtils({
     pageIDFromHash() {
@@ -497,6 +525,38 @@ test("app.js fails clearly during startup when display utils are missing", () =>
   assert.throws(
     () => loadAppWithoutBootstrap(context),
     /display-utils\.js.*load.*before app\.js/i,
+  );
+});
+
+test("app.js fails clearly during startup when dashboard runtime utils are missing", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+      requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
+      requireDisplayUtils,
+      requireDashboardRuntimeUtils,
+    },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
+    DrawerViewUtils,
+    ShellRuntimeUtils,
+    PaginationUtils,
+    DisplayUtils,
+    DashboardRuntimeUtils: null,
+  });
+
+  assert.throws(
+    () => loadAppWithoutBootstrap(context),
+    /dashboard-runtime\.js.*load.*before app\.js/i,
   );
 });
 
@@ -692,6 +752,7 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   const drawerViewIndex = html.indexOf("./drawer-view.js");
   const paginationIndex = html.indexOf("./pagination.js");
   const displayUtilsIndex = html.indexOf("./display-utils.js");
+  const dashboardRuntimeIndex = html.indexOf("./dashboard-runtime.js");
   const appIndex = html.indexOf("./app.js");
 
   assert.ok(shellStateIndex >= 0);
@@ -706,7 +767,8 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   assert.ok(drawerViewIndex > resourceCrudIndex);
   assert.ok(paginationIndex > drawerViewIndex);
   assert.ok(displayUtilsIndex > paginationIndex);
-  assert.ok(appIndex > displayUtilsIndex);
+  assert.ok(dashboardRuntimeIndex > displayUtilsIndex);
+  assert.ok(appIndex > dashboardRuntimeIndex);
 });
 
 function loadAppWithoutBootstrap(context) {
@@ -727,6 +789,7 @@ function createAppVmContext({
   ShellRuntimeUtils: shellRuntimeUtils = ShellRuntimeUtils,
   PaginationUtils: paginationUtils = PaginationUtils,
   DisplayUtils: displayUtils = {},
+  DashboardRuntimeUtils: dashboardRuntimeUtils = DashboardRuntimeUtils,
   ThemeUtils: themeUtils = ThemeUtils,
   SettingsUtils: settingsUtils = SettingsUtils,
 }) {
@@ -883,6 +946,7 @@ function createAppVmContext({
       requireShellRuntimeUtils,
       requirePaginationUtils,
       requireDisplayUtils,
+      requireDashboardRuntimeUtils,
       ...(ResourceRuntimeUtils || {}),
     },
     ResourceViewUtils: resourceViewUtils,
@@ -894,6 +958,7 @@ function createAppVmContext({
     ShellRuntimeUtils: shellRuntimeUtils,
     PaginationUtils: paginationUtils,
     DisplayUtils: displayUtils,
+    DashboardRuntimeUtils: dashboardRuntimeUtils,
     ThemeUtils: themeUtils,
     SearchUtils: {},
     DashboardUtils: {},

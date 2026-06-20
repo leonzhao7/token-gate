@@ -192,6 +192,11 @@ const DisplayUtils = typeof ResourceRuntimeUtils.requireDisplayUtils === "functi
   : (() => {
     throw new Error("display-utils.js failed to load before app.js");
   })();
+const DashboardRuntimeUtils = typeof ResourceRuntimeUtils.requireDashboardRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireDashboardRuntimeUtils(globalThis.DashboardRuntimeUtils)
+  : (() => {
+    throw new Error("dashboard-runtime.js failed to load before app.js");
+  })();
 const escapeHTML = DisplayUtils.escapeHTML;
 const formatDateTime = DisplayUtils.formatDateTime;
 const DashboardUtils = globalThis.DashboardUtils || {};
@@ -1314,19 +1319,7 @@ async function refreshDashboardData() {
 }
 
 function startDashboardLoading() {
-  Object.values(state.dashboard.summaryCards || {}).forEach((cardState) => {
-    cardState.status = "loading";
-    cardState.error = "";
-    cardState.data = null;
-  });
-  state.dashboard.usage.status = "loading";
-  state.dashboard.usage.error = "";
-  state.dashboard.usage.data = null;
-  [state.dashboard.eventsSummary, state.dashboard.recentEvents, state.dashboard.recentUsage].forEach((panelState) => {
-    panelState.status = "loading";
-    panelState.error = "";
-    panelState.data = null;
-  });
+  DashboardRuntimeUtils.startDashboardLoading({ state });
 }
 
 async function handleSettingsAction(action) {
@@ -1372,26 +1365,21 @@ async function handleSettingsAction(action) {
 }
 
 function renderDashboardShell() {
-  if (!dashboardRoot) {
-    return;
-  }
-  dashboardRoot.dataset.theme = state.ui.theme;
-  if (dashboardSummaryRow) {
-    dashboardSummaryRow.innerHTML = renderDashboardSummaryRow();
-  }
-  if (dashboardUsageCard) {
-    dashboardUsageCard.innerHTML = renderDashboardUsageCard();
-  }
-  if (dashboardEventsSummaryCard) {
-    dashboardEventsSummaryCard.innerHTML = renderDashboardEventsSummaryCard();
-  }
-  if (dashboardRecentEventsCard) {
-    dashboardRecentEventsCard.innerHTML = renderDashboardRecentEventsCard();
-  }
-  if (dashboardRecentUsageCard) {
-    dashboardRecentUsageCard.innerHTML = renderDashboardRecentUsageCard();
-  }
-  bindDashboardInteractions();
+  DashboardRuntimeUtils.renderDashboardShell({
+    state,
+    dashboardRoot,
+    dashboardSummaryRow,
+    dashboardUsageCard,
+    dashboardEventsSummaryCard,
+    dashboardRecentEventsCard,
+    dashboardRecentUsageCard,
+    renderSummaryRow: renderDashboardSummaryRow,
+    renderUsageCard: renderDashboardUsageCard,
+    renderEventsSummaryCard: renderDashboardEventsSummaryCard,
+    renderRecentEventsCard: renderDashboardRecentEventsCard,
+    renderRecentUsageCard: renderDashboardRecentUsageCard,
+    bindInteractions: bindDashboardInteractions,
+  });
 }
 
 function renderDrawerShell() {

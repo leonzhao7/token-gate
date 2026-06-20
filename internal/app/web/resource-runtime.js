@@ -68,6 +68,10 @@
     "renderDatalist",
     "statusPill",
   ];
+  const REQUIRED_DASHBOARD_RUNTIME_METHODS = [
+    "startDashboardLoading",
+    "renderDashboardShell",
+  ];
 
   function requireResourceViewUtils(resourceViewUtils) {
     const candidate = resourceViewUtils && typeof resourceViewUtils === "object"
@@ -195,7 +199,22 @@
     );
   }
 
+  function requireDashboardRuntimeUtils(dashboardRuntimeUtils) {
+    const candidate = dashboardRuntimeUtils && typeof dashboardRuntimeUtils === "object"
+      ? dashboardRuntimeUtils
+      : null;
+    const missing = REQUIRED_DASHBOARD_RUNTIME_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `dashboard-runtime.js failed to load before app.js; missing DashboardRuntimeUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   const api = {
+    requireDashboardRuntimeUtils,
     requireDisplayUtils,
     requirePaginationUtils,
     requireDrawerViewUtils,
