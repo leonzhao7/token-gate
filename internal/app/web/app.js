@@ -161,6 +161,7 @@ const RESOURCE_VIEW_CONFIG = {
 };
 const ThemeUtils = globalThis.ThemeUtils || {};
 const SearchUtils = globalThis.SearchUtils || {};
+const ShellStateUtils = globalThis.ShellStateUtils || {};
 const ShellViewUtils = globalThis.ShellViewUtils || {};
 const DashboardUtils = globalThis.DashboardUtils || {};
 const DashboardViewUtils = globalThis.DashboardViewUtils || {};
@@ -1211,43 +1212,63 @@ function activatePage(id) {
 }
 
 function navigateToPage(id) {
-  const nextID = pages.some((page) => page.id === id) ? id : "overview";
-  if (window.location.hash !== `#${nextID}`) {
-    window.location.hash = `#${nextID}`;
+  const navigation = typeof ShellStateUtils.buildPageNavigation === "function"
+    ? ShellStateUtils.buildPageNavigation({
+      currentHash: window.location.hash,
+      requestedID: id,
+      pages,
+    })
+    : {
+      nextID: pages.some((page) => page.id === id) ? id : "overview",
+      nextHash: `#${pages.some((page) => page.id === id) ? id : "overview"}`,
+      shouldUpdateHash: window.location.hash !== `#${pages.some((page) => page.id === id) ? id : "overview"}`,
+    };
+  if (navigation.shouldUpdateHash) {
+    window.location.hash = navigation.nextHash;
     return;
   }
-  activatePage(nextID);
+  activatePage(navigation.nextID);
 }
 
 function initializeThemeState() {
-  const storedPreference = localStorage.getItem(THEME_PREFERENCE_KEY);
-  const resolved = resolveThemeState(storedPreference);
+  const resolved = typeof ShellStateUtils.createThemeRuntimeState === "function"
+    ? ShellStateUtils.createThemeRuntimeState({
+      storedPreference: localStorage.getItem(THEME_PREFERENCE_KEY),
+      systemPrefersDark: Boolean(systemThemeQuery?.matches),
+      resolveThemeState({ storedPreference, systemPrefersDark }) {
+        return resolveThemeState(storedPreference, systemPrefersDark);
+      },
+    })
+    : resolveThemeState(localStorage.getItem(THEME_PREFERENCE_KEY), Boolean(systemThemeQuery?.matches));
   state.ui.themePreference = resolved.preference;
   state.ui.theme = resolved.theme;
   rootElement.dataset.themePreference = resolved.preference;
   rootElement.dataset.theme = resolved.theme;
 }
 
-function resolveThemeState(storedPreference) {
+function resolveThemeState(storedPreference, systemPrefersDark = Boolean(systemThemeQuery?.matches)) {
   if (typeof ThemeUtils.resolveThemeState === "function") {
     return ThemeUtils.resolveThemeState({
       storedPreference,
-      systemPrefersDark: Boolean(systemThemeQuery?.matches),
+      systemPrefersDark,
     });
   }
   return {
     preference: "system",
-    theme: systemThemeQuery?.matches ? "dark" : "light",
+    theme: systemPrefersDark ? "dark" : "light",
     isAuto: true,
   };
 }
 
 function persistThemePreference(preference) {
-  if (preference === "system") {
+  const operation = typeof ShellStateUtils.createThemeStorageOperation === "function"
+    ? ShellStateUtils.createThemeStorageOperation(preference)
+    : { type: preference === "system" ? "remove" : "set", value: preference };
+  if (operation.type === "remove") {
     localStorage.removeItem(THEME_PREFERENCE_KEY);
     return;
   }
-  localStorage.setItem(THEME_PREFERENCE_KEY, preference);
+  localStorage.setItem(THEME_PREFERENCE_KEY, operation.value);
 }
 
 function applyResolvedTheme() {
@@ -1300,6 +1321,22 @@ function renderSettings() {
 }
 
 function buildSettingsSnapshot() {
+  if (typeof ShellStateUtils.createSettingsSnapshot === "function") {
+    return ShellStateUtils.createSettingsSnapshot({
+      adminTokenValue: localStorage.getItem(ADMIN_TOKEN_KEY) || "",
+      themePreference: state.ui.themePreference,
+      resolvedTheme: state.ui.theme,
+      sidebarCollapsed: appShell?.classList.contains("sidebar-collapsed"),
+      lastRefreshLabel: state.ui.lastRefreshAt ? formatDateTime(state.ui.lastRefreshAt) : "",
+      backends: state.backends,
+      clients: state.clients,
+      policies: state.policies,
+      proxies: state.proxies,
+      usageLogStats: state.usageLogStats,
+      usageLogMeta: state.paginationMeta.usageLogs,
+      eventSummary: state.eventSummary,
+    });
+  }
   return {
     adminTokenPresent: Boolean((localStorage.getItem(ADMIN_TOKEN_KEY) || "").trim()),
     themePreference: state.ui.themePreference,
