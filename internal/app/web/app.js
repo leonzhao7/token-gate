@@ -202,6 +202,11 @@ const SearchRuntimeUtils = typeof ResourceRuntimeUtils.requireSearchRuntimeUtils
   : (() => {
     throw new Error("search-runtime.js failed to load before app.js");
   })();
+const ObservabilityRuntimeUtils = typeof ResourceRuntimeUtils.requireObservabilityRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireObservabilityRuntimeUtils(globalThis.ObservabilityRuntimeUtils)
+  : (() => {
+    throw new Error("observability-runtime.js failed to load before app.js");
+  })();
 const escapeHTML = DisplayUtils.escapeHTML;
 const formatDateTime = DisplayUtils.formatDateTime;
 const DashboardUtils = globalThis.DashboardUtils || {};
@@ -1061,161 +1066,148 @@ async function refreshAll() {
 }
 
 function buildUsageLogQuery() {
-  const query = typeof ObservabilityUtils.buildUsageLogQueryParams === "function"
-    ? ObservabilityUtils.buildUsageLogQueryParams(state.usageLogFilters)
-    : "";
-  return query ? `&${query}` : "";
+  return ObservabilityRuntimeUtils.buildUsageLogQuery({
+    state,
+    observabilityUtils: ObservabilityUtils,
+  });
 }
 
 function buildUsageLogStatsQuery() {
-  return typeof ObservabilityUtils.buildUsageLogQueryParams === "function"
-    ? ObservabilityUtils.buildUsageLogQueryParams(state.usageLogFilters)
-    : "";
+  return ObservabilityRuntimeUtils.buildUsageLogStatsQuery({
+    state,
+    observabilityUtils: ObservabilityUtils,
+  });
 }
 
 function buildEventQuery() {
-  const query = typeof ObservabilityUtils.buildEventQueryParams === "function"
-    ? ObservabilityUtils.buildEventQueryParams(state.eventFilters)
-    : "";
-  return query ? `&${query}` : "";
+  return ObservabilityRuntimeUtils.buildEventQuery({
+    state,
+    observabilityUtils: ObservabilityUtils,
+  });
 }
 
 function buildEventSummaryQuery() {
-  const query = buildEventQuery();
-  return query.startsWith("&") ? query.slice(1) : query;
+  return ObservabilityRuntimeUtils.buildEventSummaryQuery({
+    state,
+    observabilityUtils: ObservabilityUtils,
+  });
 }
 
 function syncEventFilterInputs() {
-  if (eventQueryFilter) {
-    eventQueryFilter.value = state.eventFilters.q;
-  }
-  if (eventActorFilter) {
-    eventActorFilter.value = state.eventFilters.actor;
-  }
-  if (eventBackendFilter) {
-    eventBackendFilter.value = state.eventFilters.backend;
-  }
-  if (eventCategoryFilter) {
-    eventCategoryFilter.value = state.eventFilters.category;
-  }
-  if (eventSeverityFilter) {
-    eventSeverityFilter.value = state.eventFilters.severity;
-  }
-  if (eventDateFromFilter) {
-    eventDateFromFilter.value = state.eventFilters.dateFrom;
-  }
-  if (eventDateToFilter) {
-    eventDateToFilter.value = state.eventFilters.dateTo;
-  }
+  ObservabilityRuntimeUtils.syncEventFilterInputs({
+    state,
+    eventQueryFilter,
+    eventActorFilter,
+    eventBackendFilter,
+    eventCategoryFilter,
+    eventSeverityFilter,
+    eventDateFromFilter,
+    eventDateToFilter,
+  });
 }
 
 async function applyEventFilters() {
-  state.eventFilters.q = String(eventQueryFilter?.value || "").trim();
-  state.eventFilters.actor = String(eventActorFilter?.value || "").trim();
-  state.eventFilters.backend = String(eventBackendFilter?.value || "").trim();
-  state.eventFilters.category = String(eventCategoryFilter?.value || "").trim();
-  state.eventFilters.severity = String(eventSeverityFilter?.value || "").trim();
-  state.eventFilters.dateFrom = String(eventDateFromFilter?.value || "").trim();
-  state.eventFilters.dateTo = String(eventDateToFilter?.value || "").trim();
-  state.pagination.events.page = 1;
-  await refreshAll();
+  await ObservabilityRuntimeUtils.applyEventFilters({
+    state,
+    refreshAll,
+    eventQueryFilter,
+    eventActorFilter,
+    eventBackendFilter,
+    eventCategoryFilter,
+    eventSeverityFilter,
+    eventDateFromFilter,
+    eventDateToFilter,
+  });
 }
 
 async function resetEventFilters() {
-  state.eventFilters.q = "";
-  state.eventFilters.actor = "";
-  state.eventFilters.backend = "";
-  state.eventFilters.category = "";
-  state.eventFilters.severity = "";
-  state.eventFilters.dateFrom = "";
-  state.eventFilters.dateTo = "";
-  syncEventFilterInputs();
-  state.pagination.events.page = 1;
-  await refreshAll();
+  await ObservabilityRuntimeUtils.resetEventFilters({
+    state,
+    refreshAll,
+    eventQueryFilter,
+    eventActorFilter,
+    eventBackendFilter,
+    eventCategoryFilter,
+    eventSeverityFilter,
+    eventDateFromFilter,
+    eventDateToFilter,
+  });
 }
 
 async function refreshEvents() {
-  await refreshAll();
+  await ObservabilityRuntimeUtils.refreshEvents({ refreshAll });
 }
 
 function syncUsageLogFilterInputs() {
-  if (usageLogQueryFilter) {
-    usageLogQueryFilter.value = state.usageLogFilters.q;
-  }
-  if (usageLogDateFromFilter) {
-    usageLogDateFromFilter.value = state.usageLogFilters.dateFrom;
-  }
-  if (usageLogDateToFilter) {
-    usageLogDateToFilter.value = state.usageLogFilters.dateTo;
-  }
-  usageLogBackendFilter.value = state.usageLogFilters.backend;
-  usageLogModelFilter.value = state.usageLogFilters.model;
-  usageLogClientKeyFilter.value = state.usageLogFilters.clientKey;
-  if (usageLogPolicyFilter) {
-    usageLogPolicyFilter.value = state.usageLogFilters.policy;
-  }
-  if (usageLogProxyFilter) {
-    usageLogProxyFilter.value = state.usageLogFilters.proxy;
-  }
-  if (usageLogStatusFilter) {
-    usageLogStatusFilter.value = state.usageLogFilters.status;
-  }
+  ObservabilityRuntimeUtils.syncUsageLogFilterInputs({
+    state,
+    usageLogQueryFilter,
+    usageLogDateFromFilter,
+    usageLogDateToFilter,
+    usageLogBackendFilter,
+    usageLogModelFilter,
+    usageLogClientKeyFilter,
+    usageLogPolicyFilter,
+    usageLogProxyFilter,
+    usageLogStatusFilter,
+  });
 }
 
 async function applyUsageLogFilters() {
-  state.usageLogFilters.q = String(usageLogQueryFilter?.value || "").trim();
-  state.usageLogFilters.dateFrom = String(usageLogDateFromFilter?.value || "").trim();
-  state.usageLogFilters.dateTo = String(usageLogDateToFilter?.value || "").trim();
-  state.usageLogFilters.backend = String(usageLogBackendFilter.value || "").trim();
-  state.usageLogFilters.model = String(usageLogModelFilter.value || "").trim();
-  state.usageLogFilters.clientKey = String(usageLogClientKeyFilter.value || "").trim();
-  state.usageLogFilters.policy = String(usageLogPolicyFilter?.value || "").trim();
-  state.usageLogFilters.proxy = String(usageLogProxyFilter?.value || "").trim();
-  state.usageLogFilters.status = String(usageLogStatusFilter?.value || "").trim();
-  state.pagination.usageLogs.page = 1;
-  await refreshAll();
+  await ObservabilityRuntimeUtils.applyUsageLogFilters({
+    state,
+    refreshAll,
+    usageLogQueryFilter,
+    usageLogDateFromFilter,
+    usageLogDateToFilter,
+    usageLogBackendFilter,
+    usageLogModelFilter,
+    usageLogClientKeyFilter,
+    usageLogPolicyFilter,
+    usageLogProxyFilter,
+    usageLogStatusFilter,
+  });
 }
 
 async function resetUsageLogFilters() {
-  state.usageLogFilters.q = "";
-  state.usageLogFilters.dateFrom = "";
-  state.usageLogFilters.dateTo = "";
-  state.usageLogFilters.backend = "";
-  state.usageLogFilters.model = "";
-  state.usageLogFilters.clientKey = "";
-  state.usageLogFilters.policy = "";
-  state.usageLogFilters.proxy = "";
-  state.usageLogFilters.status = "";
-  syncUsageLogFilterInputs();
-  state.pagination.usageLogs.page = 1;
-  await refreshAll();
+  await ObservabilityRuntimeUtils.resetUsageLogFilters({
+    state,
+    refreshAll,
+    usageLogQueryFilter,
+    usageLogDateFromFilter,
+    usageLogDateToFilter,
+    usageLogBackendFilter,
+    usageLogModelFilter,
+    usageLogClientKeyFilter,
+    usageLogPolicyFilter,
+    usageLogProxyFilter,
+    usageLogStatusFilter,
+  });
 }
 
 async function refreshUsageLogs() {
-  await refreshAll();
+  await ObservabilityRuntimeUtils.refreshUsageLogs({ refreshAll });
 }
 
 async function clearUsageLogs() {
-  if (!confirm("确认清空所有使用日志？")) {
-    return;
-  }
-  const response = await api("/admin/api/usage-logs", "DELETE");
-  state.pagination.usageLogs.page = 1;
-  await refreshAll();
-  alert(`已清空 ${Number(response?.deleted || 0)} 条使用日志。`);
+  await ObservabilityRuntimeUtils.clearUsageLogs({
+    state,
+    confirm,
+    alert,
+    api,
+    refreshAll,
+  });
 }
 
 async function deleteFilteredUsageLogs() {
-  if (!buildUsageLogStatsQuery()) {
-    throw new Error("请先设置查询条件，再删除查询结果");
-  }
-  if (!confirm("确认删除当前查询条件命中的使用日志？")) {
-    return;
-  }
-  const response = await api(`/admin/api/usage-logs?${buildUsageLogDeleteQuery()}`, "DELETE");
-  state.pagination.usageLogs.page = 1;
-  await refreshAll();
-  alert(`已删除 ${Number(response?.deleted || 0)} 条符合条件的使用日志。`);
+  await ObservabilityRuntimeUtils.deleteFilteredUsageLogs({
+    state,
+    observabilityUtils: ObservabilityUtils,
+    confirm,
+    alert,
+    api,
+    refreshAll,
+  });
 }
 
 function buildUsageLogDeleteQuery() {
@@ -1223,11 +1215,15 @@ function buildUsageLogDeleteQuery() {
 }
 
 function renderUsageLogFilterOptions() {
-  DisplayUtils.renderDatalist(usageLogBackendOptions, state.usageLogOptions.backends);
-  DisplayUtils.renderDatalist(usageLogModelOptions, state.usageLogOptions.models);
-  DisplayUtils.renderDatalist(usageLogClientKeyOptions, state.usageLogOptions.clientKeys);
-  DisplayUtils.renderDatalist(usageLogPolicyOptions, state.usageLogOptions.policies);
-  DisplayUtils.renderDatalist(usageLogProxyOptions, state.usageLogOptions.proxies);
+  ObservabilityRuntimeUtils.renderUsageLogFilterOptions({
+    state,
+    displayUtils: DisplayUtils,
+    usageLogBackendOptions,
+    usageLogModelOptions,
+    usageLogClientKeyOptions,
+    usageLogPolicyOptions,
+    usageLogProxyOptions,
+  });
 }
 
 async function refreshDashboardData() {
@@ -2447,211 +2443,75 @@ function buildQuickDetailMarkup(resourceKey, record) {
 }
 
 function renderEvents() {
-  const events = state.events;
-  syncEventFilterInputs();
-  const pageData = PaginationUtils.currentRemotePageData("events", events, state, {
-    pageSizeOptions: PAGE_SIZE_OPTIONS,
+  ObservabilityRuntimeUtils.renderEvents({
+    state,
+    eventList,
+    observabilityUtils: ObservabilityUtils,
+    observabilityViewUtils: ObservabilityViewUtils,
+    paginationUtils: PaginationUtils,
     resourceStateUtils: ResourceStateUtils,
-  });
-  const pageTimeline = typeof ObservabilityUtils.createEventTimelineItems === "function"
-    ? ObservabilityUtils.createEventTimelineItems(pageData.items)
-    : [];
-  const summary = typeof ObservabilityUtils.createEventSummaryModel === "function"
-    ? ObservabilityUtils.createEventSummaryModel(state.eventSummary)
-    : { total: 0, categories: [], severities: [] };
-
-  eventList.innerHTML = typeof ObservabilityViewUtils.renderEventsPage === "function"
-    ? ObservabilityViewUtils.renderEventsPage({
-      events,
-      pageData,
-      timelineItems: pageTimeline,
-      summary,
-      formatDateTime: DisplayUtils.formatDateTime,
-      renderPagination(key, data) {
-        return PaginationUtils.renderPagination(key, data, {
-          pageSizeOptions: PAGE_SIZE_OPTIONS,
-          paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
-        });
-      },
-      emptyState: DisplayUtils.emptyState,
-      feedToneClass,
-      escapeHTML: DisplayUtils.escapeHTML,
-    })
-    : "";
-
-  PaginationUtils.bindPagination(eventList, "events", refreshAll, state, { reportError });
-  eventList.querySelectorAll("[data-event-row]").forEach((row) => {
-    const openEventDrawer = () => {
-      openResourceDrawer({
-        kind: "event",
-        page: "events",
-        id: row.dataset.eventRow || "",
-        title: row.dataset.eventTitle || "Event",
-        triggerElement: row,
-      }).catch(reportError);
-    };
-    row.addEventListener("click", openEventDrawer);
-    row.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") {
-        return;
-      }
-      event.preventDefault();
-      openEventDrawer();
-    });
+    displayUtils: DisplayUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    refreshAll,
+    reportError,
+    feedToneClass,
+    openResourceDrawer,
+    eventQueryFilter,
+    eventActorFilter,
+    eventBackendFilter,
+    eventCategoryFilter,
+    eventSeverityFilter,
+    eventDateFromFilter,
+    eventDateToFilter,
   });
 }
 
 function renderUsageLogs() {
-  const logs = state.usageLogs;
-  syncUsageLogFilterInputs();
-  deleteUsageLogsBtn.disabled = logs.length === 0;
-  const statsCards = typeof ObservabilityUtils.createUsageStatsCards === "function"
-    ? ObservabilityUtils.createUsageStatsCards(state.usageLogStats)
-    : [];
-  const rows = typeof ObservabilityUtils.createUsageLogRows === "function"
-    ? ObservabilityUtils.createUsageLogRows(logs)
-    : [];
-  const pageData = PaginationUtils.currentRemotePageData("usageLogs", logs, state, {
-    pageSizeOptions: PAGE_SIZE_OPTIONS,
+  ObservabilityRuntimeUtils.renderUsageLogs({
+    state,
+    usageLogList,
+    deleteUsageLogsBtn,
+    observabilityUtils: ObservabilityUtils,
+    observabilityViewUtils: ObservabilityViewUtils,
+    paginationUtils: PaginationUtils,
     resourceStateUtils: ResourceStateUtils,
+    displayUtils: DisplayUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    refreshAll,
+    reportError,
+    openResourceDrawer,
+    renderUsageLogInlineDetail,
+    toggleExpanded,
+    usageLogQueryFilter,
+    usageLogDateFromFilter,
+    usageLogDateToFilter,
+    usageLogBackendFilter,
+    usageLogModelFilter,
+    usageLogClientKeyFilter,
+    usageLogPolicyFilter,
+    usageLogProxyFilter,
+    usageLogStatusFilter,
   });
-  const pageRows = typeof ObservabilityUtils.createUsageLogRows === "function"
-    ? ObservabilityUtils.createUsageLogRows(pageData.items)
-    : [];
-
-  usageLogList.innerHTML = typeof ObservabilityViewUtils.renderUsageLogsPage === "function"
-    ? ObservabilityViewUtils.renderUsageLogsPage({
-      logs,
-      pageData,
-      statsCards,
-      pageRows,
-      expandedUsageLogs: state.expandedUsageLogs,
-      formatDateTime: DisplayUtils.formatDateTime,
-      renderPagination(key, data) {
-        return PaginationUtils.renderPagination(key, data, {
-          pageSizeOptions: PAGE_SIZE_OPTIONS,
-          paginationPageNumbers: ResourceStateUtils.paginationPageNumbers,
-        });
-      },
-      emptyState: DisplayUtils.emptyState,
-      renderUsageLogInlineDetail,
-      escapeHTML: DisplayUtils.escapeHTML,
-    })
-    : "";
-
-  PaginationUtils.bindPagination(usageLogList, "usageLogs", refreshAll, state, { reportError });
-  usageLogList.querySelectorAll("[data-toggle-usage-log]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      toggleExpanded(state.expandedUsageLogs, button.dataset.toggleUsageLog);
-      renderUsageLogs();
-    });
-  });
-  usageLogList.querySelectorAll("[data-usage-log-row]").forEach((row) => {
-    row.addEventListener("click", () => {
-      openResourceDrawer({
-        kind: "usage_log",
-        page: "usage-logs",
-        id: row.dataset.usageLogRow || "",
-        title: row.dataset.usageLogTitle || "Usage Log",
-        triggerElement: row,
-      }).catch(reportError);
-    });
-    row.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") {
-        return;
-      }
-      event.preventDefault();
-      openResourceDrawer({
-        kind: "usage_log",
-        page: "usage-logs",
-        id: row.dataset.usageLogRow || "",
-        title: row.dataset.usageLogTitle || "Usage Log",
-        triggerElement: row,
-      }).catch(reportError);
-    });
-  });
-}
-
-function renderUsageLogRow(row) {
-  if (typeof ObservabilityViewUtils.renderUsageLogRow === "function") {
-    return ObservabilityViewUtils.renderUsageLogRow({
-      row,
-      expanded: state.expandedUsageLogs.has(String(row.id)),
-      formatDateTime: DisplayUtils.formatDateTime,
-      renderInlineDetail: () => renderUsageLogInlineDetail(row),
-      escapeHTML: DisplayUtils.escapeHTML,
-    });
-  }
-  return "";
 }
 
 function renderUsageLogInlineDetail(row) {
-  const detail = state.usageLogDetailCache.get(String(row.id));
-  if (!detail) {
-    primeUsageLogDetail(row.id);
-  }
-  const previewItems = typeof ObservabilityUtils.createUsageLogDetailPreview === "function"
-    ? ObservabilityUtils.createUsageLogDetailPreview(detail, row)
-    : [
-      { key: "trace", label: "Trace ID", value: row.traceId || "-" },
-      { key: "request", label: "Request", value: row.requestMetadata || "-" },
-      { key: "headers", label: "Headers", value: row.headersPreview || "-" },
-      { key: "payload", label: "Payload", value: row.payloadPreview || "-" },
-      { key: "response", label: "Response", value: row.responsePreview || "-" },
-    ];
-  if (typeof ObservabilityViewUtils.renderUsageLogInlineDetail === "function") {
-    return ObservabilityViewUtils.renderUsageLogInlineDetail({
-      detail,
-      row,
-      previewItems,
-      formatInlinePreview: ObservabilityViewUtils.formatInlinePreview,
-      escapeHTML: DisplayUtils.escapeHTML,
-    });
-  }
-  return "";
+  return ObservabilityRuntimeUtils.renderUsageLogInlineDetail({
+    row,
+    state,
+    observabilityUtils: ObservabilityUtils,
+    observabilityViewUtils: ObservabilityViewUtils,
+    displayUtils: DisplayUtils,
+    primeUsageLogDetail,
+  });
 }
 
 async function primeUsageLogDetail(id) {
-  const key = String(id || "").trim();
-  if (!key || state.usageLogDetailCache.has(key)) {
-    return;
-  }
-  try {
-    const payload = await api(`/admin/api/usage-logs/${encodeURIComponent(key)}`);
-    state.usageLogDetailCache.set(key, payload && typeof payload === "object" ? payload : {});
-    if (state.expandedUsageLogs.has(key)) {
-      renderUsageLogs();
-    }
-  } catch (error) {
-    state.usageLogDetailCache.set(key, { error: error?.message || "Failed to load usage log detail" });
-    if (state.expandedUsageLogs.has(key)) {
-      renderUsageLogs();
-    }
-  }
-}
-
-function formatUsageRequest(log) {
-  const method = String(log.method || "").toUpperCase();
-  const path = log.path || "-";
-  const requestID = log.request_id || "-";
-  return `${method} ${path} · ${requestID}`;
-}
-
-function formatUsageStatus(log) {
-  const status = Number(log.status_code) || 0;
-  const attempts = Number(log.attempts) || 0;
-  const duration = Number(log.duration_ms) || 0;
-  const statusText = status > 0 ? String(status) : "failed";
-  return `${statusText} · ${attempts} try · ${duration} ms`;
-}
-
-function formatUsageDetail(log) {
-  const parts = [];
-  if (log.error_message) {
-    parts.push(`err ${log.error_message}`);
-  }
-  return parts.join(" · ") || "-";
+  await ObservabilityRuntimeUtils.primeUsageLogDetail({
+    id,
+    state,
+    api,
+    renderUsageLogs,
+  });
 }
 
 function toggleExpanded(set, id) {

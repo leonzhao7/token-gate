@@ -83,6 +83,27 @@
     "currentSearchKeyboardState",
     "moveSearchSelection",
   ];
+  const REQUIRED_OBSERVABILITY_RUNTIME_METHODS = [
+    "buildUsageLogQuery",
+    "buildUsageLogStatsQuery",
+    "buildEventQuery",
+    "buildEventSummaryQuery",
+    "syncEventFilterInputs",
+    "applyEventFilters",
+    "resetEventFilters",
+    "refreshEvents",
+    "syncUsageLogFilterInputs",
+    "applyUsageLogFilters",
+    "resetUsageLogFilters",
+    "refreshUsageLogs",
+    "clearUsageLogs",
+    "deleteFilteredUsageLogs",
+    "renderUsageLogFilterOptions",
+    "renderEvents",
+    "renderUsageLogs",
+    "renderUsageLogInlineDetail",
+    "primeUsageLogDetail",
+  ];
 
   function requireResourceViewUtils(resourceViewUtils) {
     const candidate = resourceViewUtils && typeof resourceViewUtils === "object"
@@ -238,9 +259,24 @@
     );
   }
 
+  function requireObservabilityRuntimeUtils(observabilityRuntimeUtils) {
+    const candidate = observabilityRuntimeUtils && typeof observabilityRuntimeUtils === "object"
+      ? observabilityRuntimeUtils
+      : null;
+    const missing = REQUIRED_OBSERVABILITY_RUNTIME_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `observability-runtime.js failed to load before app.js; missing ObservabilityRuntimeUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   const api = {
     requireDashboardRuntimeUtils,
     requireDisplayUtils,
+    requireObservabilityRuntimeUtils,
     requirePaginationUtils,
     requireSearchRuntimeUtils,
     requireDrawerViewUtils,

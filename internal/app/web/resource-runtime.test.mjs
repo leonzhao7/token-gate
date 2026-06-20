@@ -18,6 +18,7 @@ const { requirePaginationUtils } = require("./resource-runtime.js");
 const { requireDisplayUtils } = require("./resource-runtime.js");
 const { requireDashboardRuntimeUtils } = require("./resource-runtime.js");
 const { requireSearchRuntimeUtils } = require("./resource-runtime.js");
+const { requireObservabilityRuntimeUtils } = require("./resource-runtime.js");
 const ResourceCrudUtils = require("./resource-crud.js");
 const ShellStateUtils = require("./shell-state.js");
 const ShellViewUtils = require("./shell-view.js");
@@ -27,6 +28,7 @@ const PaginationUtils = require("./pagination.js");
 const DisplayUtils = require("./display-utils.js");
 const DashboardRuntimeUtils = require("./dashboard-runtime.js");
 const SearchRuntimeUtils = require("./search-runtime.js");
+const ObservabilityRuntimeUtils = require("./observability-runtime.js");
 const ThemeUtils = require("./theme.js");
 const SettingsUtils = require("./settings.js");
 
@@ -408,6 +410,75 @@ test("requireSearchRuntimeUtils accepts a narrow search runtime api contract", (
   assert.equal(typeof runtime.renderSearchResults, "function");
 });
 
+test("requireObservabilityRuntimeUtils returns the observability runtime api when app.js dependencies exist", () => {
+  const runtime = requireObservabilityRuntimeUtils(ObservabilityRuntimeUtils);
+
+  assert.equal(typeof runtime.buildUsageLogQuery, "function");
+  assert.equal(typeof runtime.renderUsageLogs, "function");
+});
+
+test("requireObservabilityRuntimeUtils throws a clear error when observability runtime utils are unavailable", () => {
+  assert.throws(
+    () => requireObservabilityRuntimeUtils(null),
+    /observability-runtime\.js.*load.*before app\.js/i,
+  );
+});
+
+test("requireObservabilityRuntimeUtils accepts a narrow observability runtime api contract", () => {
+  const runtime = requireObservabilityRuntimeUtils({
+    buildUsageLogQuery() {
+      return "";
+    },
+    buildUsageLogStatsQuery() {
+      return "";
+    },
+    buildEventQuery() {
+      return "";
+    },
+    buildEventSummaryQuery() {
+      return "";
+    },
+    syncEventFilterInputs() {},
+    applyEventFilters() {
+      return Promise.resolve();
+    },
+    resetEventFilters() {
+      return Promise.resolve();
+    },
+    refreshEvents() {
+      return Promise.resolve();
+    },
+    syncUsageLogFilterInputs() {},
+    applyUsageLogFilters() {
+      return Promise.resolve();
+    },
+    resetUsageLogFilters() {
+      return Promise.resolve();
+    },
+    refreshUsageLogs() {
+      return Promise.resolve();
+    },
+    clearUsageLogs() {
+      return Promise.resolve();
+    },
+    deleteFilteredUsageLogs() {
+      return Promise.resolve();
+    },
+    renderUsageLogFilterOptions() {},
+    renderEvents() {},
+    renderUsageLogs() {},
+    renderUsageLogInlineDetail() {
+      return "";
+    },
+    primeUsageLogDetail() {
+      return Promise.resolve();
+    },
+  });
+
+  assert.equal(typeof runtime.buildEventQuery, "function");
+  assert.equal(typeof runtime.primeUsageLogDetail, "function");
+});
+
 test("createAppVmContext injects search runtime helpers by default", () => {
   const context = createAppVmContext({
     ResourceViewUtils,
@@ -419,6 +490,20 @@ test("createAppVmContext injects search runtime helpers by default", () => {
   assert.equal(
     context.ResourceRuntimeUtils.requireSearchRuntimeUtils,
     requireSearchRuntimeUtils,
+  );
+});
+
+test("createAppVmContext injects observability runtime helpers by default", () => {
+  const context = createAppVmContext({
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+  });
+
+  assert.equal(context.ObservabilityRuntimeUtils, ObservabilityRuntimeUtils);
+  assert.equal(
+    context.ResourceRuntimeUtils.requireObservabilityRuntimeUtils,
+    requireObservabilityRuntimeUtils,
   );
 });
 
@@ -645,6 +730,40 @@ test("app.js fails clearly during startup when search runtime utils are missing"
   );
 });
 
+test("app.js fails clearly during startup when observability runtime utils are missing", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+      requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
+      requireDisplayUtils,
+      requireDashboardRuntimeUtils,
+      requireSearchRuntimeUtils,
+      requireObservabilityRuntimeUtils,
+    },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
+    DrawerViewUtils,
+    DisplayUtils,
+    DashboardRuntimeUtils,
+    SearchRuntimeUtils,
+    ObservabilityRuntimeUtils: null,
+  });
+
+  assert.throws(
+    () => loadAppWithoutBootstrap(context),
+    /observability-runtime\.js.*load.*before app\.js/i,
+  );
+});
+
 test("app.js integrates the validated resource view module for proxy list rendering", () => {
   const context = createAppVmContext({
     ResourceRuntimeUtils: {
@@ -839,6 +958,7 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   const displayUtilsIndex = html.indexOf("./display-utils.js");
   const dashboardRuntimeIndex = html.indexOf("./dashboard-runtime.js");
   const searchRuntimeIndex = html.indexOf("./search-runtime.js");
+  const observabilityRuntimeIndex = html.indexOf("./observability-runtime.js");
   const appIndex = html.indexOf("./app.js");
 
   assert.ok(shellStateIndex >= 0);
@@ -855,7 +975,8 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   assert.ok(displayUtilsIndex > paginationIndex);
   assert.ok(dashboardRuntimeIndex > displayUtilsIndex);
   assert.ok(searchRuntimeIndex > dashboardRuntimeIndex);
-  assert.ok(appIndex > searchRuntimeIndex);
+  assert.ok(observabilityRuntimeIndex > searchRuntimeIndex);
+  assert.ok(appIndex > observabilityRuntimeIndex);
 });
 
 function loadAppWithoutBootstrap(context) {
@@ -875,6 +996,7 @@ function createAppVmContext({
   DrawerViewUtils: drawerViewUtils = DrawerViewUtils,
   ShellRuntimeUtils: shellRuntimeUtils = ShellRuntimeUtils,
   SearchRuntimeUtils: searchRuntimeUtils = SearchRuntimeUtils,
+  ObservabilityRuntimeUtils: observabilityRuntimeUtils = ObservabilityRuntimeUtils,
   PaginationUtils: paginationUtils = PaginationUtils,
   DisplayUtils: displayUtils = {},
   DashboardRuntimeUtils: dashboardRuntimeUtils = DashboardRuntimeUtils,
@@ -1036,6 +1158,7 @@ function createAppVmContext({
       requireDisplayUtils,
       requireDashboardRuntimeUtils,
       requireSearchRuntimeUtils,
+      requireObservabilityRuntimeUtils,
       ...(ResourceRuntimeUtils || {}),
     },
     ResourceViewUtils: resourceViewUtils,
@@ -1046,6 +1169,7 @@ function createAppVmContext({
     DrawerViewUtils: drawerViewUtils,
     ShellRuntimeUtils: shellRuntimeUtils,
     SearchRuntimeUtils: searchRuntimeUtils,
+    ObservabilityRuntimeUtils: observabilityRuntimeUtils,
     PaginationUtils: paginationUtils,
     DisplayUtils: displayUtils,
     DashboardRuntimeUtils: dashboardRuntimeUtils,
