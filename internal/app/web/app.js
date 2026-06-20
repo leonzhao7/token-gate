@@ -294,7 +294,6 @@ const state = {
 };
 const resourceCrud = ResourceCrudUtils.createResourceCrud({
   state,
-  escapeHTML,
   resources: {
     proxies: {
       form: proxyForm,
@@ -432,7 +431,7 @@ const resourceCrud = ResourceCrudUtils.createResourceCrud({
     },
   },
 });
-const { readForm, renderProxyOptions, splitList } = resourceCrud;
+const { readForm, splitList } = resourceCrud;
 const parseModelMapping = ResourceCrudUtils.parseModelMapping;
 const startCreateProxy = () => resourceCrud.startCreate("proxies");
 const startEditProxy = (id) => resourceCrud.startEdit("proxies", id);
@@ -446,6 +445,22 @@ const resetClientForm = () => resourceCrud.reset("clients");
 const startCreatePolicy = () => resourceCrud.startCreate("policies");
 const startEditPolicy = (id) => resourceCrud.startEdit("policies", id);
 const resetPolicyForm = () => resourceCrud.reset("policies");
+
+function renderProxyOptions() {
+  const proxyInput = backendForm?.elements?.proxy_id;
+  if (!proxyInput) {
+    return;
+  }
+
+  const selected = proxyInput.value || "0";
+  proxyInput.innerHTML = `
+    <option value="0">Direct connection</option>
+    ${state.proxies.map((proxy) => `
+      <option value="${proxy.id}">${escapeHTML(proxy.name)} (${escapeHTML(proxy.address)})${proxy.enabled ? "" : " - disabled"}</option>
+    `).join("")}
+  `;
+  proxyInput.value = state.proxies.some((proxy) => String(proxy.id) === selected) ? selected : "0";
+}
 
 tokenInput.value = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
 initializeThemeState();

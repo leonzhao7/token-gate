@@ -40,7 +40,7 @@
       .filter(Boolean);
   }
 
-  function createResourceCrud({ state, resources, escapeHTML }) {
+  function createResourceCrud({ state, resources }) {
     function applyDefaults(resource) {
       Object.entries(resource.defaults || {}).forEach(([key, defaultValue]) => {
         const element = resource.form.elements[key];
@@ -124,26 +124,9 @@
       resource.render();
     }
 
-    function renderProxyOptions() {
-      const proxyInput = resources.backends?.form?.elements?.proxy_id;
-      if (!proxyInput) {
-        return;
-      }
-
-      const selected = proxyInput.value || "0";
-      proxyInput.innerHTML = `
-    <option value="0">Direct connection</option>
-    ${state.proxies.map((proxy) => `
-      <option value="${proxy.id}">${escapeHTML(proxy.name)} (${escapeHTML(proxy.address)})${proxy.enabled ? "" : " - disabled"}</option>
-    `).join("")}
-  `;
-      proxyInput.value = state.proxies.some((proxy) => String(proxy.id) === selected) ? selected : "0";
-    }
-
     return {
       hideModal,
       readForm,
-      renderProxyOptions,
       reset,
       showModal,
       splitList,

@@ -77,7 +77,7 @@ test("readForm collects form data and checkbox states", () => {
   });
 });
 
-test("createResourceCrud drives backend create, edit, reset, and proxy option rendering", () => {
+test("createResourceCrud drives backend create, edit, and reset without backend-specific helpers", () => {
   const events = [];
   const state = {
     proxies: [
@@ -166,9 +166,6 @@ test("createResourceCrud drives backend create, edit, reset, and proxy option re
 
   const crud = createResourceCrud({
     state,
-    escapeHTML(value) {
-      return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;");
-    },
     resources: {
       backends: {
         form: backendForm,
@@ -216,6 +213,8 @@ test("createResourceCrud drives backend create, edit, reset, and proxy option re
     },
   });
 
+  assert.equal("renderProxyOptions" in crud, false);
+
   crud.startCreate("backends");
   assert.equal(state.editingBackendID, null);
   assert.equal(backendForm.elements.protocol.value, "openai");
@@ -242,15 +241,7 @@ test("createResourceCrud drives backend create, edit, reset, and proxy option re
   assert.equal(backendModalTitle.textContent, "编辑 Backend");
 
   backendForm.elements.proxy_id.value = "7";
-  crud.renderProxyOptions();
-  assert.match(backendForm.elements.proxy_id.innerHTML, /Direct connection/);
-  assert.match(backendForm.elements.proxy_id.innerHTML, /tokyo \(10\.0\.0\.7:1080\)/);
-  assert.match(backendForm.elements.proxy_id.innerHTML, /sydney \(10\.0\.0\.8:1080\) - disabled/);
   assert.equal(backendForm.elements.proxy_id.value, "7");
-
-  backendForm.elements.proxy_id.value = "999";
-  crud.renderProxyOptions();
-  assert.equal(backendForm.elements.proxy_id.value, "0");
 
   crud.reset("backends");
   assert.equal(state.editingBackendID, null);
@@ -268,3 +259,316 @@ test("createResourceCrud drives backend create, edit, reset, and proxy option re
     "render:backends",
   ]);
 });
+
+test("createResourceCrud drives proxy create, edit, and reset defaults with banner visibility", () => {
+  const events = [];
+  const state = {
+    proxies: [{
+      id: 11,
+      name: "tokyo",
+      address: "10.0.0.7:1080",
+      username: "alice",
+      password: "secret",
+      enabled: false,
+    }],
+    editingProxyID: null,
+  };
+  const resource = createCrudResourceHarness({
+    focusEvent: "focus:proxy",
+    renderEvent: "render:proxies",
+    focusField: "name",
+    defaults: {
+      enabled: true,
+    },
+    fields: ["name", "address", "username", "password", "enabled"],
+    assignEditValues(form, proxy) {
+      form.elements.name.value = proxy.name || "";
+      form.elements.address.value = proxy.address || "";
+      form.elements.username.value = proxy.username || "";
+      form.elements.password.value = proxy.password || "";
+      form.elements.enabled.checked = Boolean(proxy.enabled);
+    },
+    createTitle: "新增 Proxy",
+    editTitle: "编辑 Proxy",
+    createSubmitLabel: "新增 Proxy",
+    editSubmitLabel: "保存 Proxy",
+    editBannerText(proxy) {
+      return `正在编辑 SOCKS5 Proxy: ${proxy.name}`;
+    },
+    events,
+  });
+  const crud = createResourceCrud({
+    state,
+    resources: {
+      proxies: {
+        ...resource,
+        editingStateKey: "editingProxyID",
+        collectionStateKey: "proxies",
+      },
+    },
+  });
+
+  crud.startCreate("proxies");
+  assert.equal(resource.form.elements.enabled.checked, true);
+  assert.equal(resource.submitButton.textContent, "新增 Proxy");
+  assert.equal(resource.cancelButton.classList.contains("hidden"), false);
+  assert.equal(resource.editBanner.classList.contains("hidden"), true);
+  assert.equal(resource.title.textContent, "新增 Proxy");
+
+  crud.startEdit("proxies", 11);
+  assert.equal(state.editingProxyID, 11);
+  assert.equal(resource.form.elements.name.value, "tokyo");
+  assert.equal(resource.form.elements.password.value, "secret");
+  assert.equal(resource.form.elements.enabled.checked, false);
+  assert.equal(resource.submitButton.textContent, "保存 Proxy");
+  assert.equal(resource.editBanner.textContent, "正在编辑 SOCKS5 Proxy: tokyo");
+  assert.equal(resource.editBanner.classList.contains("hidden"), false);
+  assert.equal(resource.title.textContent, "编辑 Proxy");
+
+  crud.reset("proxies");
+  assert.equal(state.editingProxyID, null);
+  assert.equal(resource.form.elements.name.value, "");
+  assert.equal(resource.form.elements.password.value, "");
+  assert.equal(resource.form.elements.enabled.checked, true);
+  assert.equal(resource.submitButton.textContent, "新增 Proxy");
+  assert.equal(resource.cancelButton.classList.contains("hidden"), true);
+  assert.equal(resource.editBanner.classList.contains("hidden"), true);
+  assert.equal(resource.modal.classList.contains("hidden"), true);
+  assert.deepEqual(events, [
+    "focus:proxy",
+    "render:proxies",
+    "focus:proxy",
+    "render:proxies",
+    "render:proxies",
+  ]);
+});
+
+test("createResourceCrud sets client token placeholder for create and edit states", () => {
+  const state = {
+    clients: [
+      { id: 21, name: "plain-token", token: "client-secret", enabled: true },
+      { id: 22, name: "hashed-token", token_hash: "abc123", enabled: false },
+    ],
+    editingClientID: null,
+  };
+  const resource = createCrudResourceHarness({
+    focusEvent: "focus:client",
+    renderEvent: "render:clients",
+    focusField: "name",
+    defaults: {
+      token: { placeholder: "Leave blank to auto-generate" },
+      enabled: true,
+    },
+    fields: ["name", "token", "route_mode_override", "route_group", "enabled"],
+    assignEditValues(form, client) {
+      form.elements.name.value = client.name || "";
+      form.elements.token.value = client.token || "";
+      form.elements.token.placeholder = client.token ? "Client token" : "历史 key 仅保存了 hash；重新填写后可显示";
+      form.elements.route_mode_override.value = client.route_mode_override || "";
+      form.elements.route_group.value = client.route_group || "";
+      form.elements.enabled.checked = Boolean(client.enabled);
+    },
+    createTitle: "新增 Client Key",
+    editTitle: "编辑 Client Key",
+    createSubmitLabel: "新增 Client Key",
+    editSubmitLabel: "保存 Client Key",
+    editBannerText(client) {
+      return `正在编辑 Client Key: ${client.name}`;
+    },
+  });
+  const crud = createResourceCrud({
+    state,
+    resources: {
+      clients: {
+        ...resource,
+        editingStateKey: "editingClientID",
+        collectionStateKey: "clients",
+      },
+    },
+  });
+
+  crud.startCreate("clients");
+  assert.equal(resource.form.elements.token.value, "");
+  assert.equal(resource.form.elements.token.placeholder, "Leave blank to auto-generate");
+
+  crud.startEdit("clients", 21);
+  assert.equal(resource.form.elements.token.value, "client-secret");
+  assert.equal(resource.form.elements.token.placeholder, "Client token");
+
+  crud.startEdit("clients", 22);
+  assert.equal(resource.form.elements.token.value, "");
+  assert.equal(resource.form.elements.token.placeholder, "历史 key 仅保存了 hash；重新填写后可显示");
+
+  crud.reset("clients");
+  assert.equal(resource.form.elements.token.value, "");
+  assert.equal(resource.form.elements.token.placeholder, "Leave blank to auto-generate");
+});
+
+test("createResourceCrud drives policy create, edit, and reset defaults with banner visibility", () => {
+  const events = [];
+  const state = {
+    policies: [{
+      id: 31,
+      pattern: "gpt-*",
+      endpoint: "responses",
+      placement_policy: "round_robin",
+      backend_pool: "premium",
+      priority: 7,
+      failover_enabled: false,
+    }],
+    editingPolicyID: null,
+  };
+  const resource = createCrudResourceHarness({
+    focusEvent: "focus:policy",
+    renderEvent: "render:policies",
+    focusField: "pattern",
+    defaults: {
+      endpoint: "chat",
+      placement_policy: "sticky",
+      priority: 100,
+      failover_enabled: true,
+    },
+    fields: ["pattern", "endpoint", "placement_policy", "backend_pool", "priority", "failover_enabled"],
+    assignEditValues(form, policy) {
+      form.elements.pattern.value = policy.pattern || "";
+      form.elements.endpoint.value = policy.endpoint || "chat";
+      form.elements.placement_policy.value = policy.placement_policy || "sticky";
+      form.elements.backend_pool.value = policy.backend_pool || "";
+      form.elements.priority.value = policy.priority || 100;
+      form.elements.failover_enabled.checked = Boolean(policy.failover_enabled);
+    },
+    createTitle: "新增 Policy",
+    editTitle: "编辑 Policy",
+    createSubmitLabel: "新增 Policy",
+    editSubmitLabel: "保存 Policy",
+    editBannerText(policy) {
+      return `正在编辑 Model Policy: ${policy.pattern}`;
+    },
+    events,
+  });
+  const crud = createResourceCrud({
+    state,
+    resources: {
+      policies: {
+        ...resource,
+        editingStateKey: "editingPolicyID",
+        collectionStateKey: "policies",
+      },
+    },
+  });
+
+  crud.startCreate("policies");
+  assert.equal(resource.form.elements.endpoint.value, "chat");
+  assert.equal(resource.form.elements.placement_policy.value, "sticky");
+  assert.equal(resource.form.elements.priority.value, 100);
+  assert.equal(resource.form.elements.failover_enabled.checked, true);
+  assert.equal(resource.editBanner.classList.contains("hidden"), true);
+
+  crud.startEdit("policies", 31);
+  assert.equal(state.editingPolicyID, 31);
+  assert.equal(resource.form.elements.pattern.value, "gpt-*");
+  assert.equal(resource.form.elements.endpoint.value, "responses");
+  assert.equal(resource.form.elements.placement_policy.value, "round_robin");
+  assert.equal(resource.form.elements.priority.value, 7);
+  assert.equal(resource.form.elements.failover_enabled.checked, false);
+  assert.equal(resource.editBanner.textContent, "正在编辑 Model Policy: gpt-*");
+  assert.equal(resource.editBanner.classList.contains("hidden"), false);
+
+  crud.reset("policies");
+  assert.equal(state.editingPolicyID, null);
+  assert.equal(resource.form.elements.pattern.value, "");
+  assert.equal(resource.form.elements.endpoint.value, "chat");
+  assert.equal(resource.form.elements.placement_policy.value, "sticky");
+  assert.equal(resource.form.elements.priority.value, 100);
+  assert.equal(resource.form.elements.failover_enabled.checked, true);
+  assert.equal(resource.cancelButton.classList.contains("hidden"), true);
+  assert.equal(resource.editBanner.classList.contains("hidden"), true);
+  assert.equal(resource.modal.classList.contains("hidden"), true);
+  assert.deepEqual(events, [
+    "focus:policy",
+    "render:policies",
+    "focus:policy",
+    "render:policies",
+    "render:policies",
+  ]);
+});
+
+function createClassList(initial = []) {
+  const tokens = new Set(initial);
+  return {
+    add(...items) {
+      items.forEach((item) => tokens.add(item));
+    },
+    remove(...items) {
+      items.forEach((item) => tokens.delete(item));
+    },
+    contains(item) {
+      return tokens.has(item);
+    },
+  };
+}
+
+function createInput(events, focusEvent, value = "") {
+  return {
+    value,
+    checked: false,
+    placeholder: "",
+    innerHTML: "",
+    focus() {
+      if (events && focusEvent) {
+        events.push(focusEvent);
+      }
+    },
+  };
+}
+
+function createCrudResourceHarness({
+  focusEvent,
+  renderEvent,
+  focusField,
+  defaults,
+  fields,
+  assignEditValues,
+  createTitle,
+  editTitle,
+  createSubmitLabel,
+  editSubmitLabel,
+  editBannerText,
+  events = [],
+}) {
+  const elements = Object.fromEntries(fields.map((field) => [field, createInput(events, field === focusField ? focusEvent : null)]));
+  const form = {
+    resetCalls: 0,
+    reset() {
+      this.resetCalls += 1;
+      Object.values(this.elements).forEach((element) => {
+        if ("checked" in element) {
+          element.checked = false;
+        }
+        if ("value" in element) {
+          element.value = "";
+        }
+      });
+    },
+    elements,
+  };
+  return {
+    form,
+    modal: { classList: createClassList(["hidden"]) },
+    title: { textContent: "" },
+    submitButton: { textContent: "" },
+    cancelButton: { classList: createClassList(["hidden"]) },
+    editBanner: { textContent: "", classList: createClassList(["hidden"]) },
+    render() {
+      events.push(renderEvent);
+    },
+    focusField,
+    defaults,
+    assignEditValues,
+    createTitle,
+    editTitle,
+    createSubmitLabel,
+    editSubmitLabel,
+    editBannerText,
+  };
+}

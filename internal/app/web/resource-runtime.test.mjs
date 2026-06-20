@@ -78,6 +78,20 @@ test("requireResourceCrudUtils throws a clear error when resource-crud utils are
   );
 });
 
+test("requireResourceCrudUtils reports exact missing helper names for partial crud modules", () => {
+  assert.throws(
+    () => requireResourceCrudUtils({
+      createResourceCrud() {
+        return {};
+      },
+      splitList() {
+        return [];
+      },
+    }),
+    /missing ResourceCrudUtils methods: parseModelMapping, formatModelMappingInput, readForm/i,
+  );
+});
+
 test("app.js fails clearly during startup when resource view utils are missing", () => {
   const context = createAppVmContext({
     ResourceRuntimeUtils: { requireResourceViewUtils },
@@ -145,6 +159,37 @@ test("app.js integrates the validated resource view module for proxy list render
   assert.match(html, /data-toolbar-search="proxies"/);
   assert.match(html, /tokyo-proxy/);
   assert.match(html, /Default view/);
+});
+
+test("app.js keeps backend proxy option rendering outside shared crud utils", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: { requireResourceViewUtils, requireResourceStateUtils, requireResourceCrudUtils },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+  });
+
+  loadAppWithoutBootstrap(context);
+  vm.runInContext(`
+    state.proxies = [
+      { id: 7, name: "tokyo", address: "10.0.0.7:1080", enabled: true },
+      { id: 8, name: "sydney", address: "10.0.0.8:1080", enabled: false }
+    ];
+    backendForm.elements.proxy_id.value = "7";
+    renderProxyOptions();
+  `, context);
+
+  const proxySelect = context.__elements.get("form:proxy_id");
+  assert.match(proxySelect.innerHTML, /Direct connection/);
+  assert.match(proxySelect.innerHTML, /tokyo \(10\.0\.0\.7:1080\)/);
+  assert.match(proxySelect.innerHTML, /sydney \(10\.0\.0\.8:1080\) - disabled/);
+  assert.equal(proxySelect.value, "7");
+
+  vm.runInContext(`
+    backendForm.elements.proxy_id.value = "999";
+    renderProxyOptions();
+  `, context);
+  assert.equal(proxySelect.value, "0");
 });
 
 test("app.js initializes resource view defaults through ResourceStateUtils", () => {
