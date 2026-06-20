@@ -191,10 +191,77 @@
     };
   }
 
+  function clearSearchState(searchState) {
+    const nextSequence = nextSearchSequence(
+      Math.max(Number(searchState?.requestSequence) || 0, Number(searchState?.activeSequence) || 0),
+    );
+    searchState.requestSequence = nextSequence;
+    searchState.activeSequence = nextSequence;
+    searchState.loading = false;
+    searchState.activeIndex = -1;
+    searchState.results = {
+      query: "",
+      total: 0,
+      groups: [],
+    };
+    return nextSequence;
+  }
+
+  function openSearchState(searchState, { triggerElement = null } = {}) {
+    searchState.triggerElement = triggerElement;
+    searchState.open = true;
+    return {
+      shouldTriggerSearch: Boolean(
+        String(searchState?.query || "").trim()
+        && !Number(searchState?.results?.total || 0)
+        && !searchState?.loading
+      ),
+    };
+  }
+
+  function closeSearchState(searchState) {
+    const previousTrigger = searchState?.triggerElement || null;
+    searchState.open = false;
+    searchState.activeIndex = -1;
+    return { previousTrigger };
+  }
+
+  function updateSearchQueryState(searchState, value) {
+    searchState.query = String(value || "");
+    if (!searchState.query.trim()) {
+      clearSearchState(searchState);
+      return { shouldTriggerSearch: false };
+    }
+    return { shouldTriggerSearch: true };
+  }
+
+  function startSearchRequestState(searchState) {
+    const request = createSearchRequest(searchState?.query, searchState?.requestSequence);
+    searchState.requestSequence = request.sequence;
+    searchState.activeSequence = request.sequence;
+    searchState.loading = true;
+    return request;
+  }
+
+  function resolveSearchResponseState(searchState, requestID, response) {
+    if (Number(requestID) !== Number(searchState?.activeSequence)) {
+      return false;
+    }
+    searchState.results = normalizeSearchResponse(response);
+    const keyboardState = createSearchKeyboardState({
+      results: searchState.results,
+      activeIndex: searchState.activeIndex,
+    });
+    searchState.activeIndex = keyboardState.activeIndex;
+    return true;
+  }
+
   const api = {
     SEARCH_GROUPS,
     SEARCH_GROUP_MAP,
     buildSearchRequestPath,
+    clearSearchState,
+    closeSearchState,
     clampSearchLimit,
     createSearchKeyboardState,
     createSearchRequest,
@@ -206,6 +273,10 @@
     moveSearchSelection,
     nextSearchSequence,
     normalizeSearchResponse,
+    openSearchState,
+    resolveSearchResponseState,
+    startSearchRequestState,
+    updateSearchQueryState,
   };
 
   if (typeof module !== "undefined" && module.exports) {

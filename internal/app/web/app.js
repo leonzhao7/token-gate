@@ -1719,10 +1719,11 @@ function feedToneClass(tone) {
 }
 
 function closeSearchShell() {
-  const previousTrigger = state.ui.search.triggerElement;
-  state.ui.search.open = false;
+  const closeState = typeof SearchUtils.closeSearchState === "function"
+    ? SearchUtils.closeSearchState(state.ui.search)
+    : { previousTrigger: state.ui.search.triggerElement };
+  const previousTrigger = closeState.previousTrigger;
   searchDebounce?.cancel?.();
-  state.ui.search.activeIndex = -1;
   renderSearchShell();
   if (previousTrigger instanceof HTMLElement) {
     previousTrigger.focus();
@@ -1730,8 +1731,17 @@ function closeSearchShell() {
 }
 
 function openSearchShell() {
-  state.ui.search.triggerElement = document.activeElement instanceof HTMLElement ? document.activeElement : searchOpenBtn;
-  state.ui.search.open = true;
+  const openState = typeof SearchUtils.openSearchState === "function"
+    ? SearchUtils.openSearchState(state.ui.search, {
+      triggerElement: document.activeElement instanceof HTMLElement ? document.activeElement : searchOpenBtn,
+    })
+    : {
+      shouldTriggerSearch: Boolean(
+        state.ui.search.query.trim()
+        && !state.ui.search.results.total
+        && !state.ui.search.loading
+      ),
+    };
   renderSearchShell();
   if (searchInput) {
     searchInput.focus();
@@ -1740,47 +1750,38 @@ function openSearchShell() {
   }
   if (state.ui.search.query.trim()) {
     searchInput?.select();
-    if (!state.ui.search.results.total && !state.ui.search.loading) {
+    if (openState.shouldTriggerSearch) {
       triggerSearch();
     }
   }
 }
 
 function updateSearchQuery(value) {
-  state.ui.search.query = String(value || "");
-  if (!state.ui.search.query.trim()) {
+  const updateState = typeof SearchUtils.updateSearchQueryState === "function"
+    ? SearchUtils.updateSearchQueryState(state.ui.search, value)
+    : { shouldTriggerSearch: Boolean(String(value || "").trim()) };
+  if (!updateState.shouldTriggerSearch) {
     searchDebounce?.cancel?.();
-    const clearedSequence = typeof SearchUtils.nextSearchSequence === "function"
-      ? SearchUtils.nextSearchSequence(Math.max(state.ui.search.requestSequence, state.ui.search.activeSequence))
-      : Math.max(state.ui.search.requestSequence, state.ui.search.activeSequence) + 1;
-    state.ui.search.requestSequence = clearedSequence;
-    state.ui.search.activeSequence = clearedSequence;
-    state.ui.search.loading = false;
-    state.ui.search.activeIndex = -1;
-    state.ui.search.results = {
-      query: "",
-      total: 0,
-      groups: [],
-    };
     return;
   }
   triggerSearch();
 }
 
 function triggerSearch() {
-  const request = typeof SearchUtils.createSearchRequest === "function"
-    ? SearchUtils.createSearchRequest(state.ui.search.query, state.ui.search.requestSequence)
-    : {
-      sequence: (Number(state.ui.search.requestSequence) || 0) + 1,
-      query: String(state.ui.search.query || "").trim(),
-    };
+  const request = typeof SearchUtils.startSearchRequestState === "function"
+    ? SearchUtils.startSearchRequestState(state.ui.search)
+    : (typeof SearchUtils.createSearchRequest === "function"
+      ? SearchUtils.createSearchRequest(state.ui.search.query, state.ui.search.requestSequence)
+      : {
+        sequence: (Number(state.ui.search.requestSequence) || 0) + 1,
+        query: String(state.ui.search.query || "").trim(),
+      });
   state.ui.search.requestSequence = request.sequence;
   state.ui.search.activeSequence = request.sequence;
   if (!searchDebounce) {
     executeSearch(request).catch(reportError);
     return;
   }
-  state.ui.search.loading = true;
   renderSearchShell();
   searchDebounce(request);
 }
@@ -1789,13 +1790,17 @@ async function executeSearch(request) {
   const requestID = Number(request?.sequence) || 0;
   const trimmedQuery = String(request?.query || "").trim();
   if (!trimmedQuery) {
-    state.ui.search.loading = false;
-    state.ui.search.activeIndex = -1;
-    state.ui.search.results = {
-      query: "",
-      total: 0,
-      groups: [],
-    };
+    if (typeof SearchUtils.clearSearchState === "function") {
+      SearchUtils.clearSearchState(state.ui.search);
+    } else {
+      state.ui.search.loading = false;
+      state.ui.search.activeIndex = -1;
+      state.ui.search.results = {
+        query: "",
+        total: 0,
+        groups: [],
+      };
+    }
     renderSearchShell();
     return;
   }
@@ -1807,14 +1812,22 @@ async function executeSearch(request) {
     : `/admin/api/search?q=${encodeURIComponent(trimmedQuery)}&limit=${SEARCH_LIMIT}`;
   try {
     const response = await api(path);
-    if (requestID !== state.ui.search.activeSequence) {
+    const applied = typeof SearchUtils.resolveSearchResponseState === "function"
+      ? SearchUtils.resolveSearchResponseState(state.ui.search, requestID, response)
+      : null;
+    if (applied === false) {
       return;
     }
-    state.ui.search.results = typeof SearchUtils.normalizeSearchResponse === "function"
-      ? SearchUtils.normalizeSearchResponse(response)
-      : { query: trimmedQuery, total: 0, groups: [] };
-    const keyboardState = currentSearchKeyboardState();
-    state.ui.search.activeIndex = keyboardState.activeIndex;
+    if (applied === null) {
+      if (requestID !== state.ui.search.activeSequence) {
+        return;
+      }
+      state.ui.search.results = typeof SearchUtils.normalizeSearchResponse === "function"
+        ? SearchUtils.normalizeSearchResponse(response)
+        : { query: trimmedQuery, total: 0, groups: [] };
+      const keyboardState = currentSearchKeyboardState();
+      state.ui.search.activeIndex = keyboardState.activeIndex;
+    }
   } finally {
     if (requestID === state.ui.search.activeSequence) {
       state.ui.search.loading = false;

@@ -4,7 +4,9 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const {
+  clearSearchState,
   buildSearchRequestPath,
+  closeSearchState,
   createSearchKeyboardState,
   createSearchRequest,
   createDebouncedTask,
@@ -15,6 +17,10 @@ const {
   moveSearchSelection,
   nextSearchSequence,
   normalizeSearchResponse,
+  openSearchState,
+  resolveSearchResponseState,
+  startSearchRequestState,
+  updateSearchQueryState,
 } = require("./search.js");
 
 test("buildSearchRequestPath trims query and clamps limit", () => {
@@ -270,4 +276,131 @@ test("createSearchKeyboardState exposes current target from active index", () =>
     targetPage: "usage-logs",
     targetId: "req-1",
   });
+});
+
+test("openSearchState marks the shell open and requests a fetch only when prior results are empty", () => {
+  const searchState = {
+    open: false,
+    query: "gpt-5",
+    loading: false,
+    triggerElement: null,
+    results: { total: 0, groups: [] },
+  };
+
+  const opened = openSearchState(searchState, { triggerElement: { id: "launcher" } });
+  assert.equal(searchState.open, true);
+  assert.deepEqual(searchState.triggerElement, { id: "launcher" });
+  assert.equal(opened.shouldTriggerSearch, true);
+
+  const reopened = openSearchState(searchState, { triggerElement: { id: "other" } });
+  assert.equal(reopened.shouldTriggerSearch, true);
+
+  searchState.results.total = 3;
+  const withResults = openSearchState(searchState, { triggerElement: { id: "again" } });
+  assert.equal(withResults.shouldTriggerSearch, false);
+});
+
+test("closeSearchState hides the shell and resets keyboard selection", () => {
+  const triggerElement = { id: "search-launcher" };
+  const searchState = {
+    open: true,
+    activeIndex: 4,
+    triggerElement,
+  };
+
+  const result = closeSearchState(searchState);
+  assert.equal(searchState.open, false);
+  assert.equal(searchState.activeIndex, -1);
+  assert.equal(result.previousTrigger, triggerElement);
+});
+
+test("updateSearchQueryState clears results for blank queries and flags non-empty queries for search", () => {
+  const searchState = {
+    query: "old",
+    requestSequence: 4,
+    activeSequence: 7,
+    loading: true,
+    activeIndex: 2,
+    results: { query: "old", total: 2, groups: [{ key: "backends", items: [] }] },
+  };
+
+  const blank = updateSearchQueryState(searchState, "   ");
+  assert.equal(blank.shouldTriggerSearch, false);
+  assert.equal(searchState.query, "   ");
+  assert.equal(searchState.requestSequence, 8);
+  assert.equal(searchState.activeSequence, 8);
+  assert.equal(searchState.loading, false);
+  assert.equal(searchState.activeIndex, -1);
+  assert.deepEqual(searchState.results, { query: "", total: 0, groups: [] });
+
+  const nonEmpty = updateSearchQueryState(searchState, "gpt");
+  assert.equal(nonEmpty.shouldTriggerSearch, true);
+  assert.equal(searchState.query, "gpt");
+});
+
+test("startSearchRequestState allocates sequence and marks the shell loading", () => {
+  const searchState = {
+    query: "gpt-5",
+    requestSequence: 3,
+    activeSequence: 3,
+    loading: false,
+  };
+
+  const request = startSearchRequestState(searchState);
+  assert.deepEqual(request, {
+    sequence: 4,
+    query: "gpt-5",
+  });
+  assert.equal(searchState.requestSequence, 4);
+  assert.equal(searchState.activeSequence, 4);
+  assert.equal(searchState.loading, true);
+});
+
+test("resolveSearchResponseState applies only the active response and updates keyboard selection", () => {
+  const searchState = {
+    activeSequence: 9,
+    activeIndex: -1,
+    results: { query: "", total: 0, groups: [] },
+  };
+
+  const ignored = resolveSearchResponseState(searchState, 8, {
+    query: "ignored",
+    results: {},
+  });
+  assert.equal(ignored, false);
+  assert.deepEqual(searchState.results, { query: "", total: 0, groups: [] });
+
+  const applied = resolveSearchResponseState(searchState, 9, {
+    query: "gpt",
+    results: {
+      backends: [{
+        kind: "backend",
+        id: 1,
+        title: "edge-a",
+        target_page: "backends",
+        target_id: 1,
+      }],
+    },
+  });
+  assert.equal(applied, true);
+  assert.equal(searchState.results.total, 1);
+  assert.equal(searchState.activeIndex, 0);
+});
+
+test("clearSearchState resets loading selection and results while advancing sequence", () => {
+  const searchState = {
+    requestSequence: 5,
+    activeSequence: 8,
+    loading: true,
+    activeIndex: 3,
+    results: { query: "gpt", total: 2, groups: [{ key: "backends", items: [{}] }] },
+  };
+
+  const nextSequence = clearSearchState(searchState);
+  assert.equal(nextSequence, 9);
+  assert.equal(searchState.requestSequence, 9);
+  assert.equal(searchState.activeSequence, 9);
+  assert.equal(searchState.loading, false);
+  assert.equal(searchState.activeIndex, -1);
+  assert.deepEqual(searchState.results, { query: "", total: 0, groups: [] });
 });
