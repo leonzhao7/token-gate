@@ -177,6 +177,11 @@ const DrawerViewUtils = typeof ResourceRuntimeUtils.requireDrawerViewUtils === "
   : (() => {
     throw new Error("drawer-view.js failed to load before app.js");
   })();
+const ShellRuntimeUtils = typeof ResourceRuntimeUtils.requireShellRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireShellRuntimeUtils(globalThis.ShellRuntimeUtils)
+  : (() => {
+    throw new Error("shell-runtime.js failed to load before app.js");
+  })();
 const DashboardUtils = globalThis.DashboardUtils || {};
 const DashboardViewUtils = globalThis.DashboardViewUtils || {};
 const ChartsUtils = globalThis.ChartsUtils || {};
@@ -486,6 +491,129 @@ function renderProxyOptions() {
     `).join("")}
   `;
   proxyInput.value = state.proxies.some((proxy) => String(proxy.id) === selected) ? selected : "0";
+}
+
+function pageIDFromHash() {
+  return ShellRuntimeUtils.pageIDFromHash({
+    windowObject: window,
+    pages,
+    shellViewUtils: ShellViewUtils,
+  });
+}
+
+function activatePage(id) {
+  return ShellRuntimeUtils.activatePage({
+    id,
+    pages,
+    pageLinks,
+    pageTitle,
+    pageBreadcrumb,
+    shellViewUtils: ShellViewUtils,
+  });
+}
+
+function navigateToPage(id) {
+  return ShellRuntimeUtils.navigateToPage({
+    id,
+    windowObject: window,
+    pages,
+    pageLinks,
+    pageTitle,
+    pageBreadcrumb,
+    shellStateUtils: ShellStateUtils,
+    shellViewUtils: ShellViewUtils,
+  });
+}
+
+function initializeThemeState() {
+  ShellRuntimeUtils.initializeThemeState({
+    state,
+    rootElement,
+    localStorage,
+    themePreferenceKey: THEME_PREFERENCE_KEY,
+    systemThemeQuery,
+    shellStateUtils: ShellStateUtils,
+    themeUtils: ThemeUtils,
+  });
+}
+
+function persistThemePreference(preference) {
+  ShellRuntimeUtils.persistThemePreference({
+    preference,
+    localStorage,
+    themePreferenceKey: THEME_PREFERENCE_KEY,
+    shellStateUtils: ShellStateUtils,
+  });
+}
+
+function applyResolvedTheme() {
+  ShellRuntimeUtils.applyResolvedTheme({
+    state,
+    systemThemeQuery,
+    themeUtils: ThemeUtils,
+  });
+}
+
+function buildSettingsSnapshot() {
+  return ShellRuntimeUtils.buildSettingsSnapshot({
+    shellStateUtils: ShellStateUtils,
+    localStorage,
+    adminTokenKey: ADMIN_TOKEN_KEY,
+    themePreference: state.ui.themePreference,
+    resolvedTheme: state.ui.theme,
+    appShell,
+    lastRefreshAt: state.ui.lastRefreshAt,
+    formatDateTime,
+    backends: state.backends,
+    clients: state.clients,
+    policies: state.policies,
+    proxies: state.proxies,
+    usageLogStats: state.usageLogStats,
+    usageLogMeta: state.paginationMeta.usageLogs,
+    eventSummary: state.eventSummary,
+  });
+}
+
+function renderSettings() {
+  ShellRuntimeUtils.renderSettings({
+    settingsRoot,
+    settingsUtils: SettingsUtils,
+    buildSettingsSnapshot,
+  });
+}
+
+function renderTheme() {
+  ShellRuntimeUtils.renderTheme({
+    rootElement,
+    appShell,
+    themeToggleBtn,
+    themeToggleLabel,
+    theme: state.ui.theme,
+    preference: state.ui.themePreference,
+    shellViewUtils: ShellViewUtils,
+    themeUtils: ThemeUtils,
+  });
+  renderSettings();
+}
+
+function cycleThemePreference() {
+  const nextPreference = ShellRuntimeUtils.cycleThemePreference({
+    currentPreference: state.ui.themePreference,
+    themeUtils: ThemeUtils,
+  });
+  state.ui.themePreference = nextPreference;
+  persistThemePreference(nextPreference);
+  applyResolvedTheme();
+  renderTheme();
+}
+
+function toggleSidebarCollapsed(forceState) {
+  ShellRuntimeUtils.toggleSidebarCollapsed({
+    appShell,
+    sidebarRoot,
+    forceState,
+  });
+  renderSettings();
 }
 
 tokenInput.value = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
@@ -1180,130 +1308,6 @@ function startDashboardLoading() {
     panelState.status = "loading";
     panelState.error = "";
     panelState.data = null;
-  });
-}
-
-function pageIDFromHash() {
-  return ShellViewUtils.pageIDFromHash(window.location.hash, pages);
-}
-
-function activatePage(id) {
-  ShellViewUtils.activatePageView({
-    pages,
-    pageLinks,
-    id,
-    pageTitle,
-    pageBreadcrumb,
-  });
-}
-
-function navigateToPage(id) {
-  const navigation = ShellStateUtils.buildPageNavigation({
-    currentHash: window.location.hash,
-    requestedID: id,
-    pages,
-  });
-  if (navigation.shouldUpdateHash) {
-    window.location.hash = navigation.nextHash;
-    return;
-  }
-  activatePage(navigation.nextID);
-}
-
-function initializeThemeState() {
-  const resolved = ShellStateUtils.createThemeRuntimeState({
-    storedPreference: localStorage.getItem(THEME_PREFERENCE_KEY),
-    systemPrefersDark: Boolean(systemThemeQuery?.matches),
-    resolveThemeState({ storedPreference, systemPrefersDark }) {
-      return resolveThemeState(storedPreference, systemPrefersDark);
-    },
-  });
-  state.ui.themePreference = resolved.preference;
-  state.ui.theme = resolved.theme;
-  rootElement.dataset.themePreference = resolved.preference;
-  rootElement.dataset.theme = resolved.theme;
-}
-
-function resolveThemeState(storedPreference, systemPrefersDark = Boolean(systemThemeQuery?.matches)) {
-  if (typeof ThemeUtils.resolveThemeState === "function") {
-    return ThemeUtils.resolveThemeState({
-      storedPreference,
-      systemPrefersDark,
-    });
-  }
-  return {
-    preference: "system",
-    theme: systemPrefersDark ? "dark" : "light",
-    isAuto: true,
-  };
-}
-
-function persistThemePreference(preference) {
-  const operation = ShellStateUtils.createThemeStorageOperation(preference);
-  if (operation.type === "remove") {
-    localStorage.removeItem(THEME_PREFERENCE_KEY);
-    return;
-  }
-  localStorage.setItem(THEME_PREFERENCE_KEY, operation.value);
-}
-
-function applyResolvedTheme() {
-  const resolved = resolveThemeState(state.ui.themePreference);
-  state.ui.themePreference = resolved.preference;
-  state.ui.theme = resolved.theme;
-}
-
-function renderTheme() {
-  ShellViewUtils.renderThemeView({
-    rootElement,
-    appShell,
-    themeToggleBtn,
-    themeToggleLabel,
-    theme: state.ui.theme,
-    preference: state.ui.themePreference,
-    getThemeToggleState(input) {
-      return typeof ThemeUtils.getThemeToggleState === "function"
-        ? ThemeUtils.getThemeToggleState(input)
-        : {
-          label: input.theme,
-          hint: "Switch theme mode",
-          pressed: input.theme === "dark",
-        };
-    },
-  });
-  renderSettings();
-}
-
-function renderSettings() {
-  if (!settingsRoot) {
-    return;
-  }
-  const viewModel = typeof SettingsUtils.createSettingsViewModel === "function"
-    ? SettingsUtils.createSettingsViewModel(buildSettingsSnapshot())
-    : null;
-  if (!viewModel) {
-    settingsRoot.innerHTML = "";
-    return;
-  }
-  settingsRoot.innerHTML = typeof SettingsUtils.renderSettingsPage === "function"
-    ? SettingsUtils.renderSettingsPage(viewModel)
-    : "";
-}
-
-function buildSettingsSnapshot() {
-  return ShellStateUtils.createSettingsSnapshot({
-    adminTokenValue: localStorage.getItem(ADMIN_TOKEN_KEY) || "",
-    themePreference: state.ui.themePreference,
-    resolvedTheme: state.ui.theme,
-    sidebarCollapsed: appShell?.classList.contains("sidebar-collapsed"),
-    lastRefreshLabel: state.ui.lastRefreshAt ? formatDateTime(state.ui.lastRefreshAt) : "",
-    backends: state.backends,
-    clients: state.clients,
-    policies: state.policies,
-    proxies: state.proxies,
-    usageLogStats: state.usageLogStats,
-    usageLogMeta: state.paginationMeta.usageLogs,
-    eventSummary: state.eventSummary,
   });
 }
 
@@ -2647,25 +2651,6 @@ async function primeUsageLogDetail(id) {
       renderUsageLogs();
     }
   }
-}
-
-function cycleThemePreference() {
-  const nextPreference = typeof ThemeUtils.nextThemePreference === "function"
-    ? ThemeUtils.nextThemePreference(state.ui.themePreference)
-    : "light";
-  state.ui.themePreference = nextPreference;
-  persistThemePreference(nextPreference);
-  applyResolvedTheme();
-  renderTheme();
-}
-
-function toggleSidebarCollapsed(forceState) {
-  const nextState = typeof forceState === "boolean"
-    ? forceState
-    : !appShell?.classList.contains("sidebar-collapsed");
-  appShell?.classList.toggle("sidebar-collapsed", nextState);
-  sidebarRoot?.classList.toggle("is-collapsed", nextState);
-  renderSettings();
 }
 
 function bindPagination(container, key, rerender) {

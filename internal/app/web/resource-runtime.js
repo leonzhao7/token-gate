@@ -41,6 +41,19 @@
     "drawerDisplayTitle",
     "renderDrawerShell",
   ];
+  const REQUIRED_SHELL_RUNTIME_METHODS = [
+    "pageIDFromHash",
+    "activatePage",
+    "navigateToPage",
+    "initializeThemeState",
+    "persistThemePreference",
+    "applyResolvedTheme",
+    "renderTheme",
+    "renderSettings",
+    "buildSettingsSnapshot",
+    "cycleThemePreference",
+    "toggleSidebarCollapsed",
+  ];
 
   function requireResourceViewUtils(resourceViewUtils) {
     const candidate = resourceViewUtils && typeof resourceViewUtils === "object"
@@ -126,11 +139,26 @@
     );
   }
 
+  function requireShellRuntimeUtils(shellRuntimeUtils) {
+    const candidate = shellRuntimeUtils && typeof shellRuntimeUtils === "object"
+      ? shellRuntimeUtils
+      : null;
+    const missing = REQUIRED_SHELL_RUNTIME_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `shell-runtime.js failed to load before app.js; missing ShellRuntimeUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   const api = {
     requireDrawerViewUtils,
     requireResourceCrudUtils,
     requireResourceStateUtils,
     requireResourceViewUtils,
+    requireShellRuntimeUtils,
     requireShellStateUtils,
     requireShellViewUtils,
   };

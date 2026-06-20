@@ -13,10 +13,14 @@ const { requireResourceCrudUtils } = require("./resource-runtime.js");
 const { requireShellStateUtils } = require("./resource-runtime.js");
 const { requireShellViewUtils } = require("./resource-runtime.js");
 const { requireDrawerViewUtils } = require("./resource-runtime.js");
+const { requireShellRuntimeUtils } = require("./resource-runtime.js");
 const ResourceCrudUtils = require("./resource-crud.js");
 const ShellStateUtils = require("./shell-state.js");
 const ShellViewUtils = require("./shell-view.js");
 const DrawerViewUtils = require("./drawer-view.js");
+const ShellRuntimeUtils = require("./shell-runtime.js");
+const ThemeUtils = require("./theme.js");
+const SettingsUtils = require("./settings.js");
 
 test("requireResourceViewUtils returns the resource view api when all required functions exist", () => {
   const resourceView = requireResourceViewUtils(ResourceViewUtils);
@@ -239,6 +243,52 @@ test("requireDrawerViewUtils accepts a narrow drawer view api contract", () => {
   assert.equal(typeof drawerView.renderDrawerShell, "function");
 });
 
+test("requireShellRuntimeUtils returns the shell runtime api when app.js dependencies exist", () => {
+  const runtime = requireShellRuntimeUtils({
+    pageIDFromHash() {
+      return "overview";
+    },
+    activatePage() {},
+    navigateToPage() {},
+    initializeThemeState() {},
+    persistThemePreference() {},
+    applyResolvedTheme() {},
+    renderTheme() {},
+    renderSettings() {},
+    buildSettingsSnapshot() {
+      return {};
+    },
+    cycleThemePreference() {
+      return "light";
+    },
+    toggleSidebarCollapsed() {
+      return false;
+    },
+  });
+
+  assert.equal(typeof runtime.pageIDFromHash, "function");
+  assert.equal(typeof runtime.toggleSidebarCollapsed, "function");
+});
+
+test("requireShellRuntimeUtils reports exact missing shell runtime helpers for partial modules", () => {
+  assert.throws(
+    () => requireShellRuntimeUtils({
+      pageIDFromHash() {
+        return "overview";
+      },
+      activatePage() {},
+    }),
+    /missing ShellRuntimeUtils methods: navigateToPage, initializeThemeState, persistThemePreference, applyResolvedTheme, renderTheme, renderSettings, buildSettingsSnapshot, cycleThemePreference, toggleSidebarCollapsed/i,
+  );
+});
+
+test("requireShellRuntimeUtils throws a clear error when shell-runtime utils are unavailable", () => {
+  assert.throws(
+    () => requireShellRuntimeUtils(null),
+    /shell-runtime\.js.*load.*before app\.js/i,
+  );
+});
+
 test("app.js fails clearly during startup when drawer view utils are missing", () => {
   const context = createAppVmContext({
     ResourceRuntimeUtils: {
@@ -260,6 +310,32 @@ test("app.js fails clearly during startup when drawer view utils are missing", (
   assert.throws(
     () => loadAppWithoutBootstrap(context),
     /drawer-view\.js.*load.*before app\.js/i,
+  );
+});
+
+test("app.js fails clearly during startup when shell runtime utils are missing", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+      requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+    },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
+    DrawerViewUtils,
+    ShellRuntimeUtils: null,
+  });
+
+  assert.throws(
+    () => loadAppWithoutBootstrap(context),
+    /shell-runtime\.js.*load.*before app\.js/i,
   );
 });
 
@@ -434,6 +510,7 @@ test("app.js initializes resource view defaults through ResourceStateUtils", () 
 test("index.html loads resource runtime dependencies before app.js", () => {
   const html = fs.readFileSync(new URL("./index.html", import.meta.url), "utf8");
   const shellViewIndex = html.indexOf("./shell-view.js");
+  const shellRuntimeIndex = html.indexOf("./shell-runtime.js");
   const shellStateIndex = html.indexOf("./shell-state.js");
   const resourceViewIndex = html.indexOf("./resource-view.js");
   const resourceRuntimeIndex = html.indexOf("./resource-runtime.js");
@@ -445,8 +522,9 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   assert.ok(shellStateIndex >= 0);
   assert.ok(shellViewIndex >= 0);
   assert.ok(shellViewIndex > shellStateIndex);
+  assert.ok(shellRuntimeIndex > shellViewIndex);
   assert.ok(resourceViewIndex >= 0);
-  assert.ok(resourceViewIndex > shellViewIndex);
+  assert.ok(resourceViewIndex > shellRuntimeIndex);
   assert.ok(resourceRuntimeIndex > resourceViewIndex);
   assert.ok(resourceStateIndex > resourceRuntimeIndex);
   assert.ok(resourceCrudIndex > resourceStateIndex);
@@ -469,6 +547,9 @@ function createAppVmContext({
   ShellStateUtils: shellStateUtils = ShellStateUtils,
   ShellViewUtils: shellViewUtils = ShellViewUtils,
   DrawerViewUtils: drawerViewUtils = DrawerViewUtils,
+  ShellRuntimeUtils: shellRuntimeUtils = ShellRuntimeUtils,
+  ThemeUtils: themeUtils = ThemeUtils,
+  SettingsUtils: settingsUtils = SettingsUtils,
 }) {
   const elements = new Map();
   const HTMLElement = class HTMLElement {};
@@ -613,14 +694,24 @@ function createAppVmContext({
       addEventListener() {},
       removeEventListener() {},
     },
-    ResourceRuntimeUtils,
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+      requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      ...(ResourceRuntimeUtils || {}),
+    },
     ResourceViewUtils: resourceViewUtils,
     ResourceStateUtils: resourceStateUtils,
     ResourceCrudUtils: resourceCrudUtils,
     ShellStateUtils: shellStateUtils,
     ShellViewUtils: shellViewUtils,
     DrawerViewUtils: drawerViewUtils,
-    ThemeUtils: {},
+    ShellRuntimeUtils: shellRuntimeUtils,
+    ThemeUtils: themeUtils,
     SearchUtils: {},
     DashboardUtils: {},
     DashboardViewUtils: {},
@@ -629,7 +720,7 @@ function createAppVmContext({
     ObservabilityUtils: {},
     ObservabilityViewUtils: {},
     RendererUtils: {},
-    SettingsUtils: {},
+    SettingsUtils: settingsUtils,
   });
 
   context.globalThis = context;
