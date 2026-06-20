@@ -197,6 +197,11 @@ const DashboardRuntimeUtils = typeof ResourceRuntimeUtils.requireDashboardRuntim
   : (() => {
     throw new Error("dashboard-runtime.js failed to load before app.js");
   })();
+const SearchRuntimeUtils = typeof ResourceRuntimeUtils.requireSearchRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireSearchRuntimeUtils(globalThis.SearchRuntimeUtils)
+  : (() => {
+    throw new Error("search-runtime.js failed to load before app.js");
+  })();
 const escapeHTML = DisplayUtils.escapeHTML;
 const formatDateTime = DisplayUtils.formatDateTime;
 const DashboardUtils = globalThis.DashboardUtils || {};
@@ -1746,129 +1751,67 @@ function feedToneClass(tone) {
 }
 
 function closeSearchShell() {
-  const closeState = typeof SearchUtils.closeSearchState === "function"
-    ? SearchUtils.closeSearchState(state.ui.search)
-    : { previousTrigger: state.ui.search.triggerElement };
-  const previousTrigger = closeState.previousTrigger;
-  searchDebounce?.cancel?.();
-  renderSearchShell();
-  if (previousTrigger instanceof HTMLElement) {
-    previousTrigger.focus();
-  }
+  return SearchRuntimeUtils.closeSearchShell({
+    state,
+    searchUtils: SearchUtils,
+    searchDebounce,
+    renderSearchShell,
+    HTMLElementClass: HTMLElement,
+  });
 }
 
 function openSearchShell() {
-  const openState = typeof SearchUtils.openSearchState === "function"
-    ? SearchUtils.openSearchState(state.ui.search, {
-      triggerElement: document.activeElement instanceof HTMLElement ? document.activeElement : searchOpenBtn,
-    })
-    : {
-      shouldTriggerSearch: Boolean(
-        state.ui.search.query.trim()
-        && !state.ui.search.results.total
-        && !state.ui.search.loading
-      ),
-    };
-  renderSearchShell();
-  if (searchInput) {
-    searchInput.focus();
-  } else {
-    searchModalPanel?.focus();
-  }
-  if (state.ui.search.query.trim()) {
-    searchInput?.select();
-    if (openState.shouldTriggerSearch) {
-      triggerSearch();
-    }
-  }
+  return SearchRuntimeUtils.openSearchShell({
+    state,
+    searchUtils: SearchUtils,
+    renderSearchShell,
+    searchInput,
+    searchModalPanel,
+    searchOpenBtn,
+    documentObject: document,
+    HTMLElementClass: HTMLElement,
+    triggerSearch,
+  });
 }
 
 function updateSearchQuery(value) {
-  const updateState = typeof SearchUtils.updateSearchQueryState === "function"
-    ? SearchUtils.updateSearchQueryState(state.ui.search, value)
-    : { shouldTriggerSearch: Boolean(String(value || "").trim()) };
-  if (!updateState.shouldTriggerSearch) {
-    searchDebounce?.cancel?.();
-    return;
-  }
-  triggerSearch();
+  return SearchRuntimeUtils.updateSearchQuery({
+    state,
+    value,
+    searchUtils: SearchUtils,
+    searchDebounce,
+    triggerSearch,
+  });
 }
 
 function triggerSearch() {
-  const request = typeof SearchUtils.startSearchRequestState === "function"
-    ? SearchUtils.startSearchRequestState(state.ui.search)
-    : (typeof SearchUtils.createSearchRequest === "function"
-      ? SearchUtils.createSearchRequest(state.ui.search.query, state.ui.search.requestSequence)
-      : {
-        sequence: (Number(state.ui.search.requestSequence) || 0) + 1,
-        query: String(state.ui.search.query || "").trim(),
-      });
-  state.ui.search.requestSequence = request.sequence;
-  state.ui.search.activeSequence = request.sequence;
-  if (!searchDebounce) {
-    executeSearch(request).catch(reportError);
-    return;
-  }
-  renderSearchShell();
-  searchDebounce(request);
+  return SearchRuntimeUtils.triggerSearch({
+    state,
+    searchUtils: SearchUtils,
+    searchDebounce,
+    reportError,
+    executeSearch,
+    renderSearchShell,
+  });
 }
 
 async function executeSearch(request) {
-  const requestID = Number(request?.sequence) || 0;
-  const trimmedQuery = String(request?.query || "").trim();
-  if (!trimmedQuery) {
-    if (typeof SearchUtils.clearSearchState === "function") {
-      SearchUtils.clearSearchState(state.ui.search);
-    } else {
-      state.ui.search.loading = false;
-      state.ui.search.activeIndex = -1;
-      state.ui.search.results = {
-        query: "",
-        total: 0,
-        groups: [],
-      };
-    }
-    renderSearchShell();
-    return;
-  }
-
-  state.ui.search.loading = true;
-  renderSearchShell();
-  const path = typeof SearchUtils.buildSearchRequestPath === "function"
-    ? SearchUtils.buildSearchRequestPath(trimmedQuery, SEARCH_LIMIT)
-    : `/admin/api/search?q=${encodeURIComponent(trimmedQuery)}&limit=${SEARCH_LIMIT}`;
-  try {
-    const response = await api(path);
-    const applied = typeof SearchUtils.resolveSearchResponseState === "function"
-      ? SearchUtils.resolveSearchResponseState(state.ui.search, requestID, response)
-      : null;
-    if (applied === false) {
-      return;
-    }
-    if (applied === null) {
-      if (requestID !== state.ui.search.activeSequence) {
-        return;
-      }
-      state.ui.search.results = typeof SearchUtils.normalizeSearchResponse === "function"
-        ? SearchUtils.normalizeSearchResponse(response)
-        : { query: trimmedQuery, total: 0, groups: [] };
-      const keyboardState = currentSearchKeyboardState();
-      state.ui.search.activeIndex = keyboardState.activeIndex;
-    }
-  } finally {
-    if (requestID === state.ui.search.activeSequence) {
-      state.ui.search.loading = false;
-      renderSearchShell();
-    }
-  }
+  return SearchRuntimeUtils.executeSearch({
+    state,
+    request,
+    searchUtils: SearchUtils,
+    api,
+    searchLimit: SEARCH_LIMIT,
+    renderSearchShell,
+    currentSearchKeyboardState,
+  });
 }
 
 function renderSearchResults() {
-  return ShellViewUtils.renderSearchResults({
-    query: state.ui.search.query,
-    loading: state.ui.search.loading,
-    results: state.ui.search.results || { total: 0, groups: [] },
-    keyboardState: currentSearchKeyboardState(),
+  return SearchRuntimeUtils.renderSearchResults({
+    state,
+    shellViewUtils: ShellViewUtils,
+    currentSearchKeyboardState,
     escapeHTML,
   });
 }
@@ -1917,43 +1860,32 @@ async function refreshResourceList(resourceKey) {
 }
 
 function navigateToSearchResult(payload) {
-  const normalized = typeof SearchUtils.getSearchResultTarget === "function"
-    ? SearchUtils.getSearchResultTarget(payload)
-    : null;
-  if (!normalized?.page) {
-    return;
-  }
-
-  window.location.hash = `#${normalized.page}`;
-  activatePage(normalized.page);
-  closeSearchShell();
-  openResourceDrawer({
-    kind: normalized.drawer.kind || payload.group || "",
-    page: normalized.page,
-    id: normalized.drawer.id || payload.targetId || payload.id || null,
-    title: normalized.drawer.title || payload.title || "",
-  }).catch(reportError);
+  return SearchRuntimeUtils.navigateToSearchResult({
+    payload,
+    searchUtils: SearchUtils,
+    windowObject: window,
+    activatePage,
+    closeSearchShell,
+    openResourceDrawer,
+    reportError,
+  });
 }
 
 function currentSearchKeyboardState() {
-  return typeof SearchUtils.createSearchKeyboardState === "function"
-    ? SearchUtils.createSearchKeyboardState({
-      results: state.ui.search.results,
-      activeIndex: state.ui.search.activeIndex,
-    })
-    : { items: [], activeIndex: -1, activeItem: null };
+  return SearchRuntimeUtils.currentSearchKeyboardState({
+    state,
+    searchUtils: SearchUtils,
+  });
 }
 
 function moveSearchSelection(delta) {
-  const keyboardState = currentSearchKeyboardState();
-  state.ui.search.activeIndex = typeof SearchUtils.moveSearchSelection === "function"
-    ? SearchUtils.moveSearchSelection({
-      currentIndex: keyboardState.activeIndex,
-      delta,
-      itemCount: keyboardState.items.length,
-    })
-    : -1;
-  renderSearchShell();
+  return SearchRuntimeUtils.moveSearchSelection({
+    state,
+    delta,
+    searchUtils: SearchUtils,
+    currentSearchKeyboardState,
+    renderSearchShell,
+  });
 }
 
 async function openResourceDrawer(target) {

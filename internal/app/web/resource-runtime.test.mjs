@@ -17,6 +17,7 @@ const { requireShellRuntimeUtils } = require("./resource-runtime.js");
 const { requirePaginationUtils } = require("./resource-runtime.js");
 const { requireDisplayUtils } = require("./resource-runtime.js");
 const { requireDashboardRuntimeUtils } = require("./resource-runtime.js");
+const { requireSearchRuntimeUtils } = require("./resource-runtime.js");
 const ResourceCrudUtils = require("./resource-crud.js");
 const ShellStateUtils = require("./shell-state.js");
 const ShellViewUtils = require("./shell-view.js");
@@ -25,6 +26,7 @@ const ShellRuntimeUtils = require("./shell-runtime.js");
 const PaginationUtils = require("./pagination.js");
 const DisplayUtils = require("./display-utils.js");
 const DashboardRuntimeUtils = require("./dashboard-runtime.js");
+const SearchRuntimeUtils = require("./search-runtime.js");
 const ThemeUtils = require("./theme.js");
 const SettingsUtils = require("./settings.js");
 
@@ -369,6 +371,57 @@ test("requireDashboardRuntimeUtils accepts a narrow dashboard runtime api contra
   assert.equal(typeof runtime.renderDashboardShell, "function");
 });
 
+test("requireSearchRuntimeUtils returns the search runtime api when app.js dependencies exist", () => {
+  const runtime = requireSearchRuntimeUtils(SearchRuntimeUtils);
+
+  assert.equal(typeof runtime.openSearchShell, "function");
+  assert.equal(typeof runtime.executeSearch, "function");
+});
+
+test("requireSearchRuntimeUtils throws a clear error when search runtime utils are unavailable", () => {
+  assert.throws(
+    () => requireSearchRuntimeUtils(null),
+    /search-runtime\.js.*load.*before app\.js/i,
+  );
+});
+
+test("requireSearchRuntimeUtils accepts a narrow search runtime api contract", () => {
+  const runtime = requireSearchRuntimeUtils({
+    openSearchShell() {},
+    closeSearchShell() {},
+    updateSearchQuery() {},
+    triggerSearch() {},
+    executeSearch() {},
+    renderSearchResults() {
+      return "";
+    },
+    navigateToSearchResult() {},
+    currentSearchKeyboardState() {
+      return { items: [], activeIndex: -1, activeItem: null };
+    },
+    moveSearchSelection() {
+      return -1;
+    },
+  });
+
+  assert.equal(typeof runtime.openSearchShell, "function");
+  assert.equal(typeof runtime.renderSearchResults, "function");
+});
+
+test("createAppVmContext injects search runtime helpers by default", () => {
+  const context = createAppVmContext({
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+  });
+
+  assert.equal(context.SearchRuntimeUtils, SearchRuntimeUtils);
+  assert.equal(
+    context.ResourceRuntimeUtils.requireSearchRuntimeUtils,
+    requireSearchRuntimeUtils,
+  );
+});
+
 test("requireShellRuntimeUtils returns the shell runtime api when app.js dependencies exist", () => {
   const runtime = requireShellRuntimeUtils({
     pageIDFromHash() {
@@ -557,6 +610,38 @@ test("app.js fails clearly during startup when dashboard runtime utils are missi
   assert.throws(
     () => loadAppWithoutBootstrap(context),
     /dashboard-runtime\.js.*load.*before app\.js/i,
+  );
+});
+
+test("app.js fails clearly during startup when search runtime utils are missing", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+      requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
+      requireDisplayUtils,
+      requireDashboardRuntimeUtils,
+      requireSearchRuntimeUtils,
+    },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
+    DrawerViewUtils,
+    DisplayUtils,
+    DashboardRuntimeUtils,
+    SearchRuntimeUtils: null,
+  });
+
+  assert.throws(
+    () => loadAppWithoutBootstrap(context),
+    /search-runtime\.js.*load.*before app\.js/i,
   );
 });
 
@@ -753,6 +838,7 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   const paginationIndex = html.indexOf("./pagination.js");
   const displayUtilsIndex = html.indexOf("./display-utils.js");
   const dashboardRuntimeIndex = html.indexOf("./dashboard-runtime.js");
+  const searchRuntimeIndex = html.indexOf("./search-runtime.js");
   const appIndex = html.indexOf("./app.js");
 
   assert.ok(shellStateIndex >= 0);
@@ -768,7 +854,8 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   assert.ok(paginationIndex > drawerViewIndex);
   assert.ok(displayUtilsIndex > paginationIndex);
   assert.ok(dashboardRuntimeIndex > displayUtilsIndex);
-  assert.ok(appIndex > dashboardRuntimeIndex);
+  assert.ok(searchRuntimeIndex > dashboardRuntimeIndex);
+  assert.ok(appIndex > searchRuntimeIndex);
 });
 
 function loadAppWithoutBootstrap(context) {
@@ -787,6 +874,7 @@ function createAppVmContext({
   ShellViewUtils: shellViewUtils = ShellViewUtils,
   DrawerViewUtils: drawerViewUtils = DrawerViewUtils,
   ShellRuntimeUtils: shellRuntimeUtils = ShellRuntimeUtils,
+  SearchRuntimeUtils: searchRuntimeUtils = SearchRuntimeUtils,
   PaginationUtils: paginationUtils = PaginationUtils,
   DisplayUtils: displayUtils = {},
   DashboardRuntimeUtils: dashboardRuntimeUtils = DashboardRuntimeUtils,
@@ -947,6 +1035,7 @@ function createAppVmContext({
       requirePaginationUtils,
       requireDisplayUtils,
       requireDashboardRuntimeUtils,
+      requireSearchRuntimeUtils,
       ...(ResourceRuntimeUtils || {}),
     },
     ResourceViewUtils: resourceViewUtils,
@@ -956,6 +1045,7 @@ function createAppVmContext({
     ShellViewUtils: shellViewUtils,
     DrawerViewUtils: drawerViewUtils,
     ShellRuntimeUtils: shellRuntimeUtils,
+    SearchRuntimeUtils: searchRuntimeUtils,
     PaginationUtils: paginationUtils,
     DisplayUtils: displayUtils,
     DashboardRuntimeUtils: dashboardRuntimeUtils,
