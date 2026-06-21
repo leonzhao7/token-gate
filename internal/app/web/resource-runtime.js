@@ -41,6 +41,13 @@
     "drawerDisplayTitle",
     "renderDrawerShell",
   ];
+  const REQUIRED_DRAWER_RUNTIME_METHODS = [
+    "closeDrawerShell",
+    "deleteDrawerResource",
+    "openDrawerEditor",
+    "openResourceDrawer",
+    "renderDrawerShell",
+  ];
   const REQUIRED_SHELL_RUNTIME_METHODS = [
     "pageIDFromHash",
     "activatePage",
@@ -82,9 +89,12 @@
     "tableActions",
   ];
   const REQUIRED_DASHBOARD_RUNTIME_METHODS = [
+    "bindDashboardInteractions",
+    "refreshDashboardUsagePanel",
     "startDashboardLoading",
     "renderDashboardPanels",
     "renderDashboardShell",
+    "retryDashboardSection",
   ];
   const REQUIRED_DASHBOARD_VIEW_METHODS = [
     "renderDashboardSummaryRow",
@@ -216,6 +226,20 @@
     );
   }
 
+  function requireDrawerRuntimeUtils(drawerRuntimeUtils) {
+    const candidate = drawerRuntimeUtils && typeof drawerRuntimeUtils === "object"
+      ? drawerRuntimeUtils
+      : null;
+    const missing = REQUIRED_DRAWER_RUNTIME_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `drawer-runtime.js failed to load before app.js; missing DrawerRuntimeUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   function requireShellRuntimeUtils(shellRuntimeUtils) {
     const candidate = shellRuntimeUtils && typeof shellRuntimeUtils === "object"
       ? shellRuntimeUtils
@@ -332,6 +356,7 @@
     requireDashboardRuntimeUtils,
     requireDashboardViewUtils,
     requireDisplayUtils,
+    requireDrawerRuntimeUtils,
     requireObservabilityRuntimeUtils,
     requirePaginationUtils,
     requireResourceListRuntimeUtils,

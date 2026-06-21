@@ -177,6 +177,11 @@ const DrawerViewUtils = typeof ResourceRuntimeUtils.requireDrawerViewUtils === "
   : (() => {
     throw new Error("drawer-view.js failed to load before app.js");
   })();
+const DrawerRuntimeUtils = typeof ResourceRuntimeUtils.requireDrawerRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireDrawerRuntimeUtils(globalThis.DrawerRuntimeUtils)
+  : (() => {
+    throw new Error("drawer-runtime.js failed to load before app.js");
+  })();
 const ShellRuntimeUtils = typeof ResourceRuntimeUtils.requireShellRuntimeUtils === "function"
   ? ResourceRuntimeUtils.requireShellRuntimeUtils(globalThis.ShellRuntimeUtils)
   : (() => {
@@ -1420,81 +1425,30 @@ function renderDashboardShell() {
 }
 
 function renderDrawerShell() {
-  if (!drawerRoot) {
-    return;
-  }
-  const tabs = typeof DrawerUtils.drawerTabsForResource === "function"
-    ? DrawerUtils.drawerTabsForResource(state.ui.drawer.kind)
-    : [];
-  const footerActions = typeof DrawerUtils.drawerFooterActions === "function"
-    ? DrawerUtils.drawerFooterActions()
-    : [
-      { key: "edit", label: "Edit", tone: "ghost", disabled: false },
-      { key: "delete", label: "Delete", tone: "danger", disabled: false },
-      { key: "save", label: "Save", tone: "primary", disabled: true },
-    ];
-  const activitySections = state.ui.drawer.tab === "activity" && typeof DrawerUtils.buildDrawerActivitySections === "function"
-    ? DrawerUtils.buildDrawerActivitySections(state.ui.drawer.data?.activity || {})
-    : [];
-  const resolveDrawerTitle = typeof DrawerUtils.drawerDisplayTitle === "function"
-    ? DrawerUtils.drawerDisplayTitle
-    : undefined;
-  const shell = DrawerViewUtils.renderDrawerShell({
-    drawer: state.ui.drawer,
-    tabs,
-    footerActions,
-    activitySections,
+  return DrawerRuntimeUtils.renderDrawerShell({
+    state,
+    drawerRoot,
+    drawerTitle,
+    drawerTabRoot,
+    drawerBodyRoot,
+    drawerFooterRoot,
+    drawerUtils: DrawerUtils,
+    drawerViewUtils: DrawerViewUtils,
     escapeHTML,
     formatDateTime,
-    resolveTitle: resolveDrawerTitle,
+    openDrawerEditor,
+    deleteDrawerResource,
+    reportError,
+    rerender: renderDrawerShell,
   });
-
-  drawerRoot.classList.toggle("hidden", !shell.isOpen);
-  drawerRoot.setAttribute("aria-hidden", shell.ariaHidden);
-  if (drawerTitle) {
-    drawerTitle.textContent = shell.title;
-  }
-  if (drawerTabRoot) {
-    drawerTabRoot.innerHTML = shell.tabs;
-    drawerTabRoot.querySelectorAll("[data-drawer-tab]").forEach((button) => {
-      button.addEventListener("click", () => {
-        state.ui.drawer.tab = button.dataset.drawerTab || "overview";
-        renderDrawerShell();
-      });
-    });
-  }
-  if (drawerBodyRoot) {
-    drawerBodyRoot.innerHTML = shell.body;
-  }
-  if (drawerFooterRoot) {
-    drawerFooterRoot.innerHTML = shell.footer;
-    drawerFooterRoot.querySelector('[data-drawer-footer="edit"]')?.addEventListener("click", () => {
-      openDrawerEditor();
-    });
-    drawerFooterRoot.querySelector('[data-drawer-footer="delete"]')?.addEventListener("click", () => {
-      deleteDrawerResource().catch(reportError);
-    });
-  }
 }
 
 function closeDrawerShell() {
-  const previousTrigger = state.ui.drawer.triggerElement;
-  state.ui.drawer.open = false;
-  state.ui.drawer.kind = "";
-  state.ui.drawer.id = null;
-  state.ui.drawer.title = "";
-  state.ui.drawer.tab = "overview";
-  state.ui.drawer.loading = false;
-  state.ui.drawer.data = null;
-  state.ui.drawer.error = "";
-  state.ui.drawer.detailPath = "";
-  state.ui.drawer.deletePath = "";
-  state.ui.drawer.page = "";
-  state.ui.drawer.triggerElement = null;
-  renderDrawerShell();
-  if (previousTrigger instanceof HTMLElement) {
-    previousTrigger.focus();
-  }
+  return DrawerRuntimeUtils.closeDrawerShell({
+    state,
+    renderDrawerShell,
+    HTMLElementClass: HTMLElement,
+  });
 }
 
 function renderSearchShell() {
@@ -1513,151 +1467,35 @@ function renderSearchShell() {
 }
 
 function bindDashboardInteractions() {
-  dashboardRoot?.querySelectorAll("[data-dashboard-range]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const nextRange = button.dataset.dashboardRange || "7d";
-      if (state.dashboard.usage.range === nextRange) {
-        return;
-      }
-      state.dashboard.usage.range = nextRange;
-      refreshDashboardUsagePanel().catch(reportError);
-    });
-  });
-
-  dashboardRoot?.querySelectorAll("[data-dashboard-metric]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.dashboard.usage.metric = button.dataset.dashboardMetric || "requests";
-      renderDashboardShell();
-    });
-  });
-
-  dashboardRoot?.querySelectorAll("[data-dashboard-retry]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const target = button.dataset.dashboardRetry || "";
-      retryDashboardSection(target).catch(reportError);
-    });
+  return DashboardRuntimeUtils.bindDashboardInteractions({
+    dashboardRoot,
+    state,
+    renderDashboardShell,
+    refreshDashboardUsagePanel,
+    retryDashboardSection,
+    reportError,
   });
 }
 
 async function refreshDashboardUsagePanel() {
-  state.dashboard.usage.status = "loading";
-  state.dashboard.usage.error = "";
-  state.dashboard.usage.data = null;
-  renderDashboardShell();
-  try {
-    const payload = await api(`/admin/api/dashboard/usage?range=${encodeURIComponent(state.dashboard.usage.range)}`);
-    state.dashboard.usage.data = typeof DashboardUtils.createDashboardUsageState === "function"
-      ? DashboardUtils.createDashboardUsageState(payload)
-      : null;
-    state.dashboard.usage.status = (state.dashboard.usage.data?.points || []).length ? "ready" : "empty";
-    state.dashboard.usage.error = "";
-  } catch (error) {
-    state.dashboard.usage.status = "failed";
-    state.dashboard.usage.error = error?.message || "Failed to load usage";
-    state.dashboard.usage.data = null;
-  }
-  renderDashboardShell();
+  return DashboardRuntimeUtils.refreshDashboardUsagePanel({
+    state,
+    api,
+    dashboardUtils: DashboardUtils,
+    renderDashboardShell,
+  });
 }
 
 async function retryDashboardSection(target) {
-  if (target.startsWith("summary:")) {
-    const targetKey = target.slice("summary:".length);
-    const cardState = state.dashboard.summaryCards?.[targetKey];
-    if (!cardState) {
-      return;
-    }
-    cardState.status = "loading";
-    cardState.error = "";
-    cardState.data = null;
-    renderDashboardShell();
-    try {
-      const payload = await api("/admin/api/dashboard/summary");
-      if (typeof DashboardUtils.applyDashboardSummaryPayload === "function") {
-        DashboardUtils.applyDashboardSummaryPayload(state.dashboard, payload, targetKey);
-      } else {
-        const cards = DashboardUtils.createDashboardSummaryCards(payload);
-        const cardsByKey = cards.reduce((accumulator, card) => {
-          accumulator[card.key] = card;
-          return accumulator;
-        }, {});
-        cardState.data = cardsByKey[targetKey] || null;
-        cardState.error = "";
-        cardState.status = cardState.data ? "ready" : "empty";
-      }
-    } catch (error) {
-      if (typeof DashboardUtils.applyDashboardSummaryError === "function") {
-        DashboardUtils.applyDashboardSummaryError(state.dashboard, error?.message || "Failed to load summary", targetKey);
-      } else {
-        cardState.status = "failed";
-        cardState.error = error?.message || "Failed to load summary";
-        cardState.data = null;
-      }
-    }
-    renderDashboardShell();
-    return;
-  }
-  if (target === "usage") {
-    state.dashboard.usage.status = "loading";
-    renderDashboardShell();
-    try {
-      const payload = await api(`/admin/api/dashboard/usage?range=${encodeURIComponent(state.dashboard.usage.range)}`);
-      state.dashboard.usage.data = DashboardUtils.createDashboardUsageState(payload);
-      state.dashboard.usage.status = (state.dashboard.usage.data?.points || []).length ? "ready" : "empty";
-      state.dashboard.usage.error = "";
-    } catch (error) {
-      state.dashboard.usage.status = "failed";
-      state.dashboard.usage.error = error?.message || "Failed to load usage";
-    }
-    renderDashboardShell();
-    return;
-  }
-  if (target.startsWith("activity:")) {
-    const targetKey = target.slice("activity:".length);
-    const panelState = state.dashboard[targetKey];
-    if (!panelState) {
-      return;
-    }
-    panelState.status = "loading";
-    panelState.error = "";
-    panelState.data = null;
-    renderDashboardShell();
-    try {
-      const payload = await api("/admin/api/dashboard/activity");
-      if (typeof DashboardUtils.applyDashboardActivityPayload === "function") {
-        DashboardUtils.applyDashboardActivityPayload(state.dashboard, payload, targetKey);
-      } else {
-        const activityData = DashboardUtils.createDashboardActivityState(payload);
-        if (targetKey === "eventsSummary") {
-          panelState.data = activityData.counters;
-          panelState.error = "";
-          panelState.status = (activityData.counters || []).some((item) => Number(item.count) > 0) ? "ready" : "empty";
-        }
-        if (targetKey === "recentEvents") {
-          panelState.data = activityData.events;
-          panelState.error = "";
-          panelState.status = (activityData.events || []).length ? "ready" : "empty";
-        }
-        if (targetKey === "recentUsage") {
-          panelState.data = activityData.usage;
-          panelState.error = "";
-          panelState.status = (activityData.usage || []).length ? "ready" : "empty";
-        }
-      }
-    } catch (error) {
-      if (typeof DashboardUtils.applyDashboardActivityError === "function") {
-        DashboardUtils.applyDashboardActivityError(state.dashboard, error?.message || "Failed to load activity", targetKey);
-      } else {
-        panelState.status = "failed";
-        panelState.error = error?.message || "Failed to load activity";
-        panelState.data = null;
-      }
-    }
-    renderDashboardShell();
-    return;
-  }
-  startDashboardLoading();
-  renderDashboardShell();
-  await refreshDashboardData();
+  return DashboardRuntimeUtils.retryDashboardSection({
+    target,
+    state,
+    api,
+    dashboardUtils: DashboardUtils,
+    startDashboardLoading,
+    renderDashboardShell,
+    refreshDashboardData,
+  });
 }
 
 function feedToneClass(tone) {
@@ -1809,79 +1647,39 @@ function moveSearchSelection(delta) {
 }
 
 async function openResourceDrawer(target) {
-  const normalized = typeof DrawerUtils.buildDrawerTarget === "function"
-    ? DrawerUtils.buildDrawerTarget(target)
-    : null;
-  if (!normalized) {
-    return;
-  }
-
-  state.ui.drawer.open = true;
-  state.ui.drawer.kind = normalized.kind;
-  state.ui.drawer.id = normalized.id;
-  state.ui.drawer.title = normalized.title;
-  state.ui.drawer.page = normalized.page;
-  state.ui.drawer.detailPath = normalized.detailPath;
-  state.ui.drawer.deletePath = normalized.deletePath;
-  state.ui.drawer.triggerElement = target?.triggerElement instanceof HTMLElement ? target.triggerElement : document.activeElement;
-  state.ui.drawer.tab = "overview";
-  state.ui.drawer.loading = true;
-  state.ui.drawer.data = null;
-  state.ui.drawer.error = "";
-  renderDrawerShell();
-  drawerPanel?.focus();
-
-  try {
-    const payload = await api(normalized.detailPath);
-    state.ui.drawer.data = typeof DrawerUtils.normalizeDrawerPayload === "function"
-      ? DrawerUtils.normalizeDrawerPayload(payload)
-      : payload;
-    state.ui.drawer.error = "";
-  } catch (error) {
-    state.ui.drawer.error = error?.message || "Failed to load detail";
-    state.ui.drawer.data = null;
-  } finally {
-    state.ui.drawer.loading = false;
-    renderDrawerShell();
-  }
+  return DrawerRuntimeUtils.openResourceDrawer({
+    target,
+    state,
+    drawerUtils: DrawerUtils,
+    api,
+    renderDrawerShell,
+    drawerPanel,
+    documentObject: document,
+    HTMLElementClass: HTMLElement,
+  });
 }
 
 function openDrawerEditor() {
-  const drawer = state.ui.drawer;
-  if (drawer.kind === "backends") {
-    closeDrawerShell();
-    startEditBackend(drawer.id);
-    return;
-  }
-  if (drawer.kind === "clients") {
-    closeDrawerShell();
-    startEditClient(drawer.id);
-    return;
-  }
-  if (drawer.kind === "policies") {
-    closeDrawerShell();
-    startEditPolicy(drawer.id);
-    return;
-  }
-  if (drawer.kind === "proxies") {
-    closeDrawerShell();
-    startEditProxy(drawer.id);
-  }
+  return DrawerRuntimeUtils.openDrawerEditor({
+    state,
+    closeDrawerShell,
+    startEditBackend,
+    startEditClient,
+    startEditPolicy,
+    startEditProxy,
+  });
 }
 
 async function deleteDrawerResource() {
-  if (!state.ui.drawer.deletePath) {
-    return;
-  }
-  const resourceTitle = typeof DrawerUtils.drawerDisplayTitle === "function"
-    ? DrawerUtils.drawerDisplayTitle(state.ui.drawer.kind)
-    : DrawerViewUtils.drawerDisplayTitle(state.ui.drawer.kind);
-  if (!confirm(`确认删除 ${resourceTitle}？`)) {
-    return;
-  }
-  await api(state.ui.drawer.deletePath, "DELETE");
-  closeDrawerShell();
-  await refreshAll();
+  return DrawerRuntimeUtils.deleteDrawerResource({
+    state,
+    drawerUtils: DrawerUtils,
+    drawerViewUtils: DrawerViewUtils,
+    confirm,
+    api,
+    closeDrawerShell,
+    refreshAll,
+  });
 }
 
 function trapFocusWithin(container, event) {
@@ -1919,8 +1717,9 @@ function trapFocusWithin(container, event) {
 }
 
 function renderProxies() {
-  ResourceListRuntimeUtils.renderLocalResourceTable({
+  ResourceListRuntimeUtils.renderManagedResourceSection({
     resourceKey: "proxies",
+    kind: "proxy",
     items: state.proxies,
     state,
     container: proxyList,
@@ -1936,13 +1735,6 @@ function renderProxies() {
     paginationUtils: PaginationUtils,
     displayUtils: DisplayUtils,
     pageSizeOptions: PAGE_SIZE_OPTIONS,
-  });
-
-  ResourceListRuntimeUtils.bindResourceListInteractions({
-    container: proxyList,
-    resourceKey: "proxies",
-    kind: "proxy",
-    state,
     getExpandedSet() {
       return state.expandedProxies;
     },
@@ -1963,18 +1755,17 @@ function renderProxies() {
     drawerUtils: DrawerUtils,
     drawerViewUtils: DrawerViewUtils,
     openResourceDrawer,
-    resourceStateUtils: ResourceStateUtils,
     renderResourceListByKey,
     refreshResourceList,
     reportError,
     onCreate: startCreateProxy,
-    paginationUtils: PaginationUtils,
   });
 }
 
 function renderBackends() {
-  ResourceListRuntimeUtils.renderLocalResourceTable({
+  ResourceListRuntimeUtils.renderManagedResourceSection({
     resourceKey: "backends",
+    kind: "backend",
     items: state.backends,
     state,
     container: backendList,
@@ -1990,13 +1781,6 @@ function renderBackends() {
     paginationUtils: PaginationUtils,
     displayUtils: DisplayUtils,
     pageSizeOptions: PAGE_SIZE_OPTIONS,
-  });
-
-  ResourceListRuntimeUtils.bindResourceListInteractions({
-    container: backendList,
-    resourceKey: "backends",
-    kind: "backend",
-    state,
     getExpandedSet() {
       return state.expandedBackends;
     },
@@ -2017,18 +1801,17 @@ function renderBackends() {
     drawerUtils: DrawerUtils,
     drawerViewUtils: DrawerViewUtils,
     openResourceDrawer,
-    resourceStateUtils: ResourceStateUtils,
     renderResourceListByKey,
     refreshResourceList,
     reportError,
     onCreate: startCreateBackend,
-    paginationUtils: PaginationUtils,
   });
 }
 
 function renderClients() {
-  ResourceListRuntimeUtils.renderLocalResourceTable({
+  ResourceListRuntimeUtils.renderManagedResourceSection({
     resourceKey: "clients",
+    kind: "client",
     items: state.clients,
     state,
     container: clientList,
@@ -2044,13 +1827,6 @@ function renderClients() {
     paginationUtils: PaginationUtils,
     displayUtils: DisplayUtils,
     pageSizeOptions: PAGE_SIZE_OPTIONS,
-  });
-
-  ResourceListRuntimeUtils.bindResourceListInteractions({
-    container: clientList,
-    resourceKey: "clients",
-    kind: "client",
-    state,
     getExpandedSet() {
       return state.expandedClients;
     },
@@ -2071,18 +1847,17 @@ function renderClients() {
     drawerUtils: DrawerUtils,
     drawerViewUtils: DrawerViewUtils,
     openResourceDrawer,
-    resourceStateUtils: ResourceStateUtils,
     renderResourceListByKey,
     refreshResourceList,
     reportError,
     onCreate: startCreateClient,
-    paginationUtils: PaginationUtils,
   });
 }
 
 function renderPolicies() {
-  ResourceListRuntimeUtils.renderLocalResourceTable({
+  ResourceListRuntimeUtils.renderManagedResourceSection({
     resourceKey: "policies",
+    kind: "policy",
     items: state.policies,
     state,
     container: policyList,
@@ -2098,13 +1873,6 @@ function renderPolicies() {
     paginationUtils: PaginationUtils,
     displayUtils: DisplayUtils,
     pageSizeOptions: PAGE_SIZE_OPTIONS,
-  });
-
-  ResourceListRuntimeUtils.bindResourceListInteractions({
-    container: policyList,
-    resourceKey: "policies",
-    kind: "policy",
-    state,
     getExpandedSet() {
       return state.expandedPolicies;
     },
@@ -2125,12 +1893,10 @@ function renderPolicies() {
     drawerUtils: DrawerUtils,
     drawerViewUtils: DrawerViewUtils,
     openResourceDrawer,
-    resourceStateUtils: ResourceStateUtils,
     renderResourceListByKey,
     refreshResourceList,
     reportError,
     onCreate: startCreatePolicy,
-    paginationUtils: PaginationUtils,
   });
 }
 

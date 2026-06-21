@@ -226,6 +226,141 @@ test("renderLocalResourceTable delegates filtering, pagination, toolbar, and she
   assert.match(calls.renderResourceTablePage[0].paginationMarkup, /^pagination:backends:1:/);
 });
 
+test("renderManagedResourceSection composes local table rendering with shared list interactions", () => {
+  const calls = [];
+  const state = {
+    resourceViews: {},
+    pagination: {},
+  };
+  const container = createContainer();
+
+  ResourceListRuntimeUtils.renderManagedResourceSection({
+    resourceKey: "clients",
+    kind: "client",
+    items: [{ id: 1, name: "alpha" }],
+    state,
+    container,
+    searchPlaceholder: "Search client keys",
+    emptyTitle: "还没有 Client Key",
+    emptyDescription: "创建一个客户端 key。",
+    headers: ["Client Key", "Actions"],
+    rowRenderer(row) {
+      calls.push(["rowRenderer", row.id]);
+      return `<tr>${row.name}</tr>`;
+    },
+    resourceViewConfig: {},
+    rendererUtils: {},
+    resourceViewUtils: {
+      renderResourceToolbar() {
+        return "<toolbar />";
+      },
+      renderResourceTablePage() {
+        return "<table />";
+      },
+    },
+    resourceStateUtils: {
+      applyResourceView(_resourceKey, items) {
+        return items;
+      },
+      defaultResourceView() {
+        return { query: "", filter: "all", sort: "updated_desc" };
+      },
+      toolbarStatusLabel() {
+        return "default";
+      },
+      paginationPageNumbers() {
+        return [1];
+      },
+    },
+    paginationUtils: {
+      currentLocalPageData(_resourceKey, items) {
+        return {
+          items,
+          page: 1,
+          size: 10,
+          total: items.length,
+          totalPages: 1,
+        };
+      },
+      renderPagination() {
+        return "<pagination />";
+      },
+      bindPagination(input) {
+        calls.push(["bindPagination", input.resourceKey]);
+      },
+    },
+    displayUtils: {
+      escapeHTML(value) {
+        return String(value);
+      },
+      emptyState(title) {
+        return `<empty>${title}</empty>`;
+      },
+    },
+    pageSizeOptions: [10, 20, 50],
+    getExpandedSet() {
+      return new Set();
+    },
+    getEditingID() {
+      return null;
+    },
+    renderList() {
+      calls.push(["renderList"]);
+    },
+    startEdit() {
+      calls.push(["startEdit"]);
+    },
+    resetForm() {
+      calls.push(["resetForm"]);
+    },
+    refreshAll() {
+      calls.push(["refreshAll"]);
+      return Promise.resolve();
+    },
+    confirm() {
+      return true;
+    },
+    deleteMessage: "确认删除这个 Client Key？",
+    deletePath(id) {
+      return `/admin/api/client-keys/${id}`;
+    },
+    toggleExpanded() {
+      calls.push(["toggleExpanded"]);
+    },
+    api() {
+      calls.push(["api"]);
+      return Promise.resolve();
+    },
+    bindResourceListInteractions(input) {
+      calls.push(["bindInteractions", input.resourceKey, input.kind, typeof input.openResourceDrawer]);
+    },
+    drawerUtils: {},
+    drawerViewUtils: {},
+    openResourceDrawer() {
+      return Promise.resolve();
+    },
+    renderResourceListByKey() {
+      calls.push(["renderResourceListByKey"]);
+    },
+    refreshResourceList() {
+      calls.push(["refreshResourceList"]);
+      return Promise.resolve();
+    },
+    reportError(error) {
+      calls.push(["reportError", error?.message || "error"]);
+    },
+    onCreate() {
+      calls.push(["onCreate"]);
+    },
+  });
+
+  assert.equal(container.innerHTML, "<table />");
+  assert.deepEqual(calls, [
+    ["rowRenderer", 1],
+    ["bindInteractions", "clients", "client", "function"],
+  ]);
+});
+
 test("resource list runtime renders a local resource table with real helpers", () => {
   const container = createContainer();
   const state = {

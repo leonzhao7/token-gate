@@ -274,11 +274,45 @@
     return { filtered, pageData, toolbar };
   }
 
+  function renderManagedResourceSection({
+    bindResourceListInteractions: bindInteractions = bindResourceListInteractions,
+    ...options
+  }) {
+    renderLocalResourceTable(options);
+    bindInteractions({
+      container: options.container,
+      resourceKey: options.resourceKey,
+      kind: options.kind,
+      state: options.state,
+      getExpandedSet: options.getExpandedSet,
+      getEditingID: options.getEditingID,
+      renderList: options.renderList,
+      startEdit: options.startEdit,
+      resetForm: options.resetForm,
+      refreshAll: options.refreshAll,
+      confirm: options.confirm,
+      deleteMessage: options.deleteMessage,
+      deletePath: options.deletePath,
+      toggleExpanded: options.toggleExpanded,
+      api: options.api,
+      drawerUtils: options.drawerUtils,
+      drawerViewUtils: options.drawerViewUtils,
+      openResourceDrawer: options.openResourceDrawer,
+      resourceStateUtils: options.resourceStateUtils,
+      renderResourceListByKey: options.renderResourceListByKey,
+      refreshResourceList: options.refreshResourceList,
+      reportError: options.reportError,
+      onCreate: options.onCreate,
+      paginationUtils: options.paginationUtils,
+    });
+  }
+
   const api = {
     bindResourceListInteractions,
     bindResourceRowOpen,
     bindResourceToolbar,
     buildResourceToolbarMarkup,
+    renderManagedResourceSection,
     renderLocalResourceTable,
   };
 

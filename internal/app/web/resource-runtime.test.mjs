@@ -13,6 +13,7 @@ const { requireResourceCrudUtils } = require("./resource-runtime.js");
 const { requireShellStateUtils } = require("./resource-runtime.js");
 const { requireShellViewUtils } = require("./resource-runtime.js");
 const { requireDrawerViewUtils } = require("./resource-runtime.js");
+const { requireDrawerRuntimeUtils } = require("./resource-runtime.js");
 const { requireShellRuntimeUtils } = require("./resource-runtime.js");
 const { requirePaginationUtils } = require("./resource-runtime.js");
 const { requireDisplayUtils } = require("./resource-runtime.js");
@@ -25,6 +26,7 @@ const ResourceCrudUtils = require("./resource-crud.js");
 const ShellStateUtils = require("./shell-state.js");
 const ShellViewUtils = require("./shell-view.js");
 const DrawerViewUtils = require("./drawer-view.js");
+const DrawerRuntimeUtils = require("./drawer-runtime.js");
 const ShellRuntimeUtils = require("./shell-runtime.js");
 const PaginationUtils = require("./pagination.js");
 const DisplayUtils = require("./display-utils.js");
@@ -272,6 +274,43 @@ test("requireDrawerViewUtils accepts a narrow drawer view api contract", () => {
   assert.equal(typeof drawerView.renderDrawerShell, "function");
 });
 
+test("requireDrawerRuntimeUtils returns the drawer runtime api when app.js dependencies exist", () => {
+  const drawerRuntime = requireDrawerRuntimeUtils(DrawerRuntimeUtils);
+
+  assert.equal(typeof drawerRuntime.openResourceDrawer, "function");
+  assert.equal(typeof drawerRuntime.openDrawerEditor, "function");
+  assert.equal(typeof drawerRuntime.deleteDrawerResource, "function");
+  assert.equal(typeof drawerRuntime.renderDrawerShell, "function");
+  assert.equal(typeof drawerRuntime.closeDrawerShell, "function");
+});
+
+test("requireDrawerRuntimeUtils throws a clear error when drawer-runtime utils are unavailable", () => {
+  assert.throws(
+    () => requireDrawerRuntimeUtils(null),
+    /drawer-runtime\.js.*load.*before app\.js/i,
+  );
+});
+
+test("requireDrawerRuntimeUtils accepts a narrow drawer runtime api contract", () => {
+  const drawerRuntime = requireDrawerRuntimeUtils({
+    openResourceDrawer() {
+      return Promise.resolve();
+    },
+    openDrawerEditor() {},
+    deleteDrawerResource() {
+      return Promise.resolve();
+    },
+    renderDrawerShell() {},
+    closeDrawerShell() {},
+  });
+
+  assert.equal(typeof drawerRuntime.openResourceDrawer, "function");
+  assert.equal(typeof drawerRuntime.openDrawerEditor, "function");
+  assert.equal(typeof drawerRuntime.deleteDrawerResource, "function");
+  assert.equal(typeof drawerRuntime.renderDrawerShell, "function");
+  assert.equal(typeof drawerRuntime.closeDrawerShell, "function");
+});
+
 test("requirePaginationUtils returns the pagination api when app.js dependencies exist", () => {
   const pagination = requirePaginationUtils(PaginationUtils);
 
@@ -339,9 +378,12 @@ test("requireDisplayUtils reports exact missing helper names for partial modules
 test("requireDashboardRuntimeUtils returns the dashboard runtime api when app.js dependencies exist", () => {
   const runtime = requireDashboardRuntimeUtils(DashboardRuntimeUtils);
 
+  assert.equal(typeof runtime.bindDashboardInteractions, "function");
+  assert.equal(typeof runtime.refreshDashboardUsagePanel, "function");
   assert.equal(typeof runtime.startDashboardLoading, "function");
   assert.equal(typeof runtime.renderDashboardShell, "function");
   assert.equal(typeof runtime.renderDashboardPanels, "function");
+  assert.equal(typeof runtime.retryDashboardSection, "function");
 });
 
 test("requireDashboardRuntimeUtils throws a clear error when dashboard runtime utils are unavailable", () => {
@@ -353,6 +395,10 @@ test("requireDashboardRuntimeUtils throws a clear error when dashboard runtime u
 
 test("requireDashboardRuntimeUtils accepts a narrow dashboard runtime api contract", () => {
   const runtime = requireDashboardRuntimeUtils({
+    bindDashboardInteractions() {},
+    refreshDashboardUsagePanel() {
+      return Promise.resolve();
+    },
     startDashboardLoading() {},
     renderDashboardPanels() {
       return {};
@@ -360,11 +406,17 @@ test("requireDashboardRuntimeUtils accepts a narrow dashboard runtime api contra
     renderDashboardShell() {
       return null;
     },
+    retryDashboardSection() {
+      return Promise.resolve();
+    },
   });
 
+  assert.equal(typeof runtime.bindDashboardInteractions, "function");
+  assert.equal(typeof runtime.refreshDashboardUsagePanel, "function");
   assert.equal(typeof runtime.startDashboardLoading, "function");
   assert.equal(typeof runtime.renderDashboardShell, "function");
   assert.equal(typeof runtime.renderDashboardPanels, "function");
+  assert.equal(typeof runtime.retryDashboardSection, "function");
 });
 
 test("requireDashboardViewUtils returns the dashboard view api when app.js dependencies exist", () => {
@@ -621,6 +673,7 @@ test("app.js fails clearly during startup when drawer view utils are missing", (
       requireShellStateUtils,
       requireShellViewUtils,
       requireDrawerViewUtils,
+      requireDrawerRuntimeUtils,
       requireShellRuntimeUtils,
       requirePaginationUtils,
     },
@@ -636,6 +689,35 @@ test("app.js fails clearly during startup when drawer view utils are missing", (
   assert.throws(
     () => loadAppWithoutBootstrap(context),
     /drawer-view\.js.*load.*before app\.js/i,
+  );
+});
+
+test("app.js fails clearly during startup when drawer runtime utils are missing", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+      requireDrawerViewUtils,
+      requireDrawerRuntimeUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
+    },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
+    DrawerViewUtils,
+    DrawerRuntimeUtils: null,
+    DisplayUtils,
+  });
+
+  assert.throws(
+    () => loadAppWithoutBootstrap(context),
+    /drawer-runtime\.js.*load.*before app\.js/i,
   );
 });
 
@@ -1093,6 +1175,7 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   const resourceStateIndex = html.indexOf("./resource-state.js");
   const resourceCrudIndex = html.indexOf("./resource-crud.js");
   const drawerViewIndex = html.indexOf("./drawer-view.js");
+  const drawerRuntimeIndex = html.indexOf("./drawer-runtime.js");
   const paginationIndex = html.indexOf("./pagination.js");
   const displayUtilsIndex = html.indexOf("./display-utils.js");
   const dashboardRuntimeIndex = html.indexOf("./dashboard-runtime.js");
@@ -1111,7 +1194,8 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   assert.ok(resourceStateIndex > resourceRuntimeIndex);
   assert.ok(resourceCrudIndex > resourceStateIndex);
   assert.ok(drawerViewIndex > resourceCrudIndex);
-  assert.ok(paginationIndex > drawerViewIndex);
+  assert.ok(drawerRuntimeIndex > drawerViewIndex);
+  assert.ok(paginationIndex > drawerRuntimeIndex);
   assert.ok(displayUtilsIndex > paginationIndex);
   assert.ok(dashboardRuntimeIndex > displayUtilsIndex);
   assert.ok(searchRuntimeIndex > dashboardRuntimeIndex);
@@ -1199,6 +1283,7 @@ function createAppVmContext({
   ShellStateUtils: shellStateUtils = ShellStateUtils,
   ShellViewUtils: shellViewUtils = ShellViewUtils,
   DrawerViewUtils: drawerViewUtils = DrawerViewUtils,
+  DrawerRuntimeUtils: drawerRuntimeUtils = DrawerRuntimeUtils,
   ShellRuntimeUtils: shellRuntimeUtils = ShellRuntimeUtils,
   SearchRuntimeUtils: searchRuntimeUtils = SearchRuntimeUtils,
   ObservabilityRuntimeUtils: observabilityRuntimeUtils = ObservabilityRuntimeUtils,
@@ -1360,6 +1445,7 @@ function createAppVmContext({
       requireShellStateUtils,
       requireShellViewUtils,
       requireDrawerViewUtils,
+      requireDrawerRuntimeUtils,
       requireShellRuntimeUtils,
       requirePaginationUtils,
       requireDisplayUtils,
@@ -1376,6 +1462,7 @@ function createAppVmContext({
     ShellStateUtils: shellStateUtils,
     ShellViewUtils: shellViewUtils,
     DrawerViewUtils: drawerViewUtils,
+    DrawerRuntimeUtils: drawerRuntimeUtils,
     ShellRuntimeUtils: shellRuntimeUtils,
     SearchRuntimeUtils: searchRuntimeUtils,
     ObservabilityRuntimeUtils: observabilityRuntimeUtils,

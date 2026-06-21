@@ -5,6 +5,19 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const DashboardRuntimeUtils = require("./dashboard-runtime.js");
 
+function createButton(dataset = {}) {
+  const listeners = new Map();
+  return {
+    dataset,
+    addEventListener(type, handler) {
+      listeners.set(type, handler);
+    },
+    click() {
+      listeners.get("click")?.();
+    },
+  };
+}
+
 test("startDashboardLoading resets every dashboard panel to loading", () => {
   const state = {
     dashboard: {
@@ -205,4 +218,231 @@ test("renderDashboardShell returns before evaluating panel callbacks when dashbo
   });
 
   assert.deepEqual(calls, []);
+});
+
+test("bindDashboardInteractions wires range, metric, and retry controls", async () => {
+  const state = {
+    dashboard: {
+      usage: {
+        range: "7d",
+        metric: "requests",
+      },
+    },
+  };
+  const rangeCurrentButton = createButton({ dashboardRange: "7d" });
+  const rangeNextButton = createButton({ dashboardRange: "30d" });
+  const metricButton = createButton({ dashboardMetric: "traffic" });
+  const retryButton = createButton({ dashboardRetry: "activity:recentEvents" });
+  const calls = [];
+
+  DashboardRuntimeUtils.bindDashboardInteractions({
+    dashboardRoot: {
+      querySelectorAll(selector) {
+        if (selector === "[data-dashboard-range]") {
+          return [rangeCurrentButton, rangeNextButton];
+        }
+        if (selector === "[data-dashboard-metric]") {
+          return [metricButton];
+        }
+        if (selector === "[data-dashboard-retry]") {
+          return [retryButton];
+        }
+        return [];
+      },
+    },
+    state,
+    renderDashboardShell() {
+      calls.push(["render"]);
+    },
+    refreshDashboardUsagePanel() {
+      calls.push(["refresh-usage"]);
+      return Promise.resolve();
+    },
+    retryDashboardSection(target) {
+      calls.push(["retry", target]);
+      return Promise.resolve();
+    },
+    reportError(error) {
+      calls.push(["error", error.message]);
+    },
+  });
+
+  rangeCurrentButton.click();
+  rangeNextButton.click();
+  metricButton.click();
+  retryButton.click();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(state.dashboard.usage.range, "30d");
+  assert.equal(state.dashboard.usage.metric, "traffic");
+  assert.deepEqual(calls, [
+    ["refresh-usage"],
+    ["render"],
+    ["retry", "activity:recentEvents"],
+  ]);
+});
+
+test("refreshDashboardUsagePanel clears stale usage state and stores loaded data", async () => {
+  const state = {
+    dashboard: {
+      usage: {
+        range: "30d",
+        status: "failed",
+        error: "stale",
+        data: { points: [99] },
+      },
+    },
+  };
+  const renders = [];
+
+  await DashboardRuntimeUtils.refreshDashboardUsagePanel({
+    state,
+    api(path) {
+      assert.equal(path, "/admin/api/dashboard/usage?range=30d");
+      return Promise.resolve({ series: [{ label: "Mon", requests: 12 }] });
+    },
+    dashboardUtils: {
+      createDashboardUsageState(payload) {
+        assert.deepEqual(payload, { series: [{ label: "Mon", requests: 12 }] });
+        return { points: [{ label: "Mon", value: 12 }] };
+      },
+    },
+    renderDashboardShell() {
+      renders.push({
+        status: state.dashboard.usage.status,
+        error: state.dashboard.usage.error,
+        data: state.dashboard.usage.data,
+      });
+    },
+  });
+
+  assert.deepEqual(renders, [
+    { status: "loading", error: "", data: null },
+    { status: "ready", error: "", data: { points: [{ label: "Mon", value: 12 }] } },
+  ]);
+});
+
+test("retryDashboardSection refreshes one summary card without reloading unrelated panels", async () => {
+  const state = {
+    dashboard: {
+      summaryCards: {
+        backends: { status: "ready", error: "old", data: { key: "backends" } },
+        client_keys: { status: "ready", error: "", data: { key: "client_keys" } },
+      },
+      usage: { status: "ready", error: "", data: { points: [1] }, range: "7d" },
+      eventsSummary: { status: "ready", error: "", data: [] },
+      recentEvents: { status: "ready", error: "", data: [] },
+      recentUsage: { status: "ready", error: "", data: [] },
+    },
+  };
+  const calls = [];
+
+  await DashboardRuntimeUtils.retryDashboardSection({
+    target: "summary:backends",
+    state,
+    api(path) {
+      calls.push(["api", path]);
+      return Promise.resolve({ counts: { backends: 8 } });
+    },
+    dashboardUtils: {
+      applyDashboardSummaryPayload(dashboard, payload, targetKey) {
+        calls.push(["apply-summary", payload, targetKey]);
+        dashboard.summaryCards[targetKey] = {
+          status: "ready",
+          error: "",
+          data: { value: payload.counts.backends },
+        };
+      },
+    },
+    startDashboardLoading() {
+      calls.push(["start-loading"]);
+    },
+    renderDashboardShell() {
+      calls.push(["render", state.dashboard.summaryCards.backends.status]);
+    },
+    refreshDashboardData() {
+      calls.push(["refresh-all"]);
+      return Promise.resolve();
+    },
+  });
+
+  assert.deepEqual(calls, [
+    ["render", "loading"],
+    ["api", "/admin/api/dashboard/summary"],
+    ["apply-summary", { counts: { backends: 8 } }, "backends"],
+    ["render", "ready"],
+  ]);
+  assert.equal(state.dashboard.summaryCards.backends.data.value, 8);
+  assert.equal(state.dashboard.summaryCards.client_keys.data.key, "client_keys");
+});
+
+test("retryDashboardSection repopulates activity panels from normalized payloads", async () => {
+  const state = {
+    dashboard: {
+      summaryCards: {},
+      usage: { status: "ready", error: "", data: { points: [1] }, range: "7d" },
+      eventsSummary: { status: "ready", error: "", data: [{ count: 1 }] },
+      recentEvents: { status: "ready", error: "", data: [{ id: 1 }] },
+      recentUsage: { status: "failed", error: "old", data: null },
+    },
+  };
+
+  await DashboardRuntimeUtils.retryDashboardSection({
+    target: "activity:recentUsage",
+    state,
+    api(path) {
+      assert.equal(path, "/admin/api/dashboard/activity");
+      return Promise.resolve({ usage: [{ id: 42, status: "200" }] });
+    },
+    dashboardUtils: {
+      createDashboardActivityState(payload) {
+        assert.deepEqual(payload, { usage: [{ id: 42, status: "200" }] });
+        return {
+          counters: [],
+          events: [],
+          usage: [{ id: 42, status: "200" }],
+        };
+      },
+    },
+    startDashboardLoading() {},
+    renderDashboardShell() {},
+    refreshDashboardData() {
+      return Promise.resolve();
+    },
+  });
+
+  assert.equal(state.dashboard.recentUsage.status, "ready");
+  assert.deepEqual(state.dashboard.recentUsage.data, [{ id: 42, status: "200" }]);
+  assert.equal(state.dashboard.eventsSummary.status, "ready");
+  assert.equal(state.dashboard.recentEvents.status, "ready");
+});
+
+test("retryDashboardSection falls back to full dashboard reload for unknown targets", async () => {
+  const calls = [];
+
+  await DashboardRuntimeUtils.retryDashboardSection({
+    target: "unknown",
+    state: { dashboard: {} },
+    api() {
+      calls.push(["api"]);
+      return Promise.resolve({});
+    },
+    dashboardUtils: {},
+    startDashboardLoading() {
+      calls.push(["start-loading"]);
+    },
+    renderDashboardShell() {
+      calls.push(["render"]);
+    },
+    refreshDashboardData() {
+      calls.push(["refresh-all"]);
+      return Promise.resolve();
+    },
+  });
+
+  assert.deepEqual(calls, [
+    ["start-loading"],
+    ["render"],
+    ["refresh-all"],
+  ]);
 });
