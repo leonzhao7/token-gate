@@ -130,7 +130,62 @@
       return renderDrawerMetadataPanel(objectValue, { escapeHTML, formatDateTime });
     }
 
+    if (tab === "request" || tab === "response") {
+      return renderDrawerHTTPPanel(tab, objectValue, { escapeHTML });
+    }
+
     return renderDrawerKVGrid(entries, { escapeHTML, formatDateTime });
+  }
+
+  function renderDrawerHTTPPanel(tab, value, {
+    escapeHTML = defaultEscapeHTML,
+  } = {}) {
+    const isRequest = tab === "request";
+    const summaryCards = isRequest
+      ? [
+        { label: "Method", value: value?.method || "-" },
+        { label: "Request Bytes", value: formatByteCount(value?.bytes) },
+      ]
+      : [
+        { label: "Status Family", value: value?.status_family || "-" },
+        { label: "Streaming", value: formatStreamState(value?.is_stream) },
+        { label: "Response Bytes", value: formatByteCount(value?.bytes) },
+      ];
+    const lineLabel = isRequest ? "Request Line" : "Response Summary";
+    const lineValue = isRequest
+      ? formatRequestLine(value)
+      : value?.status_family || "-";
+
+    return `
+      <div class="drawer-section-stack drawer-http-panel">
+        <section class="drawer-overview-hero drawer-http-hero">
+          <div class="drawer-overview-copy">
+            <small>${escapeHTML(lineLabel)}</small>
+            <strong class="drawer-overview-title drawer-http-line">${escapeHTML(lineValue)}</strong>
+          </div>
+        </section>
+        <div class="drawer-http-summary-grid">
+          ${summaryCards.map((item) => `
+            <article class="drawer-highlight-card drawer-http-summary-card">
+              <small>${escapeHTML(item.label)}</small>
+              <strong>${escapeHTML(item.value)}</strong>
+            </article>
+          `).join("")}
+        </div>
+        ${renderDrawerTextSection({
+          title: "Headers",
+          body: value?.headers_json,
+          emptyMessage: "-",
+          escapeHTML,
+        })}
+        ${renderDrawerTextSection({
+          title: isRequest ? "Payload Preview" : "Response Preview",
+          body: value?.body_preview,
+          emptyMessage: "-",
+          escapeHTML,
+        })}
+      </div>
+    `;
   }
 
   function renderDrawerOverviewPanel(value, {
@@ -287,6 +342,24 @@
         ${body}
       </section>
     `;
+  }
+
+  function renderDrawerTextSection({
+    title,
+    body,
+    emptyMessage = "-",
+    escapeHTML = defaultEscapeHTML,
+  } = {}) {
+    const hasBody = typeof body === "string" ? body.trim() !== "" : body != null && String(body).trim() !== "";
+    return renderDrawerDetailSection({
+      title,
+      body: `
+        <div class="drawer-code-block drawer-inline-code-block">
+          <pre>${escapeHTML(hasBody ? String(body) : emptyMessage)}</pre>
+        </div>
+      `,
+      escapeHTML,
+    });
   }
 
   function renderDrawerKVGrid(entries, {
@@ -460,6 +533,30 @@
 
   function ensureArray(value) {
     return Array.isArray(value) ? value : [];
+  }
+
+  function formatRequestLine(value) {
+    const method = String(value?.method || "").trim().toUpperCase();
+    const path = String(value?.path || "").trim() || "-";
+    const query = String(value?.query || "").trim();
+    return [method, query ? `${path}?${query}` : path].filter(Boolean).join(" ").trim() || "-";
+  }
+
+  function formatByteCount(value) {
+    if (value === null || typeof value === "undefined" || value === "") {
+      return "-";
+    }
+    return String(value);
+  }
+
+  function formatStreamState(value) {
+    if (value === true) {
+      return "Streamed";
+    }
+    if (value === false) {
+      return "Buffered";
+    }
+    return "-";
   }
 
   function identity(value) {

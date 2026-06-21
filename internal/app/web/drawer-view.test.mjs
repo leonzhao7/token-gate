@@ -212,3 +212,106 @@ test("renderDrawerTabPanel upgrades metadata payload into audit-friendly layout 
   assert.match(markup, /fmt:2026-06-19T08:05:00Z/);
   assert.match(markup, /drawer-audit-item/);
 });
+
+test("renderDrawerTabPanel renders request tab as observability detail view", () => {
+  const markup = DrawerViewUtils.renderDrawerTabPanel("request", {
+    method: "POST",
+    path: "/v1/chat/completions",
+    query: "stream=true&model=gpt-5",
+    bytes: 2048,
+    headers_json: "{\"content-type\":\"application/json\"}",
+    body_preview: "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+  }, {
+    escapeHTML: (value) => String(value),
+  });
+
+  assert.match(markup, /drawer-http-panel/);
+  assert.match(markup, /POST \/v1\/chat\/completions\?stream=true&model=gpt-5/);
+  assert.match(markup, /Request Bytes/);
+  assert.match(markup, /2048/);
+  assert.match(markup, /Headers/);
+  assert.match(markup, /content-type/);
+  assert.match(markup, /Payload Preview/);
+  assert.match(markup, /"messages"/);
+});
+
+test("renderDrawerTabPanel renders response tab with readable streaming state and empty fallbacks", () => {
+  const markup = DrawerViewUtils.renderDrawerTabPanel("response", {
+    status_family: "2xx",
+    is_stream: true,
+    bytes: null,
+    headers_json: "",
+    body_preview: "",
+  }, {
+    escapeHTML: (value) => String(value),
+  });
+
+  assert.match(markup, /drawer-http-panel/);
+  assert.match(markup, /Status Family/);
+  assert.match(markup, /2xx/);
+  assert.match(markup, /Streaming/);
+  assert.match(markup, /Streamed/);
+  assert.doesNotMatch(markup, /\btrue\b/);
+  assert.match(markup, /Response Bytes/);
+  assert.match(markup, /<strong>-<\/strong>/);
+  assert.match(markup, /Headers/);
+  assert.match(markup, /Response Preview/);
+});
+
+test("renderDrawerBody renders usage log request and response tabs from the real detail payload shape", () => {
+  const drawer = {
+    kind: "usage_logs",
+    loading: false,
+    error: "",
+    data: {
+      overview: {
+        request_id: "req-42",
+        status_code: 200,
+        backend: "edge-a",
+        model: "gpt-5.4",
+      },
+      request: {
+        bytes: 512,
+        body_preview: "{\"model\":\"gpt-5.4\"}",
+        headers_json: "{\"content-type\":\"application/json\"}",
+        method: "POST",
+        path: "/v1/responses",
+        query: "stream=true",
+      },
+      response: {
+        bytes: 1024,
+        body_preview: "{\"id\":\"resp_42\"}",
+        headers_json: "{\"content-type\":\"text/event-stream\"}",
+        status_family: "2xx",
+        is_stream: true,
+      },
+      metadata: {
+        id: 42,
+        trace_id: "trace-42",
+      },
+      raw: { id: 42 },
+      activity: {},
+    },
+  };
+
+  const requestMarkup = DrawerViewUtils.renderDrawerBody({
+    drawer: { ...drawer, tab: "request" },
+    activitySections: [],
+    escapeHTML: (value) => String(value),
+  });
+  assert.match(requestMarkup, /POST \/v1\/responses\?stream=true/);
+  assert.match(requestMarkup, /512/);
+  assert.match(requestMarkup, /application\/json/);
+  assert.match(requestMarkup, /"model":"gpt-5\.4"/);
+
+  const responseMarkup = DrawerViewUtils.renderDrawerBody({
+    drawer: { ...drawer, tab: "response" },
+    activitySections: [],
+    escapeHTML: (value) => String(value),
+  });
+  assert.match(responseMarkup, /2xx/);
+  assert.match(responseMarkup, /Streamed/);
+  assert.match(responseMarkup, /1024/);
+  assert.match(responseMarkup, /text\/event-stream/);
+  assert.match(responseMarkup, /"id":"resp_42"/);
+});
