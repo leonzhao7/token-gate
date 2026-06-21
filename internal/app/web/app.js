@@ -222,6 +222,11 @@ const ResourceRenderRuntimeUtils = typeof ResourceRuntimeUtils.requireResourceRe
   : (() => {
     throw new Error("resource-runtime.js failed to load before app.js");
   })();
+const ResourceDataRuntimeUtils = typeof ResourceRuntimeUtils.requireResourceDataRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireResourceDataRuntimeUtils(globalThis.ResourceDataRuntimeUtils)
+  : (() => {
+    throw new Error("resource-runtime.js failed to load before app.js");
+  })();
 const escapeHTML = DisplayUtils.escapeHTML;
 const formatDateTime = DisplayUtils.formatDateTime;
 const DashboardUtils = globalThis.DashboardUtils || {};
@@ -524,19 +529,11 @@ const startEditPolicy = (id) => resourceCrud.startEdit("policies", id);
 const resetPolicyForm = () => resourceCrud.reset("policies");
 
 function renderProxyOptions() {
-  const proxyInput = backendForm?.elements?.proxy_id;
-  if (!proxyInput) {
-    return;
-  }
-
-  const selected = proxyInput.value || "0";
-  proxyInput.innerHTML = `
-    <option value="0">Direct connection</option>
-    ${state.proxies.map((proxy) => `
-      <option value="${proxy.id}">${DisplayUtils.escapeHTML(proxy.name)} (${DisplayUtils.escapeHTML(proxy.address)})${proxy.enabled ? "" : " - disabled"}</option>
-    `).join("")}
-  `;
-  proxyInput.value = state.proxies.some((proxy) => String(proxy.id) === selected) ? selected : "0";
+  return ResourceDataRuntimeUtils.renderProxyOptions({
+    backendForm,
+    state,
+    displayUtils: DisplayUtils,
+  });
 }
 
 function pageIDFromHash() {
@@ -1580,46 +1577,24 @@ function renderSearchResults() {
 }
 
 async function fetchAllCollectionPages(basePath) {
-  const firstPage = await api(`${basePath}?page=1&limit=50`);
-  const items = DisplayUtils.ensureArray(firstPage?.items);
-  const total = Number(firstPage?.total) || items.length;
-  const limit = PAGE_SIZE_OPTIONS.includes(Number(firstPage?.limit)) ? Number(firstPage.limit) : 50;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  if (totalPages === 1) {
-    return items;
-  }
-
-  const remaining = [];
-  for (let page = 2; page <= totalPages; page += 1) {
-    remaining.push(api(`${basePath}?page=${page}&limit=${limit}`));
-  }
-  const pages = await Promise.all(remaining);
-  pages.forEach((payload) => {
-    items.push(...DisplayUtils.ensureArray(payload?.items));
+  return ResourceDataRuntimeUtils.fetchAllCollectionPages({
+    basePath,
+    api,
+    displayUtils: DisplayUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
   });
-  return items;
 }
 
 async function refreshResourceList(resourceKey) {
-  if (resourceKey === "proxies") {
-    state.proxies = await fetchAllCollectionPages("/admin/api/socks-proxies");
-    renderProxies();
-    return;
-  }
-  if (resourceKey === "backends") {
-    state.backends = await fetchAllCollectionPages("/admin/api/backends");
-    renderBackends();
-    return;
-  }
-  if (resourceKey === "clients") {
-    state.clients = await fetchAllCollectionPages("/admin/api/client-keys");
-    renderClients();
-    return;
-  }
-  if (resourceKey === "policies") {
-    state.policies = await fetchAllCollectionPages("/admin/api/model-policies");
-    renderPolicies();
-  }
+  return ResourceDataRuntimeUtils.refreshResourceList({
+    resourceKey,
+    state,
+    fetchAllCollectionPages,
+    renderProxies,
+    renderBackends,
+    renderClients,
+    renderPolicies,
+  });
 }
 
 function navigateToSearchResult(payload) {
