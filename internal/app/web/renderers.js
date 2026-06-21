@@ -1,12 +1,14 @@
 (function initRenderersModule(globalScope) {
   function createResourceToolbarModel({ resourceKey, searchPlaceholder = "", count = 0, activeFilters = 0, hasChanges = false }) {
+    const normalizedResourceKey = String(resourceKey || "").trim();
     return {
-      resourceKey: String(resourceKey || "").trim(),
+      resourceKey: normalizedResourceKey,
       searchPlaceholder: String(searchPlaceholder || "").trim(),
       count: Math.max(0, Number(count) || 0),
       activeFilters: Math.max(0, Number(activeFilters) || 0),
       hasChanges: Boolean(hasChanges),
-      actions: ["search", "filters", "sort", "reset", "refresh"],
+      createLabel: resourceCreateLabel(normalizedResourceKey),
+      actions: ["search", "filters", "sort", "reset", "refresh", "create"],
     };
   }
 
@@ -210,6 +212,16 @@
       return "";
     }
     return `${Math.round(duration)} ms`;
+  }
+
+  function resourceCreateLabel(resourceKey) {
+    const labels = {
+      backends: "新增 Backend",
+      clients: "新增 Client Key",
+      policies: "新增 Policy",
+      proxies: "新增 Proxy",
+    };
+    return labels[resourceKey] || "新增";
   }
 
   const api = {

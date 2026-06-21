@@ -10,7 +10,7 @@ const {
   paginateResourceRows,
 } = require("./renderers.js");
 
-test("createResourceToolbarModel keeps shared admin list actions in order", () => {
+test("createResourceToolbarModel keeps shared admin list actions in order and adds resource-specific create metadata", () => {
   assert.deepEqual(createResourceToolbarModel({
     resourceKey: "backends",
     searchPlaceholder: "Search backends",
@@ -23,8 +23,15 @@ test("createResourceToolbarModel keeps shared admin list actions in order", () =
     count: 12,
     activeFilters: 2,
     hasChanges: true,
-    actions: ["search", "filters", "sort", "reset", "refresh"],
+    createLabel: "新增 Backend",
+    actions: ["search", "filters", "sort", "reset", "refresh", "create"],
   });
+});
+
+test("createResourceToolbarModel maps create labels per resource", () => {
+  assert.equal(createResourceToolbarModel({ resourceKey: "clients" }).createLabel, "新增 Client Key");
+  assert.equal(createResourceToolbarModel({ resourceKey: "proxies" }).createLabel, "新增 Proxy");
+  assert.equal(createResourceToolbarModel({ resourceKey: "policies" }).createLabel, "新增 Policy");
 });
 
 test("createResourceTableModel normalizes rows and columns for premium list pages", () => {

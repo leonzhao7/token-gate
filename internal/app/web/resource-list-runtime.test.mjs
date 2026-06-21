@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const ResourceListRuntimeUtils = require("./resource-list-runtime.js");
+const RendererUtils = require("./renderers.js");
 const ResourceViewUtils = require("./resource-view.js");
 const ResourceStateUtils = require("./resource-state.js");
 const PaginationUtils = require("./pagination.js");
@@ -249,7 +250,7 @@ test("renderManagedResourceSection composes local table rendering with shared li
       return `<tr>${row.name}</tr>`;
     },
     resourceViewConfig: {},
-    rendererUtils: {},
+    rendererUtils: RendererUtils,
     resourceViewUtils: {
       renderResourceToolbar() {
         return "<toolbar />";
@@ -447,7 +448,7 @@ test("resource list runtime renders a local resource table with real helpers", (
         ],
       },
     },
-    rendererUtils: {},
+    rendererUtils: RendererUtils,
     pageSizeOptions: [10, 20, 50],
   });
 
@@ -455,6 +456,8 @@ test("resource list runtime renders a local resource table with real helpers", (
   assert.equal(result.pageData.total, 1);
   assert.match(container.innerHTML, /Search backends/);
   assert.match(container.innerHTML, /1 items/);
+  assert.match(container.innerHTML, /data-toolbar-create="backends"/);
+  assert.match(container.innerHTML, /新增 Backend/);
   assert.match(container.innerHTML, /edge-a/);
   assert.doesNotMatch(container.innerHTML, /edge-disabled/);
 });

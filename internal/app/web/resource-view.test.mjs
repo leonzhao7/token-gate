@@ -13,11 +13,11 @@ const {
   renderResourceTablePage,
 } = require("./resource-view.js");
 
-test("renderResourceToolbar renders search, count, status and controls", () => {
+test("renderResourceToolbar renders search, count, status and complete admin controls", () => {
   const html = renderResourceToolbar({
     resourceKey: "backends",
     viewState: { query: "gpt", filter: "enabled", sort: "weight_desc" },
-    model: { searchPlaceholder: "Search backends", count: 12 },
+    model: { searchPlaceholder: "Search backends", count: 12, createLabel: "新增 Backend" },
     config: {
       filterOptions: [{ value: "all", label: "All" }, { value: "enabled", label: "Enabled" }],
       sortOptions: [{ value: "updated_desc", label: "Updated" }, { value: "weight_desc", label: "Weight" }],
@@ -30,6 +30,10 @@ test("renderResourceToolbar renders search, count, status and controls", () => {
   assert.match(html, /12 items/);
   assert.match(html, /2 active controls/);
   assert.match(html, /data-toolbar-search="backends"/);
+  assert.match(html, /data-toolbar-filter="backends"/);
+  assert.match(html, /data-toolbar-sort="backends"/);
+  assert.match(html, /data-toolbar-create="backends"/);
+  assert.match(html, /新增 Backend/);
   assert.match(html, /data-toolbar-refresh="backends"/);
 });
 

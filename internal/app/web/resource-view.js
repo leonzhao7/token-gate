@@ -9,6 +9,9 @@
     escapeHTML = defaultEscapeHTML,
     toolbarStatusLabel = defaultToolbarStatusLabel,
   }) {
+    const filterOptions = ensureArray(config?.filterOptions);
+    const sortOptions = ensureArray(config?.sortOptions);
+    const createLabel = String(model?.createLabel || "新增").trim();
     return `
       <div class="resource-toolbar" data-resource-toolbar="${escapeHTML(resourceKey)}">
         <div class="resource-toolbar-main">
@@ -22,18 +25,25 @@
           </div>
         </div>
         <div class="resource-toolbar-actions">
-          ${ensureArray(config?.filterOptions).length ? `
-            <select data-toolbar-filter="${escapeHTML(resourceKey)}">
-              ${config.filterOptions.map((option) => `<option value="${escapeHTML(option.value)}" ${option.value === viewState?.filter ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")}
-            </select>
+          ${filterOptions.length ? `
+            <label class="resource-toolbar-control">
+              <span class="field-label">Filter</span>
+              <select data-toolbar-filter="${escapeHTML(resourceKey)}">
+                ${filterOptions.map((option) => `<option value="${escapeHTML(option.value)}" ${option.value === viewState?.filter ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")}
+              </select>
+            </label>
           ` : ""}
-          ${ensureArray(config?.sortOptions).length ? `
-            <select data-toolbar-sort="${escapeHTML(resourceKey)}">
-              ${config.sortOptions.map((option) => `<option value="${escapeHTML(option.value)}" ${option.value === viewState?.sort ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")}
-            </select>
+          ${sortOptions.length ? `
+            <label class="resource-toolbar-control">
+              <span class="field-label">Sort</span>
+              <select data-toolbar-sort="${escapeHTML(resourceKey)}">
+                ${sortOptions.map((option) => `<option value="${escapeHTML(option.value)}" ${option.value === viewState?.sort ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")}
+              </select>
+            </label>
           ` : ""}
           <button class="ghost-button small-button" type="button" data-toolbar-reset="${escapeHTML(resourceKey)}" ${hasChanges ? "" : "disabled"}>Reset</button>
           <button class="ghost-button small-button" type="button" data-toolbar-refresh="${escapeHTML(resourceKey)}">Refresh</button>
+          <button class="small-button" type="button" data-toolbar-create="${escapeHTML(resourceKey)}">${escapeHTML(createLabel)}</button>
         </div>
       </div>
     `;
