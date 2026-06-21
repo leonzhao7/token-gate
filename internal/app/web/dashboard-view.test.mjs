@@ -9,6 +9,8 @@ const {
   renderDashboardEventsSummaryCard,
   renderDashboardRecentEventsCard,
   renderDashboardRecentUsageCard,
+  renderSparkline,
+  renderAreaChart,
 } = require("./dashboard-view.js");
 
 test("renderDashboardSummaryRow renders ready cards from dashboard state", () => {
@@ -93,4 +95,50 @@ test("renderDashboardRecent feed cards render formatted items", () => {
   assert.match(usageHTML, /alpha/);
   assert.match(usageHTML, /req-1/);
   assert.match(usageHTML, /dt:2026-06-19T00:00:00Z/);
+});
+
+test("renderSparkline renders chart svg from chart helpers", () => {
+  const html = renderSparkline([1, 3, 2], {
+    width: 150,
+    height: 54,
+    padding: 5,
+    className: "sparkline-chart tone-positive",
+  }, {
+    createSparklinePoints() {
+      return [{ x: 5, y: 49 }, { x: 75, y: 8 }, { x: 145, y: 28 }];
+    },
+    createLinePath() {
+      return "M 5 49 L 75 8 L 145 28";
+    },
+    createAreaPath() {
+      return "M 5 49 L 75 8 L 145 28 Z";
+    },
+  });
+
+  assert.match(html, /sparkline-chart tone-positive/);
+  assert.match(html, /Trend sparkline/);
+  assert.match(html, /M 5 49 L 75 8 L 145 28/);
+});
+
+test("renderAreaChart renders usage chart and axis labels from chart helpers", () => {
+  const html = renderAreaChart([5, 9, 7], ["Mon", "Tue", "Wed"], {
+    width: 720,
+    height: 260,
+    padding: 22,
+  }, {
+    createSparklinePoints() {
+      return [{ x: 22, y: 200 }, { x: 360, y: 40 }, { x: 698, y: 120 }];
+    },
+    createLinePath() {
+      return "M 22 200 L 360 40 L 698 120";
+    },
+    createAreaPath() {
+      return "M 22 200 L 360 40 L 698 120 Z";
+    },
+  });
+
+  assert.match(html, /Usage overview chart/);
+  assert.match(html, /Mon/);
+  assert.match(html, /Wed/);
+  assert.match(html, /M 22 200 L 360 40 L 698 120/);
 });

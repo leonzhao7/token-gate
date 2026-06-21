@@ -328,6 +328,52 @@
     `;
   }
 
+  function renderSparkline(values, { width, height, padding, className = "" }, chartsUtils = {}) {
+    const points = typeof chartsUtils.createSparklinePoints === "function"
+      ? chartsUtils.createSparklinePoints(values, { width, height, padding })
+      : [];
+    if (points.length === 0) {
+      return `<div class="dashboard-chart-empty">No trend</div>`;
+    }
+    const linePath = typeof chartsUtils.createLinePath === "function" ? chartsUtils.createLinePath(points) : "";
+    const areaPath = typeof chartsUtils.createAreaPath === "function" ? chartsUtils.createAreaPath(points, { height, padding }) : "";
+    return `
+      <svg class="${defaultEscapeHTML(className)}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Trend sparkline">
+        <path class="sparkline-area" d="${defaultEscapeHTML(areaPath)}"></path>
+        <path class="sparkline-line" d="${defaultEscapeHTML(linePath)}"></path>
+      </svg>
+    `;
+  }
+
+  function renderAreaChart(values, labels, { width, height, padding }, chartsUtils = {}) {
+    const points = typeof chartsUtils.createSparklinePoints === "function"
+      ? chartsUtils.createSparklinePoints(values, { width, height, padding })
+      : [];
+    if (points.length === 0) {
+      return `<div class="dashboard-chart-empty">No chart data</div>`;
+    }
+    const linePath = typeof chartsUtils.createLinePath === "function" ? chartsUtils.createLinePath(points) : "";
+    const areaPath = typeof chartsUtils.createAreaPath === "function" ? chartsUtils.createAreaPath(points, { height, padding }) : "";
+    return `
+      <div class="dashboard-area-chart">
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Usage overview chart">
+          <defs>
+            <linearGradient id="usageAreaFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="var(--primary)" stop-opacity="0.28"></stop>
+              <stop offset="100%" stop-color="var(--primary)" stop-opacity="0.02"></stop>
+            </linearGradient>
+          </defs>
+          <path class="usage-area-path" d="${defaultEscapeHTML(areaPath)}"></path>
+          <path class="usage-line-path" d="${defaultEscapeHTML(linePath)}"></path>
+          ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="3.2"></circle>`).join("")}
+        </svg>
+        <div class="dashboard-chart-axis">
+          ${labels.map((label) => `<span>${defaultEscapeHTML(label)}</span>`).join("")}
+        </div>
+      </div>
+    `;
+  }
+
   function usageValueForMetric(point, metric) {
     if (metric === "traffic") {
       return Number(point?.trafficBytes) || 0;
@@ -366,11 +412,13 @@
   }
 
   const api = {
+    renderAreaChart,
     renderDashboardSummaryRow,
     renderDashboardUsageCard,
     renderDashboardEventsSummaryCard,
     renderDashboardRecentEventsCard,
     renderDashboardRecentUsageCard,
+    renderSparkline,
   };
 
   if (typeof module !== "undefined" && module.exports) {

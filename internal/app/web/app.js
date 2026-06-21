@@ -215,7 +215,11 @@ const ResourceListRuntimeUtils = typeof ResourceRuntimeUtils.requireResourceList
 const escapeHTML = DisplayUtils.escapeHTML;
 const formatDateTime = DisplayUtils.formatDateTime;
 const DashboardUtils = globalThis.DashboardUtils || {};
-const DashboardViewUtils = globalThis.DashboardViewUtils || {};
+const DashboardViewUtils = typeof ResourceRuntimeUtils.requireDashboardViewUtils === "function"
+  ? ResourceRuntimeUtils.requireDashboardViewUtils(globalThis.DashboardViewUtils)
+  : (() => {
+    throw new Error("dashboard-view.js failed to load before app.js");
+  })();
 const ChartsUtils = globalThis.ChartsUtils || {};
 const DrawerUtils = globalThis.DrawerUtils || {};
 const ObservabilityUtils = globalThis.ObservabilityUtils || {};
@@ -1371,6 +1375,23 @@ async function handleSettingsAction(action) {
 }
 
 function renderDashboardShell() {
+  if (!dashboardRoot) {
+    return;
+  }
+  const panels = DashboardRuntimeUtils.renderDashboardPanels({
+    dashboard: state.dashboard,
+    dashboardUtils: DashboardUtils,
+    dashboardViewUtils: DashboardViewUtils,
+    renderSparkline(values, options) {
+      return DashboardViewUtils.renderSparkline(values, options, ChartsUtils);
+    },
+    renderAreaChart(values, labels, options) {
+      return DashboardViewUtils.renderAreaChart(values, labels, options, ChartsUtils);
+    },
+    formatDateTime,
+    feedToneClass,
+    escapeHTML,
+  });
   DashboardRuntimeUtils.renderDashboardShell({
     state,
     dashboardRoot,
@@ -1379,11 +1400,21 @@ function renderDashboardShell() {
     dashboardEventsSummaryCard,
     dashboardRecentEventsCard,
     dashboardRecentUsageCard,
-    renderSummaryRow: renderDashboardSummaryRow,
-    renderUsageCard: renderDashboardUsageCard,
-    renderEventsSummaryCard: renderDashboardEventsSummaryCard,
-    renderRecentEventsCard: renderDashboardRecentEventsCard,
-    renderRecentUsageCard: renderDashboardRecentUsageCard,
+    renderSummaryRow() {
+      return panels.summary;
+    },
+    renderUsageCard() {
+      return panels.usage;
+    },
+    renderEventsSummaryCard() {
+      return panels.eventsSummary;
+    },
+    renderRecentEventsCard() {
+      return panels.recentEvents;
+    },
+    renderRecentUsageCard() {
+      return panels.recentUsage;
+    },
     bindInteractions: bindDashboardInteractions,
   });
 }
@@ -1479,118 +1510,6 @@ function renderSearchShell() {
     query: state.ui.search.query,
     resultsMarkup: renderSearchResults(),
   });
-}
-
-function renderDashboardSummaryRow() {
-  if (typeof DashboardViewUtils.renderDashboardSummaryRow === "function") {
-    return DashboardViewUtils.renderDashboardSummaryRow({
-      dashboard: state.dashboard,
-      renderSparkline,
-      escapeHTML,
-    });
-  }
-  return "";
-}
-
-function renderDashboardUsageCard() {
-  if (typeof DashboardViewUtils.renderDashboardUsageCard === "function") {
-    return DashboardViewUtils.renderDashboardUsageCard({
-      dashboard: state.dashboard,
-      createDashboardRangeOptions: DashboardUtils.createDashboardRangeOptions,
-      renderAreaChart,
-      escapeHTML,
-    });
-  }
-  return "";
-}
-
-function renderDashboardEventsSummaryCard() {
-  if (typeof DashboardViewUtils.renderDashboardEventsSummaryCard === "function") {
-    return DashboardViewUtils.renderDashboardEventsSummaryCard({
-      dashboard: state.dashboard,
-      escapeHTML,
-    });
-  }
-  return "";
-}
-
-function renderDashboardRecentEventsCard() {
-  if (typeof DashboardViewUtils.renderDashboardRecentEventsCard === "function") {
-    return DashboardViewUtils.renderDashboardRecentEventsCard({
-      dashboard: state.dashboard,
-      formatDateTime,
-      escapeHTML,
-      feedToneClass,
-    });
-  }
-  return "";
-}
-
-function renderDashboardRecentUsageCard() {
-  if (typeof DashboardViewUtils.renderDashboardRecentUsageCard === "function") {
-    return DashboardViewUtils.renderDashboardRecentUsageCard({
-      dashboard: state.dashboard,
-      formatDateTime,
-      escapeHTML,
-    });
-  }
-  return "";
-}
-
-function renderSparkline(values, { width, height, padding, className = "" }) {
-  const points = typeof ChartsUtils.createSparklinePoints === "function"
-    ? ChartsUtils.createSparklinePoints(values, { width, height, padding })
-    : [];
-  if (points.length === 0) {
-    return `<div class="dashboard-chart-empty">No trend</div>`;
-  }
-  const linePath = typeof ChartsUtils.createLinePath === "function" ? ChartsUtils.createLinePath(points) : "";
-  const areaPath = typeof ChartsUtils.createAreaPath === "function" ? ChartsUtils.createAreaPath(points, { height, padding }) : "";
-  return `
-    <svg class="${DisplayUtils.escapeHTML(className)}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Trend sparkline">
-      <path class="sparkline-area" d="${DisplayUtils.escapeHTML(areaPath)}"></path>
-      <path class="sparkline-line" d="${DisplayUtils.escapeHTML(linePath)}"></path>
-    </svg>
-  `;
-}
-
-function renderAreaChart(values, labels, { width, height, padding }) {
-  const points = typeof ChartsUtils.createSparklinePoints === "function"
-    ? ChartsUtils.createSparklinePoints(values, { width, height, padding })
-    : [];
-  if (points.length === 0) {
-    return `<div class="dashboard-chart-empty">No chart data</div>`;
-  }
-  const linePath = typeof ChartsUtils.createLinePath === "function" ? ChartsUtils.createLinePath(points) : "";
-  const areaPath = typeof ChartsUtils.createAreaPath === "function" ? ChartsUtils.createAreaPath(points, { height, padding }) : "";
-  return `
-    <div class="dashboard-area-chart">
-      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Usage overview chart">
-        <defs>
-          <linearGradient id="usageAreaFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="var(--primary)" stop-opacity="0.28"></stop>
-            <stop offset="100%" stop-color="var(--primary)" stop-opacity="0.02"></stop>
-          </linearGradient>
-        </defs>
-        <path class="usage-area-path" d="${DisplayUtils.escapeHTML(areaPath)}"></path>
-        <path class="usage-line-path" d="${DisplayUtils.escapeHTML(linePath)}"></path>
-        ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="3.2"></circle>`).join("")}
-      </svg>
-      <div class="dashboard-chart-axis">
-        ${labels.map((label) => `<span>${DisplayUtils.escapeHTML(label)}</span>`).join("")}
-      </div>
-    </div>
-  `;
-}
-
-function usageValueForMetric(point, metric) {
-  if (metric === "traffic") {
-    return Number(point?.trafficBytes) || 0;
-  }
-  if (metric === "errors") {
-    return (Number(point?.errorRate) || 0) * 100;
-  }
-  return Number(point?.requests) || 0;
 }
 
 function bindDashboardInteractions() {

@@ -83,7 +83,17 @@
   ];
   const REQUIRED_DASHBOARD_RUNTIME_METHODS = [
     "startDashboardLoading",
+    "renderDashboardPanels",
     "renderDashboardShell",
+  ];
+  const REQUIRED_DASHBOARD_VIEW_METHODS = [
+    "renderDashboardSummaryRow",
+    "renderDashboardUsageCard",
+    "renderDashboardEventsSummaryCard",
+    "renderDashboardRecentEventsCard",
+    "renderDashboardRecentUsageCard",
+    "renderSparkline",
+    "renderAreaChart",
   ];
   const REQUIRED_SEARCH_RUNTIME_METHODS = [
     "openSearchShell",
@@ -262,6 +272,20 @@
     );
   }
 
+  function requireDashboardViewUtils(dashboardViewUtils) {
+    const candidate = dashboardViewUtils && typeof dashboardViewUtils === "object"
+      ? dashboardViewUtils
+      : null;
+    const missing = REQUIRED_DASHBOARD_VIEW_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `dashboard-view.js failed to load before app.js; missing DashboardViewUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   function requireSearchRuntimeUtils(searchRuntimeUtils) {
     const candidate = searchRuntimeUtils && typeof searchRuntimeUtils === "object"
       ? searchRuntimeUtils
@@ -306,6 +330,7 @@
 
   const api = {
     requireDashboardRuntimeUtils,
+    requireDashboardViewUtils,
     requireDisplayUtils,
     requireObservabilityRuntimeUtils,
     requirePaginationUtils,

@@ -17,6 +17,7 @@ const { requireShellRuntimeUtils } = require("./resource-runtime.js");
 const { requirePaginationUtils } = require("./resource-runtime.js");
 const { requireDisplayUtils } = require("./resource-runtime.js");
 const { requireDashboardRuntimeUtils } = require("./resource-runtime.js");
+const { requireDashboardViewUtils } = require("./resource-runtime.js");
 const { requireSearchRuntimeUtils } = require("./resource-runtime.js");
 const { requireObservabilityRuntimeUtils } = require("./resource-runtime.js");
 const { requireResourceListRuntimeUtils } = require("./resource-runtime.js");
@@ -33,6 +34,7 @@ const ObservabilityRuntimeUtils = require("./observability-runtime.js");
 const ResourceListRuntimeUtils = require("./resource-list-runtime.js");
 const ThemeUtils = require("./theme.js");
 const SettingsUtils = require("./settings.js");
+const DashboardViewUtils = require("./dashboard-view.js");
 
 test("requireResourceViewUtils returns the resource view api when all required functions exist", () => {
   const resourceView = requireResourceViewUtils(ResourceViewUtils);
@@ -339,6 +341,7 @@ test("requireDashboardRuntimeUtils returns the dashboard runtime api when app.js
 
   assert.equal(typeof runtime.startDashboardLoading, "function");
   assert.equal(typeof runtime.renderDashboardShell, "function");
+  assert.equal(typeof runtime.renderDashboardPanels, "function");
 });
 
 test("requireDashboardRuntimeUtils throws a clear error when dashboard runtime utils are unavailable", () => {
@@ -351,6 +354,9 @@ test("requireDashboardRuntimeUtils throws a clear error when dashboard runtime u
 test("requireDashboardRuntimeUtils accepts a narrow dashboard runtime api contract", () => {
   const runtime = requireDashboardRuntimeUtils({
     startDashboardLoading() {},
+    renderDashboardPanels() {
+      return {};
+    },
     renderDashboardShell() {
       return null;
     },
@@ -358,6 +364,33 @@ test("requireDashboardRuntimeUtils accepts a narrow dashboard runtime api contra
 
   assert.equal(typeof runtime.startDashboardLoading, "function");
   assert.equal(typeof runtime.renderDashboardShell, "function");
+  assert.equal(typeof runtime.renderDashboardPanels, "function");
+});
+
+test("requireDashboardViewUtils returns the dashboard view api when app.js dependencies exist", () => {
+  const view = requireDashboardViewUtils(DashboardViewUtils);
+
+  assert.equal(typeof view.renderDashboardSummaryRow, "function");
+  assert.equal(typeof view.renderSparkline, "function");
+  assert.equal(typeof view.renderAreaChart, "function");
+});
+
+test("requireDashboardViewUtils throws a clear error when dashboard view utils are unavailable", () => {
+  assert.throws(
+    () => requireDashboardViewUtils(null),
+    /dashboard-view\.js.*load.*before app\.js/i,
+  );
+});
+
+test("requireDashboardViewUtils reports exact missing helper names for partial modules", () => {
+  assert.throws(
+    () => requireDashboardViewUtils({
+      renderDashboardSummaryRow() {
+        return "";
+      },
+    }),
+    /missing DashboardViewUtils methods: renderDashboardUsageCard, renderDashboardEventsSummaryCard, renderDashboardRecentEventsCard, renderDashboardRecentUsageCard, renderSparkline, renderAreaChart/i,
+  );
 });
 
 test("requireSearchRuntimeUtils returns the search runtime api when app.js dependencies exist", () => {
@@ -705,6 +738,7 @@ test("app.js fails clearly during startup when dashboard runtime utils are missi
       requirePaginationUtils,
       requireDisplayUtils,
       requireDashboardRuntimeUtils,
+      requireDashboardViewUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
@@ -724,6 +758,41 @@ test("app.js fails clearly during startup when dashboard runtime utils are missi
   );
 });
 
+test("app.js fails clearly during startup when dashboard view utils are missing", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+      requireDrawerViewUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
+      requireDisplayUtils,
+      requireDashboardRuntimeUtils,
+      requireDashboardViewUtils,
+      requireSearchRuntimeUtils,
+      requireObservabilityRuntimeUtils,
+      requireResourceListRuntimeUtils,
+    },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
+    DrawerViewUtils,
+    DisplayUtils,
+    DashboardRuntimeUtils,
+    DashboardViewUtils: null,
+  });
+
+  assert.throws(
+    () => loadAppWithoutBootstrap(context),
+    /dashboard-view\.js.*load.*before app\.js/i,
+  );
+});
+
 test("app.js fails clearly during startup when search runtime utils are missing", () => {
   const context = createAppVmContext({
     ResourceRuntimeUtils: {
@@ -737,6 +806,7 @@ test("app.js fails clearly during startup when search runtime utils are missing"
       requirePaginationUtils,
       requireDisplayUtils,
       requireDashboardRuntimeUtils,
+      requireDashboardViewUtils,
       requireSearchRuntimeUtils,
     },
     ResourceViewUtils,
@@ -769,6 +839,7 @@ test("app.js fails clearly during startup when observability runtime utils are m
       requirePaginationUtils,
       requireDisplayUtils,
       requireDashboardRuntimeUtils,
+      requireDashboardViewUtils,
       requireSearchRuntimeUtils,
       requireObservabilityRuntimeUtils,
     },
@@ -803,6 +874,7 @@ test("app.js fails clearly during startup when resource list runtime utils are m
       requirePaginationUtils,
       requireDisplayUtils,
       requireDashboardRuntimeUtils,
+      requireDashboardViewUtils,
       requireSearchRuntimeUtils,
       requireObservabilityRuntimeUtils,
       requireResourceListRuntimeUtils,
@@ -837,6 +909,9 @@ test("app.js integrates the validated resource view module for proxy list render
       requireDrawerViewUtils,
       requireShellRuntimeUtils,
       requirePaginationUtils,
+      requireDisplayUtils,
+      requireDashboardRuntimeUtils,
+      requireDashboardViewUtils,
     },
     ResourceViewUtils,
     ResourceStateUtils,
@@ -845,6 +920,8 @@ test("app.js integrates the validated resource view module for proxy list render
     ShellViewUtils,
     DrawerViewUtils,
     DisplayUtils,
+    DashboardRuntimeUtils,
+    DashboardViewUtils,
   });
 
   loadAppWithoutBootstrap(context);
@@ -1129,6 +1206,7 @@ function createAppVmContext({
   PaginationUtils: paginationUtils = PaginationUtils,
   DisplayUtils: displayUtils = {},
   DashboardRuntimeUtils: dashboardRuntimeUtils = DashboardRuntimeUtils,
+  DashboardViewUtils: dashboardViewUtils = DashboardViewUtils,
   ThemeUtils: themeUtils = ThemeUtils,
   SettingsUtils: settingsUtils = SettingsUtils,
 }) {
@@ -1286,6 +1364,7 @@ function createAppVmContext({
       requirePaginationUtils,
       requireDisplayUtils,
       requireDashboardRuntimeUtils,
+      requireDashboardViewUtils,
       requireSearchRuntimeUtils,
       requireObservabilityRuntimeUtils,
       requireResourceListRuntimeUtils,
@@ -1304,10 +1383,10 @@ function createAppVmContext({
     PaginationUtils: paginationUtils,
     DisplayUtils: displayUtils,
     DashboardRuntimeUtils: dashboardRuntimeUtils,
+    DashboardViewUtils: dashboardViewUtils,
     ThemeUtils: themeUtils,
     SearchUtils: {},
     DashboardUtils: {},
-    DashboardViewUtils: {},
     ChartsUtils: {},
     DrawerUtils: {},
     ObservabilityUtils: {},

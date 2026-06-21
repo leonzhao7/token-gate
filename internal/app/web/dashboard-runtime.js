@@ -62,7 +62,58 @@
     }
   }
 
+  function renderDashboardPanels({
+    dashboard,
+    dashboardUtils,
+    dashboardViewUtils,
+    renderSparkline,
+    renderAreaChart,
+    formatDateTime,
+    feedToneClass,
+    escapeHTML,
+  }) {
+    return {
+      summary: typeof dashboardViewUtils?.renderDashboardSummaryRow === "function"
+        ? dashboardViewUtils.renderDashboardSummaryRow({
+          dashboard,
+          renderSparkline,
+          escapeHTML,
+        })
+        : "",
+      usage: typeof dashboardViewUtils?.renderDashboardUsageCard === "function"
+        ? dashboardViewUtils.renderDashboardUsageCard({
+          dashboard,
+          createDashboardRangeOptions: dashboardUtils?.createDashboardRangeOptions,
+          renderAreaChart,
+          escapeHTML,
+        })
+        : "",
+      eventsSummary: typeof dashboardViewUtils?.renderDashboardEventsSummaryCard === "function"
+        ? dashboardViewUtils.renderDashboardEventsSummaryCard({
+          dashboard,
+          escapeHTML,
+        })
+        : "",
+      recentEvents: typeof dashboardViewUtils?.renderDashboardRecentEventsCard === "function"
+        ? dashboardViewUtils.renderDashboardRecentEventsCard({
+          dashboard,
+          formatDateTime,
+          escapeHTML,
+          feedToneClass,
+        })
+        : "",
+      recentUsage: typeof dashboardViewUtils?.renderDashboardRecentUsageCard === "function"
+        ? dashboardViewUtils.renderDashboardRecentUsageCard({
+          dashboard,
+          formatDateTime,
+          escapeHTML,
+        })
+        : "",
+    };
+  }
+
   const api = {
+    renderDashboardPanels,
     renderDashboardShell,
     startDashboardLoading,
   };
