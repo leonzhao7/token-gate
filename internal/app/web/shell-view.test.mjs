@@ -159,7 +159,7 @@ test("renderSearchResults renders empty loading and active grouped rows", () => 
   assert.match(html, /edge-a/);
   assert.match(html, /search-result-kind/);
   assert.match(html, /Backend/);
-  assert.match(html, /Opens page Backends/);
+  assert.match(html, /Opens Backends page and detail drawer/);
   assert.match(html, /healthy/);
   assert.match(html, /1 result/);
   assert.match(html, /<kbd>↑<\/kbd>/);

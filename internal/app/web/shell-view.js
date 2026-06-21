@@ -225,7 +225,7 @@
     }
 
     return item?.targetId
-      ? `Opens page ${pageLabel} details`
+      ? `Opens ${pageLabel} page and detail drawer`
       : `Opens page ${pageLabel}`;
   }
 
