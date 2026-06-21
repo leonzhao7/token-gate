@@ -227,6 +227,11 @@ const ResourceDataRuntimeUtils = typeof ResourceRuntimeUtils.requireResourceData
   : (() => {
     throw new Error("resource-runtime.js failed to load before app.js");
   })();
+const ConsoleDataRuntimeUtils = typeof ResourceRuntimeUtils.requireConsoleDataRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireConsoleDataRuntimeUtils(globalThis.ConsoleDataRuntimeUtils)
+  : (() => {
+    throw new Error("resource-runtime.js failed to load before app.js");
+  })();
 const escapeHTML = DisplayUtils.escapeHTML;
 const formatDateTime = DisplayUtils.formatDateTime;
 const DashboardUtils = globalThis.DashboardUtils || {};
@@ -1025,60 +1030,34 @@ policyForm.addEventListener("submit", async (event) => {
 });
 
 async function refreshAll() {
-  startDashboardLoading();
-  renderDashboardShell();
-  const dashboardRefresh = refreshDashboardData().catch(reportError);
-
-  const eventPage = state.pagination.events;
-  const usageLogPage = state.pagination.usageLogs;
-  const usageLogQuery = buildUsageLogQuery();
-  const eventQuery = buildEventQuery();
-  const [proxies, backends, clients, policies, events, eventSummary, usageLogs, usageLogStats, usageLogOptions] = await Promise.all([
-    fetchAllCollectionPages("/admin/api/socks-proxies"),
-    fetchAllCollectionPages("/admin/api/backends"),
-    fetchAllCollectionPages("/admin/api/client-keys"),
-    fetchAllCollectionPages("/admin/api/model-policies"),
-    api(`/admin/api/events?page=${eventPage.page}&limit=${eventPage.size}${eventQuery}`),
-    api(`/admin/api/events/summary?${buildEventSummaryQuery()}`),
-    api(`/admin/api/usage-logs?page=${usageLogPage.page}&limit=${usageLogPage.size}${usageLogQuery}`),
-    api(`/admin/api/usage-logs/stats?${buildUsageLogStatsQuery()}`),
-    api("/admin/api/usage-log-options"),
-  ]);
-
-  state.proxies = DisplayUtils.ensureArray(proxies);
-  state.backends = DisplayUtils.ensureArray(backends);
-  state.clients = DisplayUtils.ensureArray(clients);
-  state.policies = DisplayUtils.ensureArray(policies);
-  PaginationUtils.applyPagedResponse("events", events, state, {
-    pageSizeOptions: PAGE_SIZE_OPTIONS,
+  return ConsoleDataRuntimeUtils.refreshAll({
+    state,
+    startDashboardLoading,
+    renderDashboardShell,
+    refreshDashboardData,
+    reportError,
+    buildUsageLogQuery,
+    buildEventQuery,
+    buildEventSummaryQuery,
+    buildUsageLogStatsQuery,
+    fetchAllCollectionPages,
+    api,
+    displayUtils: DisplayUtils,
+    paginationUtils: PaginationUtils,
     resourceStateUtils: ResourceStateUtils,
-  });
-  PaginationUtils.applyPagedResponse("usageLogs", usageLogs, state, {
     pageSizeOptions: PAGE_SIZE_OPTIONS,
-    resourceStateUtils: ResourceStateUtils,
+    renderProxyOptions,
+    renderUsageLogFilterOptions,
+    renderProxies,
+    renderBackends,
+    renderClients,
+    renderPolicies,
+    renderEvents,
+    renderUsageLogs,
+    renderDrawerShell,
+    renderSearchShell,
+    renderTheme,
   });
-  state.eventSummary = eventSummary;
-  state.usageLogStats = usageLogStats;
-  state.usageLogOptions.backends = DisplayUtils.ensureArray(usageLogOptions?.backends);
-  state.usageLogOptions.models = DisplayUtils.ensureArray(usageLogOptions?.models);
-  state.usageLogOptions.clientKeys = DisplayUtils.ensureArray(usageLogOptions?.client_keys);
-  state.usageLogOptions.policies = DisplayUtils.ensureArray(usageLogOptions?.policies);
-  state.usageLogOptions.proxies = DisplayUtils.ensureArray(usageLogOptions?.proxies);
-  state.ui.lastRefreshAt = new Date().toISOString();
-
-  renderProxyOptions();
-  renderUsageLogFilterOptions();
-  renderProxies();
-  renderBackends();
-  renderClients();
-  renderPolicies();
-  renderEvents();
-  renderUsageLogs();
-  renderDashboardShell();
-  renderDrawerShell();
-  renderSearchShell();
-  renderTheme();
-  await dashboardRefresh;
 }
 
 function buildUsageLogQuery() {
@@ -1243,96 +1222,12 @@ function renderUsageLogFilterOptions() {
 }
 
 async function refreshDashboardData() {
-  const usageRange = state.dashboard.usage.range || "7d";
-  const requests = [
-    api("/admin/api/dashboard/summary")
-      .then((payload) => {
-        if (typeof DashboardUtils.applyDashboardSummaryPayload === "function") {
-          DashboardUtils.applyDashboardSummaryPayload(state.dashboard, payload);
-          return;
-        }
-        const cards = typeof DashboardUtils.createDashboardSummaryCards === "function"
-          ? DashboardUtils.createDashboardSummaryCards(payload)
-          : [];
-        const cardsByKey = cards.reduce((accumulator, card) => {
-          accumulator[card.key] = card;
-          return accumulator;
-        }, {});
-        Object.entries(state.dashboard.summaryCards || {}).forEach(([key, cardState]) => {
-          cardState.data = cardsByKey[key] || null;
-          cardState.error = "";
-          cardState.status = cardState.data ? "ready" : "empty";
-        });
-      })
-      .catch((error) => {
-        if (typeof DashboardUtils.applyDashboardSummaryError === "function") {
-          DashboardUtils.applyDashboardSummaryError(state.dashboard, error?.message || "Failed to load summary");
-          return;
-        }
-        Object.values(state.dashboard.summaryCards || {}).forEach((cardState) => {
-          cardState.status = "failed";
-          cardState.error = error?.message || "Failed to load summary";
-          cardState.data = null;
-        });
-      })
-      .finally(() => {
-        renderDashboardShell();
-      }),
-    api(`/admin/api/dashboard/usage?range=${encodeURIComponent(usageRange)}`)
-      .then((payload) => {
-        state.dashboard.usage.status = "ready";
-        state.dashboard.usage.data = typeof DashboardUtils.createDashboardUsageState === "function"
-          ? DashboardUtils.createDashboardUsageState(payload)
-          : null;
-        state.dashboard.usage.error = "";
-      })
-      .catch((error) => {
-        state.dashboard.usage.status = "failed";
-        state.dashboard.usage.error = error?.message || "Failed to load usage";
-        state.dashboard.usage.data = null;
-      })
-      .finally(() => {
-        if (state.dashboard.usage.status === "ready" && !(state.dashboard.usage.data?.points || []).length) {
-          state.dashboard.usage.status = "empty";
-        }
-        renderDashboardShell();
-      }),
-    api("/admin/api/dashboard/activity")
-      .then((payload) => {
-        if (typeof DashboardUtils.applyDashboardActivityPayload === "function") {
-          DashboardUtils.applyDashboardActivityPayload(state.dashboard, payload);
-          return;
-        }
-        const activityState = typeof DashboardUtils.createDashboardActivityState === "function"
-          ? DashboardUtils.createDashboardActivityState(payload)
-          : { counters: [], events: [], usage: [] };
-        state.dashboard.eventsSummary.data = activityState.counters;
-        state.dashboard.eventsSummary.error = "";
-        state.dashboard.eventsSummary.status = (activityState.counters || []).some((item) => Number(item.count) > 0) ? "ready" : "empty";
-        state.dashboard.recentEvents.data = activityState.events;
-        state.dashboard.recentEvents.error = "";
-        state.dashboard.recentEvents.status = (activityState.events || []).length ? "ready" : "empty";
-        state.dashboard.recentUsage.data = activityState.usage;
-        state.dashboard.recentUsage.error = "";
-        state.dashboard.recentUsage.status = (activityState.usage || []).length ? "ready" : "empty";
-      })
-      .catch((error) => {
-        if (typeof DashboardUtils.applyDashboardActivityError === "function") {
-          DashboardUtils.applyDashboardActivityError(state.dashboard, error?.message || "Failed to load activity");
-          return;
-        }
-        [state.dashboard.eventsSummary, state.dashboard.recentEvents, state.dashboard.recentUsage].forEach((panelState) => {
-          panelState.status = "failed";
-          panelState.error = error?.message || "Failed to load activity";
-          panelState.data = null;
-        });
-      })
-      .finally(() => {
-        renderDashboardShell();
-      }),
-  ];
-
-  await Promise.allSettled(requests);
+  return ConsoleDataRuntimeUtils.refreshDashboardData({
+    state,
+    api,
+    dashboardUtils: DashboardUtils,
+    renderDashboardShell,
+  });
 }
 
 function startDashboardLoading() {
@@ -1340,45 +1235,15 @@ function startDashboardLoading() {
 }
 
 async function handleSettingsAction(action) {
-  const normalized = String(action || "").trim();
-  if (!normalized) {
-    return;
-  }
-  if (normalized === "focus-token") {
-    tokenInput?.focus();
-    return;
-  }
-  if (normalized === "refresh-data") {
-    await refreshAll();
-    return;
-  }
-  if (normalized === "cycle-theme") {
-    cycleThemePreference();
-    return;
-  }
-  if (normalized === "toggle-sidebar") {
-    toggleSidebarCollapsed();
-    return;
-  }
-  if (normalized === "open-search") {
-    openSearchShell();
-    return;
-  }
-  if (normalized === "view-usage-logs") {
-    navigateToPage("usage-logs");
-    return;
-  }
-  if (normalized === "view-events") {
-    navigateToPage("events");
-    return;
-  }
-  if (normalized === "open-backends") {
-    navigateToPage("backends");
-    return;
-  }
-  if (normalized === "open-policies") {
-    navigateToPage("model-policies");
-  }
+  return ConsoleDataRuntimeUtils.handleSettingsAction({
+    action,
+    tokenInput,
+    refreshAll,
+    cycleThemePreference,
+    toggleSidebarCollapsed,
+    openSearchShell,
+    navigateToPage,
+  });
 }
 
 function renderDashboardShell() {

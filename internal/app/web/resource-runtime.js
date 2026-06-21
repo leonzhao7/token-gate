@@ -154,6 +154,11 @@
     "fetchAllCollectionPages",
     "refreshResourceList",
   ];
+  const REQUIRED_CONSOLE_DATA_RUNTIME_METHODS = [
+    "refreshDashboardData",
+    "refreshAll",
+    "handleSettingsAction",
+  ];
 
   function requireResourceViewUtils(resourceViewUtils) {
     const candidate = resourceViewUtils && typeof resourceViewUtils === "object"
@@ -393,7 +398,22 @@
     );
   }
 
+  function requireConsoleDataRuntimeUtils(consoleDataRuntimeUtils) {
+    const candidate = consoleDataRuntimeUtils && typeof consoleDataRuntimeUtils === "object"
+      ? consoleDataRuntimeUtils
+      : null;
+    const missing = REQUIRED_CONSOLE_DATA_RUNTIME_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `console-data-runtime.js failed to load before app.js; missing ConsoleDataRuntimeUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   const api = {
+    requireConsoleDataRuntimeUtils,
     requireDashboardRuntimeUtils,
     requireDashboardViewUtils,
     requireDisplayUtils,
