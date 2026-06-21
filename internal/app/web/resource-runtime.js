@@ -141,6 +141,14 @@
     "bindResourceListInteractions",
     "renderLocalResourceTable",
   ];
+  const REQUIRED_RESOURCE_RENDER_RUNTIME_METHODS = [
+    "buildQuickDetailMarkup",
+    "renderProxyRow",
+    "renderBackendRow",
+    "renderClientRow",
+    "renderPolicyRow",
+    "renderResourceListByKey",
+  ];
 
   function requireResourceViewUtils(resourceViewUtils) {
     const candidate = resourceViewUtils && typeof resourceViewUtils === "object"
@@ -352,6 +360,20 @@
     );
   }
 
+  function requireResourceRenderRuntimeUtils(resourceRenderRuntimeUtils) {
+    const candidate = resourceRenderRuntimeUtils && typeof resourceRenderRuntimeUtils === "object"
+      ? resourceRenderRuntimeUtils
+      : null;
+    const missing = REQUIRED_RESOURCE_RENDER_RUNTIME_METHODS.filter((key) => typeof candidate?.[key] !== "function");
+    if (!missing.length) {
+      return candidate;
+    }
+
+    throw new Error(
+      `resource-render-runtime.js failed to load before app.js; missing ResourceRenderRuntimeUtils methods: ${missing.join(", ")}`,
+    );
+  }
+
   const api = {
     requireDashboardRuntimeUtils,
     requireDashboardViewUtils,
@@ -360,6 +382,7 @@
     requireObservabilityRuntimeUtils,
     requirePaginationUtils,
     requireResourceListRuntimeUtils,
+    requireResourceRenderRuntimeUtils,
     requireSearchRuntimeUtils,
     requireDrawerViewUtils,
     requireResourceCrudUtils,

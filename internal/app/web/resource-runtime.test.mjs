@@ -22,6 +22,7 @@ const { requireDashboardViewUtils } = require("./resource-runtime.js");
 const { requireSearchRuntimeUtils } = require("./resource-runtime.js");
 const { requireObservabilityRuntimeUtils } = require("./resource-runtime.js");
 const { requireResourceListRuntimeUtils } = require("./resource-runtime.js");
+const { requireResourceRenderRuntimeUtils } = require("./resource-runtime.js");
 const ResourceCrudUtils = require("./resource-crud.js");
 const ShellStateUtils = require("./shell-state.js");
 const ShellViewUtils = require("./shell-view.js");
@@ -34,6 +35,7 @@ const DashboardRuntimeUtils = require("./dashboard-runtime.js");
 const SearchRuntimeUtils = require("./search-runtime.js");
 const ObservabilityRuntimeUtils = require("./observability-runtime.js");
 const ResourceListRuntimeUtils = require("./resource-list-runtime.js");
+const ResourceRenderRuntimeUtils = require("./resource-render-runtime.js");
 const ThemeUtils = require("./theme.js");
 const SettingsUtils = require("./settings.js");
 const DashboardViewUtils = require("./dashboard-view.js");
@@ -576,6 +578,38 @@ test("requireResourceListRuntimeUtils accepts a narrow resource list runtime api
   assert.equal(typeof runtime.bindResourceListInteractions, "function");
 });
 
+test("requireResourceRenderRuntimeUtils returns the resource render runtime api when app.js dependencies exist", () => {
+  const runtime = requireResourceRenderRuntimeUtils(ResourceRenderRuntimeUtils);
+
+  assert.equal(typeof runtime.buildQuickDetailMarkup, "function");
+  assert.equal(typeof runtime.renderProxyRow, "function");
+  assert.equal(typeof runtime.renderBackendRow, "function");
+  assert.equal(typeof runtime.renderClientRow, "function");
+  assert.equal(typeof runtime.renderPolicyRow, "function");
+  assert.equal(typeof runtime.renderResourceListByKey, "function");
+});
+
+test("requireResourceRenderRuntimeUtils throws a clear error when resource render runtime utils are unavailable", () => {
+  assert.throws(
+    () => requireResourceRenderRuntimeUtils(null),
+    /resource-render-runtime\.js.*load.*before app\.js/i,
+  );
+});
+
+test("requireResourceRenderRuntimeUtils reports exact missing helper names for partial modules", () => {
+  assert.throws(
+    () => requireResourceRenderRuntimeUtils({
+      buildQuickDetailMarkup() {
+        return "";
+      },
+      renderProxyRow() {
+        return "";
+      },
+    }),
+    /missing ResourceRenderRuntimeUtils methods: renderBackendRow, renderClientRow, renderPolicyRow, renderResourceListByKey/i,
+  );
+});
+
 test("createAppVmContext injects search runtime helpers by default", () => {
   const context = createAppVmContext({
     ResourceViewUtils,
@@ -615,6 +649,20 @@ test("createAppVmContext injects resource list runtime helpers by default", () =
   assert.equal(
     context.ResourceRuntimeUtils.requireResourceListRuntimeUtils,
     requireResourceListRuntimeUtils,
+  );
+});
+
+test("createAppVmContext injects resource render runtime helpers by default", () => {
+  const context = createAppVmContext({
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+  });
+
+  assert.equal(context.ResourceRenderRuntimeUtils, ResourceRenderRuntimeUtils);
+  assert.equal(
+    context.ResourceRuntimeUtils.requireResourceRenderRuntimeUtils,
+    requireResourceRenderRuntimeUtils,
   );
 });
 
@@ -745,6 +793,50 @@ test("app.js fails clearly during startup when shell runtime utils are missing",
   assert.throws(
     () => loadAppWithoutBootstrap(context),
     /shell-runtime\.js.*load.*before app\.js/i,
+  );
+});
+
+test("app.js fails clearly during startup when resource render runtime utils are missing", () => {
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+      requireDrawerViewUtils,
+      requireDrawerRuntimeUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
+      requireDisplayUtils,
+      requireDashboardRuntimeUtils,
+      requireDashboardViewUtils,
+      requireSearchRuntimeUtils,
+      requireObservabilityRuntimeUtils,
+      requireResourceListRuntimeUtils,
+      requireResourceRenderRuntimeUtils,
+    },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
+    DrawerViewUtils,
+    DrawerRuntimeUtils,
+    ShellRuntimeUtils,
+    PaginationUtils,
+    DisplayUtils,
+    DashboardRuntimeUtils,
+    DashboardViewUtils,
+    SearchRuntimeUtils,
+    ObservabilityRuntimeUtils,
+    ResourceListRuntimeUtils,
+    ResourceRenderRuntimeUtils: null,
+  });
+
+  assert.throws(
+    () => loadAppWithoutBootstrap(context),
+    /resource-render-runtime\.js.*load.*before app\.js/i,
   );
 });
 
@@ -1182,6 +1274,7 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   const searchRuntimeIndex = html.indexOf("./search-runtime.js");
   const observabilityRuntimeIndex = html.indexOf("./observability-runtime.js");
   const resourceListRuntimeIndex = html.indexOf("./resource-list-runtime.js");
+  const resourceRenderRuntimeIndex = html.indexOf("./resource-render-runtime.js");
   const appIndex = html.indexOf("./app.js");
 
   assert.ok(shellStateIndex >= 0);
@@ -1201,7 +1294,8 @@ test("index.html loads resource runtime dependencies before app.js", () => {
   assert.ok(searchRuntimeIndex > dashboardRuntimeIndex);
   assert.ok(observabilityRuntimeIndex > searchRuntimeIndex);
   assert.ok(resourceListRuntimeIndex > observabilityRuntimeIndex);
-  assert.ok(appIndex > resourceListRuntimeIndex);
+  assert.ok(resourceRenderRuntimeIndex > resourceListRuntimeIndex);
+  assert.ok(appIndex > resourceRenderRuntimeIndex);
 });
 
 function loadAppWithoutBootstrap(context) {
@@ -1288,6 +1382,7 @@ function createAppVmContext({
   SearchRuntimeUtils: searchRuntimeUtils = SearchRuntimeUtils,
   ObservabilityRuntimeUtils: observabilityRuntimeUtils = ObservabilityRuntimeUtils,
   ResourceListRuntimeUtils: resourceListRuntimeUtils = ResourceListRuntimeUtils,
+  ResourceRenderRuntimeUtils: resourceRenderRuntimeUtils = ResourceRenderRuntimeUtils,
   PaginationUtils: paginationUtils = PaginationUtils,
   DisplayUtils: displayUtils = {},
   DashboardRuntimeUtils: dashboardRuntimeUtils = DashboardRuntimeUtils,
@@ -1454,6 +1549,7 @@ function createAppVmContext({
       requireSearchRuntimeUtils,
       requireObservabilityRuntimeUtils,
       requireResourceListRuntimeUtils,
+      requireResourceRenderRuntimeUtils,
       ...(ResourceRuntimeUtils || {}),
     },
     ResourceViewUtils: resourceViewUtils,
@@ -1467,6 +1563,7 @@ function createAppVmContext({
     SearchRuntimeUtils: searchRuntimeUtils,
     ObservabilityRuntimeUtils: observabilityRuntimeUtils,
     ResourceListRuntimeUtils: resourceListRuntimeUtils,
+    ResourceRenderRuntimeUtils: resourceRenderRuntimeUtils,
     PaginationUtils: paginationUtils,
     DisplayUtils: displayUtils,
     DashboardRuntimeUtils: dashboardRuntimeUtils,

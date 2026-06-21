@@ -217,6 +217,11 @@ const ResourceListRuntimeUtils = typeof ResourceRuntimeUtils.requireResourceList
   : (() => {
     throw new Error("resource-list-runtime.js failed to load before app.js");
   })();
+const ResourceRenderRuntimeUtils = typeof ResourceRuntimeUtils.requireResourceRenderRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireResourceRenderRuntimeUtils(globalThis.ResourceRenderRuntimeUtils)
+  : (() => {
+    throw new Error("resource-runtime.js failed to load before app.js");
+  })();
 const escapeHTML = DisplayUtils.escapeHTML;
 const formatDateTime = DisplayUtils.formatDateTime;
 const DashboardUtils = globalThis.DashboardUtils || {};
@@ -1901,93 +1906,63 @@ function renderPolicies() {
 }
 
 function renderProxyRow(proxy) {
-  return ResourceViewUtils.renderProxyRow({
+  return ResourceRenderRuntimeUtils.renderProxyRow({
     proxy,
-    expanded: state.expandedProxies.has(String(proxy.id)),
-    editing: String(state.editingProxyID) === String(proxy.id),
-    quickDetails: buildQuickDetailMarkup("proxies", proxy),
-    statusPill: DisplayUtils.statusPill,
-    formatBindingCount: DisplayUtils.formatBindingCount,
-    formatDataSize: DisplayUtils.formatDataSize,
-    formatLatency: DisplayUtils.formatLatency,
-    formatDateTime: DisplayUtils.formatDateTime,
-    tableActions: DisplayUtils.tableActions,
-    escapeHTML: DisplayUtils.escapeHTML,
+    state,
+    buildQuickDetailMarkup,
+    resourceViewUtils: ResourceViewUtils,
+    displayUtils: DisplayUtils,
   });
 }
 
 function renderBackendRow(backend) {
-  return ResourceViewUtils.renderBackendRow({
+  return ResourceRenderRuntimeUtils.renderBackendRow({
     backend,
-    expanded: state.expandedBackends.has(String(backend.id)),
-    editing: String(state.editingBackendID) === String(backend.id),
-    quickDetails: buildQuickDetailMarkup("backends", backend),
-    statusPill: DisplayUtils.statusPill,
-    formatBackendRouting: DisplayUtils.formatBackendRouting,
-    formatBackendCoverage: DisplayUtils.formatBackendCoverage,
-    backendProtocolLabel: DisplayUtils.backendProtocolLabel,
-    formatUsageCount: DisplayUtils.formatUsageCount,
-    formatLatency: DisplayUtils.formatLatency,
-    formatDateTime: DisplayUtils.formatDateTime,
-    formatBackendRecentStats: DisplayUtils.formatBackendRecentStats,
-    tableActions: DisplayUtils.tableActions,
-    escapeHTML: DisplayUtils.escapeHTML,
+    state,
+    buildQuickDetailMarkup,
+    resourceViewUtils: ResourceViewUtils,
+    displayUtils: DisplayUtils,
   });
 }
 
 function renderClientRow(client) {
-  return ResourceViewUtils.renderClientRow({
+  return ResourceRenderRuntimeUtils.renderClientRow({
     client,
-    expanded: state.expandedClients.has(String(client.id)),
-    editing: String(state.editingClientID) === String(client.id),
-    quickDetails: buildQuickDetailMarkup("clients", client),
-    clientTokenText: DisplayUtils.clientTokenDisplay(client),
-    statusPill: DisplayUtils.statusPill,
-    formatUsageCount: DisplayUtils.formatUsageCount,
-    formatDateTime: DisplayUtils.formatDateTime,
-    tableActions: DisplayUtils.tableActions,
-    escapeHTML: DisplayUtils.escapeHTML,
+    state,
+    buildQuickDetailMarkup,
+    resourceViewUtils: ResourceViewUtils,
+    displayUtils: DisplayUtils,
   });
 }
 
 function renderPolicyRow(policy) {
-  return ResourceViewUtils.renderPolicyRow({
+  return ResourceRenderRuntimeUtils.renderPolicyRow({
     policy,
-    expanded: state.expandedPolicies.has(String(policy.id)),
-    editing: String(state.editingPolicyID) === String(policy.id),
-    quickDetails: buildQuickDetailMarkup("policies", policy),
-    formatPolicyRouting: DisplayUtils.formatPolicyRouting,
-    formatUsageCount: DisplayUtils.formatUsageCount,
-    formatPolicyCoverage: DisplayUtils.formatPolicyCoverage,
-    formatDateTime: DisplayUtils.formatDateTime,
-    tableActions: DisplayUtils.tableActions,
-    escapeHTML: DisplayUtils.escapeHTML,
+    state,
+    buildQuickDetailMarkup,
+    resourceViewUtils: ResourceViewUtils,
+    displayUtils: DisplayUtils,
   });
 }
 
 function renderResourceListByKey(resourceKey) {
-  if (resourceKey === "proxies") {
-    renderProxies();
-    return;
-  }
-  if (resourceKey === "backends") {
-    renderBackends();
-    return;
-  }
-  if (resourceKey === "clients") {
-    renderClients();
-    return;
-  }
-  if (resourceKey === "policies") {
-    renderPolicies();
-  }
+  return ResourceRenderRuntimeUtils.renderResourceListByKey({
+    resourceKey,
+    renderProxies,
+    renderBackends,
+    renderClients,
+    renderPolicies,
+  });
 }
 
 function buildQuickDetailMarkup(resourceKey, record) {
-  const sections = typeof RendererUtils.createQuickDetailSections === "function"
-    ? RendererUtils.createQuickDetailSections(resourceKey, record)
-    : [];
-  return ResourceViewUtils.createQuickDetailMarkup({ sections, escapeHTML: DisplayUtils.escapeHTML });
+  return ResourceRenderRuntimeUtils.buildQuickDetailMarkup({
+    resourceKey,
+    record,
+    rendererUtils: RendererUtils,
+    resourceViewUtils: ResourceViewUtils,
+    displayUtils: DisplayUtils,
+  });
 }
 
 function renderEvents() {
