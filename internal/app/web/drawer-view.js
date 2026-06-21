@@ -1,4 +1,9 @@
 (function initDrawerViewModule(globalScope) {
+  const OVERVIEW_TITLE_KEYS = ["name", "pattern", "message", "request_id", "type", "model", "address", "base_url", "token_prefix"];
+  const OVERVIEW_SUBTITLE_KEYS = ["base_url", "endpoint", "pool", "backend_pool", "route_group", "protocol", "actor", "client_name"];
+  const OVERVIEW_HIGHLIGHT_KEYS = ["enabled", "pool", "backend_pool", "protocol", "weight", "proxy_id", "usage_count", "last_used_at", "endpoint"];
+  const METADATA_PRIORITY_KEYS = ["id", "resource_type", "resource_id", "created_at", "updated_at", "last_used_at"];
+
   function drawerDisplayTitle(kind, { resolveTitle = defaultResolveTitle } = {}) {
     return resolveTitle(kind);
   }
@@ -113,16 +118,245 @@
       return `<div class="drawer-state"><strong>No ${escapeHTML(tab)}</strong><p class="muted-text">This tab has no data yet.</p></div>`;
     }
 
+    if (tab === "overview") {
+      return renderDrawerOverviewPanel(objectValue, { escapeHTML, formatDateTime });
+    }
+
+    if (tab === "configuration") {
+      return renderDrawerConfigurationPanel(objectValue, { escapeHTML, formatDateTime });
+    }
+
+    if (tab === "metadata") {
+      return renderDrawerMetadataPanel(objectValue, { escapeHTML, formatDateTime });
+    }
+
+    return renderDrawerKVGrid(entries, { escapeHTML, formatDateTime });
+  }
+
+  function renderDrawerOverviewPanel(value, {
+    escapeHTML = defaultEscapeHTML,
+    formatDateTime = identity,
+  } = {}) {
+    const entries = Object.entries(value || {});
+    const titleKey = firstPresentKey(value, OVERVIEW_TITLE_KEYS) || entries[0]?.[0] || "resource";
+    const titleValue = formatDrawerFieldValue(titleKey, value?.[titleKey], { formatDateTime });
+    const subtitleKeys = OVERVIEW_SUBTITLE_KEYS.filter((key) => key !== titleKey && hasDisplayValue(value?.[key])).slice(0, 3);
+    const subtitle = subtitleKeys.map((key) => formatDrawerFieldValue(key, value[key], { formatDateTime })).join(" · ");
+    const consumed = new Set([titleKey, ...subtitleKeys]);
+    const highlights = entries
+      .filter(([key, entryValue]) => !consumed.has(key) && hasDisplayValue(entryValue) && OVERVIEW_HIGHLIGHT_KEYS.includes(key))
+      .slice(0, 4);
+    highlights.forEach(([key]) => consumed.add(key));
+    const remaining = entries.filter(([key, entryValue]) => !consumed.has(key) && hasDisplayValue(entryValue));
+
+    return `
+      <div class="drawer-section-stack">
+        <section class="drawer-overview-hero">
+          <div class="drawer-overview-copy">
+            <small>${escapeHTML(humanizeKey(titleKey))}</small>
+            <strong class="drawer-overview-title">${escapeHTML(titleValue)}</strong>
+            <p class="drawer-overview-subtitle">${escapeHTML(subtitle || "Inspect live routing, access, and audit context for this resource.")}</p>
+          </div>
+        </section>
+        ${highlights.length ? `
+          <div class="drawer-highlight-grid">
+            ${highlights.map(([key, entryValue]) => `
+              <article class="drawer-highlight-card">
+                <small>${escapeHTML(humanizeKey(key))}</small>
+                <strong>${escapeHTML(formatDrawerFieldValue(key, entryValue, { formatDateTime }))}</strong>
+              </article>
+            `).join("")}
+          </div>
+        ` : ""}
+        ${remaining.length ? renderDrawerKVGrid(remaining, { escapeHTML, formatDateTime }) : ""}
+      </div>
+    `;
+  }
+
+  function renderDrawerConfigurationPanel(value, {
+    escapeHTML = defaultEscapeHTML,
+    formatDateTime = identity,
+  } = {}) {
+    const arrayEntries = [];
+    const objectEntries = [];
+    const scalarEntries = [];
+
+    Object.entries(value || {}).forEach(([key, entryValue]) => {
+      if (!hasDisplayValue(entryValue)) {
+        return;
+      }
+      if (Array.isArray(entryValue)) {
+        arrayEntries.push([key, entryValue]);
+        return;
+      }
+      if (isPlainObject(entryValue)) {
+        objectEntries.push([key, entryValue]);
+        return;
+      }
+      scalarEntries.push([key, entryValue]);
+    });
+
+    return `
+      <div class="drawer-section-stack">
+        ${arrayEntries.map(([key, entryValue]) => renderDrawerDetailSection({
+          title: humanizeKey(key),
+          countLabel: `${entryValue.length} items`,
+          body: `
+            <div class="drawer-list-grid">
+              ${entryValue.map((item) => `
+                <article class="drawer-list-item">
+                  <strong>${escapeHTML(formatDrawerFieldValue(key, item, { formatDateTime }))}</strong>
+                </article>
+              `).join("")}
+            </div>
+          `,
+          escapeHTML,
+        })).join("")}
+        ${objectEntries.map(([key, entryValue]) => renderDrawerDetailSection({
+          title: humanizeKey(key),
+          countLabel: `${Object.keys(entryValue).length} fields`,
+          body: `
+            <div class="drawer-list-grid">
+              ${Object.entries(entryValue).map(([childKey, childValue]) => `
+                <article class="drawer-list-item">
+                  <small>${escapeHTML(humanizeKey(childKey))}</small>
+                  <strong>${escapeHTML(formatDrawerFieldValue(childKey, childValue, { formatDateTime }))}</strong>
+                </article>
+              `).join("")}
+            </div>
+          `,
+          escapeHTML,
+        })).join("")}
+        ${scalarEntries.length ? renderDrawerDetailSection({
+          title: "Parameters",
+          countLabel: `${scalarEntries.length} fields`,
+          body: renderDrawerKVGrid(scalarEntries, { escapeHTML, formatDateTime }),
+          escapeHTML,
+        }) : ""}
+      </div>
+    `;
+  }
+
+  function renderDrawerMetadataPanel(value, {
+    escapeHTML = defaultEscapeHTML,
+    formatDateTime = identity,
+  } = {}) {
+    const entries = Object.entries(value || {}).filter(([, entryValue]) => hasDisplayValue(entryValue));
+    const ordered = sortEntriesByPriority(entries, METADATA_PRIORITY_KEYS);
+    const primary = ordered.slice(0, 6);
+    const supplemental = ordered.slice(6);
+
+    return `
+      <div class="drawer-section-stack">
+        <section class="drawer-detail-section">
+          <header class="drawer-detail-section-head">
+            <strong>Audit Information</strong>
+            <span>${escapeHTML(`${primary.length} fields`)}</span>
+          </header>
+          <div class="drawer-audit-grid">
+            ${primary.map(([key, entryValue]) => `
+              <article class="drawer-audit-item">
+                <small>${escapeHTML(humanizeKey(key))}</small>
+                <strong>${escapeHTML(formatDrawerFieldValue(key, entryValue, { formatDateTime }))}</strong>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+        ${supplemental.length ? renderDrawerDetailSection({
+          title: "Supplemental Metadata",
+          countLabel: `${supplemental.length} fields`,
+          body: renderDrawerKVGrid(supplemental, { escapeHTML, formatDateTime }),
+          escapeHTML,
+        }) : ""}
+      </div>
+    `;
+  }
+
+  function renderDrawerDetailSection({
+    title,
+    countLabel = "",
+    body = "",
+    escapeHTML = defaultEscapeHTML,
+  }) {
+    return `
+      <section class="drawer-detail-section">
+        <header class="drawer-detail-section-head">
+          <strong>${escapeHTML(title || "Details")}</strong>
+          ${countLabel ? `<span>${escapeHTML(countLabel)}</span>` : ""}
+        </header>
+        ${body}
+      </section>
+    `;
+  }
+
+  function renderDrawerKVGrid(entries, {
+    escapeHTML = defaultEscapeHTML,
+    formatDateTime = identity,
+  } = {}) {
     return `
       <div class="drawer-kv-grid">
-        ${entries.map(([key, entryValue]) => `
+        ${ensureArray(entries).map(([key, entryValue]) => `
           <article class="drawer-kv-card">
             <small>${escapeHTML(humanizeKey(key))}</small>
-            <strong>${escapeHTML(formatDrawerValue(entryValue))}</strong>
+            <strong>${escapeHTML(formatDrawerFieldValue(key, entryValue, { formatDateTime }))}</strong>
           </article>
         `).join("")}
       </div>
     `;
+  }
+
+  function formatDrawerFieldValue(key, value, { formatDateTime = identity } = {}) {
+    if (typeof value === "boolean") {
+      if (key === "enabled") {
+        return value ? "Enabled" : "Disabled";
+      }
+      return value ? "Yes" : "No";
+    }
+    if (isDateTimeKey(key)) {
+      return formatDateTime(value);
+    }
+    return formatDrawerValue(value);
+  }
+
+  function isDateTimeKey(key) {
+    const normalized = String(key || "").trim().toLowerCase();
+    return normalized.endsWith("_at") || normalized.endsWith("_time") || normalized === "timestamp";
+  }
+
+  function firstPresentKey(value, keys) {
+    return ensureArray(keys).find((key) => hasDisplayValue(value?.[key])) || "";
+  }
+
+  function hasDisplayValue(value) {
+    if (value === null || typeof value === "undefined") {
+      return false;
+    }
+    if (typeof value === "string") {
+      return value.trim() !== "";
+    }
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+    if (isPlainObject(value)) {
+      return Object.keys(value).length > 0;
+    }
+    return true;
+  }
+
+  function isPlainObject(value) {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function sortEntriesByPriority(entries, priorityKeys) {
+    const priority = new Map(ensureArray(priorityKeys).map((key, index) => [key, index]));
+    return ensureArray(entries).slice().sort(([leftKey], [rightKey]) => {
+      const leftRank = priority.has(leftKey) ? priority.get(leftKey) : Number.MAX_SAFE_INTEGER;
+      const rightRank = priority.has(rightKey) ? priority.get(rightKey) : Number.MAX_SAFE_INTEGER;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+      return String(leftKey).localeCompare(String(rightKey));
+    });
   }
 
   function renderDrawerTabs({

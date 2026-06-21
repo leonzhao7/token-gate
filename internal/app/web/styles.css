@@ -1082,6 +1082,133 @@ a {
   gap: 12px;
 }
 
+.drawer-overview-hero,
+.drawer-detail-section {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--surface-muted) 80%, var(--surface) 20%));
+}
+
+.drawer-overview-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.drawer-overview-copy small,
+.drawer-detail-section-head strong,
+.drawer-list-item small,
+.drawer-audit-item small {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.drawer-overview-title {
+  display: block;
+  color: var(--text-primary);
+  font-size: 1.55rem;
+  line-height: 1.15;
+  letter-spacing: -0.04em;
+}
+
+.drawer-overview-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.drawer-highlight-grid,
+.drawer-list-grid,
+.drawer-audit-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.drawer-highlight-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.drawer-highlight-card,
+.drawer-list-item,
+.drawer-audit-item {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.drawer-highlight-card small {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.drawer-highlight-card strong,
+.drawer-list-item strong,
+.drawer-audit-item strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.drawer-detail-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.drawer-detail-section-head strong {
+  display: block;
+  margin: 0;
+}
+
+.drawer-detail-section-head span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary-soft) 72%, var(--surface));
+  color: var(--text-primary);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.drawer-list-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.drawer-list-item {
+  display: grid;
+  gap: 8px;
+}
+
+.drawer-audit-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.drawer-audit-item {
+  display: grid;
+  gap: 6px;
+}
+
 .drawer-kv-card,
 .drawer-activity-section,
 .quick-detail-card {
@@ -2854,6 +2981,9 @@ button:hover {
   .dashboard-metric-tabs,
   .detail-grid,
   .drawer-kv-grid,
+  .drawer-highlight-grid,
+  .drawer-list-grid,
+  .drawer-audit-grid,
   .drawer-activity-grid,
   .quick-detail-grid,
   .settings-hero-badges,

@@ -157,3 +157,58 @@ test("renderDrawerBody renders activity sections and usage log footer stays read
   assert.doesNotMatch(footerMarkup, /data-drawer-footer="edit"/);
   assert.match(footerMarkup, /data-drawer-footer="save"/);
 });
+
+test("renderDrawerTabPanel upgrades overview payload into a summary hero with highlight cards", () => {
+  const markup = DrawerViewUtils.renderDrawerTabPanel("overview", {
+    name: "edge-a",
+    enabled: true,
+    pool: "premium",
+    protocol: "openai",
+    weight: 3,
+    proxy_id: 7,
+  }, {
+    escapeHTML: (value) => String(value),
+  });
+
+  assert.match(markup, /drawer-overview-hero/);
+  assert.match(markup, /drawer-highlight-grid/);
+  assert.match(markup, /edge-a/);
+  assert.match(markup, /premium/);
+  assert.match(markup, /openai/);
+  assert.match(markup, /Enabled/);
+});
+
+test("renderDrawerTabPanel upgrades configuration payload into grouped config cards", () => {
+  const markup = DrawerViewUtils.renderDrawerTabPanel("configuration", {
+    models: ["gpt-5.4", "gpt-image-2"],
+    endpoints: ["chat", "images"],
+    model_mapping: { "gpt-5.4": "gpt-5.4-test" },
+    base_url: "https://edge-a.example/v1",
+  }, {
+    escapeHTML: (value) => String(value),
+  });
+
+  assert.match(markup, /drawer-section-stack/);
+  assert.match(markup, /drawer-detail-section/);
+  assert.match(markup, /drawer-list-grid/);
+  assert.match(markup, /gpt-image-2/);
+  assert.match(markup, /gpt-5\.4-test/);
+  assert.match(markup, /https:\/\/edge-a\.example\/v1/);
+});
+
+test("renderDrawerTabPanel upgrades metadata payload into audit-friendly layout with formatted times", () => {
+  const markup = DrawerViewUtils.renderDrawerTabPanel("metadata", {
+    id: 7,
+    created_at: "2026-06-19T08:00:00Z",
+    updated_at: "2026-06-19T08:05:00Z",
+    resource_id: 11,
+  }, {
+    escapeHTML: (value) => String(value),
+    formatDateTime: (value) => `fmt:${value}`,
+  });
+
+  assert.match(markup, /drawer-audit-grid/);
+  assert.match(markup, /fmt:2026-06-19T08:00:00Z/);
+  assert.match(markup, /fmt:2026-06-19T08:05:00Z/);
+  assert.match(markup, /drawer-audit-item/);
+});
