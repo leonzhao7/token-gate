@@ -315,3 +315,95 @@ test("renderDrawerBody renders usage log request and response tabs from the real
   assert.match(responseMarkup, /text\/event-stream/);
   assert.match(responseMarkup, /"id":"resp_42"/);
 });
+
+test("renderDrawerTabPanel renders event overview as audit-focused hero with summary context", () => {
+  const markup = DrawerViewUtils.renderDrawerTabPanel("overview", {
+    type: "policy.updated",
+    message: "Policy threshold updated for premium clients",
+    category: "policy",
+    severity: "warning",
+    actor: "admin@example.com",
+    endpoint: "/admin/policies/7",
+    backend: "edge-a",
+    client_name: "premium-web",
+    model: "gpt-5.4",
+  }, {
+    escapeHTML: (value) => String(value),
+    kind: "events",
+  });
+
+  assert.match(markup, /drawer-overview-hero/);
+  assert.match(markup, /Policy threshold updated for premium clients/);
+  assert.match(markup, /policy\.updated/);
+  assert.match(markup, /drawer-highlight-grid/);
+  assert.match(markup, /Category/);
+  assert.match(markup, /Severity/);
+  assert.match(markup, /Actor/);
+  assert.match(markup, /Endpoint/);
+  assert.match(markup, /Backend/);
+  assert.match(markup, /Client/);
+  assert.match(markup, /Model/);
+  assert.doesNotMatch(markup, /Inspect live routing, access, and audit context for this resource\./);
+});
+
+test("renderDrawerTabPanel keeps non-event overview payloads on the generic drawer layout", () => {
+  const markup = DrawerViewUtils.renderDrawerTabPanel("overview", {
+    message: "Upstream request failed",
+    type: "backend.error",
+    actor: "system",
+  }, {
+    escapeHTML: (value) => String(value),
+  });
+
+  assert.doesNotMatch(markup, /Audit Event/);
+  assert.match(markup, /Upstream request failed/);
+  assert.match(markup, /<small>Message<\/small>/);
+  assert.match(markup, /backend\.error/);
+  assert.doesNotMatch(markup, /Category/);
+});
+
+test("renderDrawerBody renders event-specific empty states for configuration and activity tabs", () => {
+  const configurationMarkup = DrawerViewUtils.renderDrawerBody({
+    drawer: {
+      kind: "events",
+      tab: "configuration",
+      loading: false,
+      error: "",
+      data: {
+        overview: {},
+        configuration: {},
+        metadata: {},
+        raw: {},
+        activity: {},
+      },
+    },
+    activitySections: [],
+    escapeHTML: (value) => String(value),
+  });
+
+  assert.doesNotMatch(configurationMarkup, /No configuration/);
+  assert.match(configurationMarkup, /Event context/);
+  assert.match(configurationMarkup, /This audit event does not include additional configuration state\./);
+
+  const activityMarkup = DrawerViewUtils.renderDrawerBody({
+    drawer: {
+      kind: "events",
+      tab: "activity",
+      loading: false,
+      error: "",
+      data: {
+        overview: {},
+        configuration: {},
+        metadata: {},
+        raw: {},
+        activity: {},
+      },
+    },
+    activitySections: [],
+    escapeHTML: (value) => String(value),
+  });
+
+  assert.doesNotMatch(activityMarkup, /No activity/);
+  assert.match(activityMarkup, /Related audit trail/);
+  assert.match(activityMarkup, /This event is already the primary audit record, so there is no separate activity timeline\./);
+});

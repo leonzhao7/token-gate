@@ -3,6 +3,7 @@
   const OVERVIEW_SUBTITLE_KEYS = ["base_url", "endpoint", "pool", "backend_pool", "route_group", "protocol", "actor", "client_name"];
   const OVERVIEW_HIGHLIGHT_KEYS = ["enabled", "pool", "backend_pool", "protocol", "weight", "proxy_id", "usage_count", "last_used_at", "endpoint"];
   const METADATA_PRIORITY_KEYS = ["id", "resource_type", "resource_id", "created_at", "updated_at", "last_used_at"];
+  const EVENT_OVERVIEW_META_KEYS = ["type", "category", "severity", "actor", "endpoint", "backend", "client_name", "model"];
 
   function drawerDisplayTitle(kind, { resolveTitle = defaultResolveTitle } = {}) {
     return resolveTitle(kind);
@@ -92,6 +93,7 @@
     escapeHTML = defaultEscapeHTML,
     formatDateTime = identity,
     activitySections = [],
+    kind = "",
   } = {}) {
     if (tab === "raw") {
       const raw = value == null ? {} : value;
@@ -107,6 +109,9 @@
         .map((section) => renderDrawerActivitySection(section, { escapeHTML, formatDateTime }))
         .filter(Boolean);
       if (!sections.length) {
+        if (kind === "events") {
+          return `<div class="drawer-state"><strong>Related audit trail</strong><p class="muted-text">This event is already the primary audit record, so there is no separate activity timeline.</p></div>`;
+        }
         return `<div class="drawer-state"><strong>No activity</strong><p class="muted-text">No related activity for this resource yet.</p></div>`;
       }
       return `<div class="drawer-section-stack">${sections.join("")}</div>`;
@@ -115,10 +120,16 @@
     const objectValue = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     const entries = Object.entries(objectValue);
     if (!entries.length) {
+      if (kind === "events" && tab === "configuration") {
+        return `<div class="drawer-state"><strong>Event context</strong><p class="muted-text">This audit event does not include additional configuration state.</p></div>`;
+      }
       return `<div class="drawer-state"><strong>No ${escapeHTML(tab)}</strong><p class="muted-text">This tab has no data yet.</p></div>`;
     }
 
     if (tab === "overview") {
+      if (kind === "events") {
+        return renderEventOverviewPanel(objectValue, { escapeHTML, formatDateTime });
+      }
       return renderDrawerOverviewPanel(objectValue, { escapeHTML, formatDateTime });
     }
 
@@ -224,6 +235,47 @@
           </div>
         ` : ""}
         ${remaining.length ? renderDrawerKVGrid(remaining, { escapeHTML, formatDateTime }) : ""}
+      </div>
+    `;
+  }
+
+  function renderEventOverviewPanel(value, {
+    escapeHTML = defaultEscapeHTML,
+    formatDateTime = identity,
+  } = {}) {
+    const title = formatDrawerFieldValue("message", value?.message, { formatDateTime }) !== "-"
+      ? formatDrawerFieldValue("message", value?.message, { formatDateTime })
+      : formatDrawerFieldValue("type", value?.type, { formatDateTime });
+    const subtitleParts = [value?.type, value?.category, value?.severity]
+      .filter(hasDisplayValue)
+      .map((entryValue) => formatDrawerValue(entryValue));
+    const summary = subtitleParts.join(" · ") || "Audit event detail";
+    const cards = EVENT_OVERVIEW_META_KEYS
+      .filter((key) => key !== "type" && hasDisplayValue(value?.[key]))
+      .map((key) => [key, value[key]]);
+    const supplemental = Object.entries(value || {})
+      .filter(([key, entryValue]) => !EVENT_OVERVIEW_META_KEYS.includes(key) && key !== "message" && hasDisplayValue(entryValue));
+
+    return `
+      <div class="drawer-section-stack">
+        <section class="drawer-overview-hero">
+          <div class="drawer-overview-copy">
+            <small>Audit Event</small>
+            <strong class="drawer-overview-title">${escapeHTML(title)}</strong>
+            <p class="drawer-overview-subtitle">${escapeHTML(summary)}</p>
+          </div>
+        </section>
+        ${cards.length ? `
+          <div class="drawer-highlight-grid">
+            ${cards.map(([key, entryValue]) => `
+              <article class="drawer-highlight-card">
+                <small>${escapeHTML(humanizeKey(key === "client_name" ? "client" : key))}</small>
+                <strong>${escapeHTML(formatDrawerFieldValue(key, entryValue, { formatDateTime }))}</strong>
+              </article>
+            `).join("")}
+          </div>
+        ` : ""}
+        ${supplemental.length ? renderDrawerKVGrid(supplemental, { escapeHTML, formatDateTime }) : ""}
       </div>
     `;
   }
@@ -469,7 +521,7 @@
     }
     const data = drawer?.data || {};
     const activeTab = drawer?.tab || "overview";
-    return renderDrawerTabPanel(activeTab, data[activeTab], { escapeHTML, formatDateTime, activitySections });
+    return renderDrawerTabPanel(activeTab, data[activeTab], { escapeHTML, formatDateTime, activitySections, kind: drawer?.kind || "" });
   }
 
   function renderDrawerFooter({
