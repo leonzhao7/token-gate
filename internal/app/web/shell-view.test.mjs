@@ -154,8 +154,17 @@ test("renderSearchResults renders empty loading and active grouped rows", () => 
 
   assert.match(html, /search-result-item active/);
   assert.match(html, /data-search-group="backends"/);
+  assert.match(html, /data-search-kind="backend"/);
+  assert.match(html, /data-search-page="backends"/);
   assert.match(html, /edge-a/);
+  assert.match(html, /search-result-kind/);
+  assert.match(html, /Backend/);
+  assert.match(html, /Opens page Backends/);
   assert.match(html, /healthy/);
+  assert.match(html, /1 result/);
+  assert.match(html, /<kbd>↑<\/kbd>/);
+  assert.match(html, /<kbd>Enter<\/kbd>/);
+  assert.match(html, /<kbd>Esc<\/kbd>/);
 });
 
 function createClassList(initial = []) {
