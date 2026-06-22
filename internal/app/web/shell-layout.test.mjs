@@ -48,9 +48,23 @@ test("initial shell metadata matches the branded dashboard frame", () => {
   assert.match(header, /<h1 id="pageTitle">Dashboard<\/h1>/);
 });
 
+test("sidebar collapse control uses a shell SVG icon", () => {
+  const html = fs.readFileSync(new URL("./index.html", import.meta.url), "utf8");
+  const sidebarTop = matchSidebarTop(html);
+
+  assert.match(sidebarTop, /<svg\b[^>]*class="[^"]*shell-icon[^"]*"[^>]*data-shell-icon="sidebar-toggle"/);
+  assert.doesNotMatch(sidebarTop, /☰/u);
+});
+
 function matchSidebarNav(html) {
   const match = html.match(/<nav class="sidebar-nav"[\s\S]*?<\/nav>/);
   assert.ok(match, "expected sidebar navigation");
+  return match[0];
+}
+
+function matchSidebarTop(html) {
+  const match = html.match(/<div class="sidebar-top">[\s\S]*?<\/div>/);
+  assert.ok(match, "expected sidebar top");
   return match[0];
 }
 
