@@ -474,36 +474,45 @@
                 <p>展示最近的配置变更、failover 记录和上游异常事件。</p>
               </div>
             </div>
-            <div class="filter-bar">
-              <label class="field">
-                <span>Search</span>
-                <input id="eventQueryFilter" placeholder="search message / model / request id" />
-              </label>
-              <label class="field">
-                <span>Actor</span>
-                <input id="eventActorFilter" placeholder="system / admin" />
-              </label>
-              <label class="field">
-                <span>Backend</span>
-                <input id="eventBackendFilter" placeholder="backend name" />
-              </label>
-              <label class="field">
-                <span>Category</span>
-                <input id="eventCategoryFilter" placeholder="backend / policy / security" />
-              </label>
-              <label class="field">
-                <span>Severity</span>
-                <input id="eventSeverityFilter" placeholder="info / warning / error" />
-              </label>
-              <label class="field">
-                <span>Date From</span>
-                <input id="eventDateFromFilter" type="date" />
-              </label>
-              <label class="field">
-                <span>Date To</span>
-                <input id="eventDateToFilter" type="date" />
-              </label>
-              <div class="button-row compact">
+            <div class="observability-toolbar" data-observability-toolbar="events">
+              <div class="observability-toolbar-main">
+                <div class="observability-toolbar-copy">
+                  <span class="section-label">Events timeline filters</span>
+                  <strong>Refine the events timeline</strong>
+                  <p>按 actor、backend、category 和时间窗口收窄最近事件流，快速定位 failover 与异常记录。</p>
+                </div>
+              </div>
+              <div class="observability-toolbar-grid">
+                <label class="field">
+                  <span>Search</span>
+                  <input id="eventQueryFilter" placeholder="search message / model / request id" />
+                </label>
+                <label class="field">
+                  <span>Actor</span>
+                  <input id="eventActorFilter" placeholder="system / admin" />
+                </label>
+                <label class="field">
+                  <span>Backend</span>
+                  <input id="eventBackendFilter" placeholder="backend name" />
+                </label>
+                <label class="field">
+                  <span>Category</span>
+                  <input id="eventCategoryFilter" placeholder="backend / policy / security" />
+                </label>
+                <label class="field">
+                  <span>Severity</span>
+                  <input id="eventSeverityFilter" placeholder="info / warning / error" />
+                </label>
+                <label class="field">
+                  <span>Date From</span>
+                  <input id="eventDateFromFilter" type="date" />
+                </label>
+                <label class="field">
+                  <span>Date To</span>
+                  <input id="eventDateToFilter" type="date" />
+                </label>
+              </div>
+              <div class="observability-toolbar-actions">
                 <button class="ghost-button" id="refreshEventsBtn" type="button">刷新</button>
                 <button id="applyEventFiltersBtn" type="button">查询</button>
                 <button class="ghost-button" id="resetEventFiltersBtn" type="button">重置</button>
@@ -521,58 +530,65 @@
                 <h3>Usage Logs</h3>
                 <p>每个 Client Key 的每次代理请求都会记录一条日志，便于追踪模型、后端、状态和耗时。</p>
               </div>
-              <div class="page-actions">
-                <button class="danger-button" id="deleteUsageLogsBtn" type="button">删除查询结果</button>
-                <button class="ghost-button" id="clearUsageLogsBtn" type="button">清空</button>
-              </div>
             </div>
-            <div class="filter-bar">
-              <label class="field">
-                <span>Search</span>
-                <input id="usageLogQueryFilter" placeholder="search request / trace / path" />
-              </label>
-              <label class="field">
-                <span>Date From</span>
-                <input id="usageLogDateFromFilter" type="date" />
-              </label>
-              <label class="field">
-                <span>Date To</span>
-                <input id="usageLogDateToFilter" type="date" />
-              </label>
-              <label class="field">
-                <span>Backend</span>
-                <input id="usageLogBackendFilter" list="usageLogBackendOptions" placeholder="backend name" />
-              </label>
-              <label class="field">
-                <span>Model</span>
-                <input id="usageLogModelFilter" list="usageLogModelOptions" placeholder="model name" />
-              </label>
-              <label class="field">
-                <span>Client Key</span>
-                <input id="usageLogClientKeyFilter" list="usageLogClientKeyOptions" placeholder="client key name" />
-              </label>
-              <label class="field">
-                <span>Policy</span>
-                <input id="usageLogPolicyFilter" list="usageLogPolicyOptions" placeholder="policy pattern" />
-              </label>
-              <label class="field">
-                <span>Proxy</span>
-                <input id="usageLogProxyFilter" list="usageLogProxyOptions" placeholder="proxy name" />
-              </label>
-              <label class="field">
-                <span>Status</span>
-                <select id="usageLogStatusFilter">
-                  <option value="">All status</option>
-                  <option value="2xx">2xx</option>
-                  <option value="3xx">3xx</option>
-                  <option value="4xx">4xx</option>
-                  <option value="5xx">5xx</option>
-                </select>
-              </label>
-              <div class="button-row compact">
+            <div class="observability-toolbar" data-observability-toolbar="usage-logs">
+              <div class="observability-toolbar-main">
+                <div class="observability-toolbar-copy">
+                  <span class="section-label">Usage request filters</span>
+                  <strong>Slice usage requests by route, backend, and client</strong>
+                  <p>组合请求维度过滤器，审查代理流量、状态分布和高延迟调用，同时保留批量清理操作。</p>
+                </div>
+              </div>
+              <div class="observability-toolbar-grid">
+                <label class="field">
+                  <span>Search</span>
+                  <input id="usageLogQueryFilter" placeholder="search request / trace / path" />
+                </label>
+                <label class="field">
+                  <span>Date From</span>
+                  <input id="usageLogDateFromFilter" type="date" />
+                </label>
+                <label class="field">
+                  <span>Date To</span>
+                  <input id="usageLogDateToFilter" type="date" />
+                </label>
+                <label class="field">
+                  <span>Backend</span>
+                  <input id="usageLogBackendFilter" list="usageLogBackendOptions" placeholder="backend name" />
+                </label>
+                <label class="field">
+                  <span>Model</span>
+                  <input id="usageLogModelFilter" list="usageLogModelOptions" placeholder="model name" />
+                </label>
+                <label class="field">
+                  <span>Client Key</span>
+                  <input id="usageLogClientKeyFilter" list="usageLogClientKeyOptions" placeholder="client key name" />
+                </label>
+                <label class="field">
+                  <span>Policy</span>
+                  <input id="usageLogPolicyFilter" list="usageLogPolicyOptions" placeholder="policy pattern" />
+                </label>
+                <label class="field">
+                  <span>Proxy</span>
+                  <input id="usageLogProxyFilter" list="usageLogProxyOptions" placeholder="proxy name" />
+                </label>
+                <label class="field">
+                  <span>Status</span>
+                  <select id="usageLogStatusFilter">
+                    <option value="">All status</option>
+                    <option value="2xx">2xx</option>
+                    <option value="3xx">3xx</option>
+                    <option value="4xx">4xx</option>
+                    <option value="5xx">5xx</option>
+                  </select>
+                </label>
+              </div>
+              <div class="observability-toolbar-actions">
                 <button class="ghost-button" id="refreshUsageLogsBtn" type="button">刷新</button>
                 <button id="applyUsageLogFiltersBtn" type="button">查询</button>
                 <button class="ghost-button" id="resetUsageLogFiltersBtn" type="button">重置</button>
+                <button class="danger-button" id="deleteUsageLogsBtn" type="button">删除查询结果</button>
+                <button class="ghost-button" id="clearUsageLogsBtn" type="button">清空</button>
               </div>
             </div>
             <datalist id="usageLogBackendOptions"></datalist>

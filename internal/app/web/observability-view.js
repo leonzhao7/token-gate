@@ -13,6 +13,13 @@
     return `
       <div class="observability-shell">
         <section class="observability-main">
+          <header class="observability-section-head">
+            <div>
+              <span class="section-label">Timeline</span>
+              <strong>Events timeline</strong>
+            </div>
+            <p>按时间顺序查看配置变更、故障转移和上游异常，保留关键 actor、backend 与 severity 上下文。</p>
+          </header>
           ${ensureArray(events).length === 0
     ? emptyState(
       "还没有事件",
@@ -52,9 +59,12 @@
         </section>
         <aside class="observability-side">
           <section class="observability-summary-card">
-            <header>
-              <span class="section-label">Event Summary</span>
-              <strong>${escapeHTML(String(summary?.total || 0))} events</strong>
+            <header class="observability-panel-head">
+              <div>
+                <span class="section-label">Event Summary</span>
+                <strong>${escapeHTML(String(summary?.total || 0))} events</strong>
+              </div>
+              <p>按类别与严重级别汇总近期事件密度，便于快速判断是否需要深入排查。</p>
             </header>
             <div class="summary-stack">
               ${ensureArray(summary?.categories).map((item) => `
@@ -115,6 +125,13 @@
 
     return `
       ${statsMarkup}
+      <header class="observability-section-head">
+        <div>
+          <span class="section-label">Request Stream</span>
+          <strong>Usage log table</strong>
+        </div>
+        <p>聚合请求统计后下钻到逐条日志，核对模型、后端、代理链路和 trace 维度。</p>
+      </header>
       <div class="event-table-shell">
         <div class="event-table usage-log-table">
           <div class="event-table-head usage-log-head">

@@ -48,6 +48,8 @@ test("renderEventsPage renders timeline and summary sidebar", () => {
   assert.match(html, /backend\.failover/);
   assert.match(html, /dt:2026-06-19T00:00:00Z/);
   assert.match(html, /1 events/);
+  assert.match(html, /Timeline/);
+  assert.match(html, /observability-section-head/);
   assert.match(html, /pager/);
 });
 
@@ -91,6 +93,8 @@ test("renderUsageLogsPage renders stats and table rows", () => {
   assert.match(html, /Requests/);
   assert.match(html, /POST/);
   assert.match(html, /trace-9/);
+  assert.match(html, /Request Stream/);
+  assert.match(html, /observability-section-head/);
   assert.match(html, /pager/);
 });
 
