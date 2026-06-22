@@ -2780,6 +2780,21 @@ button:hover {
   box-shadow: none;
 }
 
+.icon-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 0;
+  gap: 0;
+}
+
+.icon-action-button .table-action-icon {
+  width: 14px;
+  height: 14px;
+  flex-basis: 14px;
+}
+
 .pagination-number,
 .pagination-arrow {
   min-width: 32px;

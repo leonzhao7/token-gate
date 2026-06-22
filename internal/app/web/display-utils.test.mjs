@@ -43,6 +43,16 @@ test("statusPill escapes copy and toggles classes", () => {
   );
 });
 
+test("tableActions renders icon buttons for edit and delete", () => {
+  const html = DisplayUtils.tableActions("backend", 7);
+
+  assert.match(html, /data-edit-backend="7"/);
+  assert.match(html, /data-delete-backend="7"/);
+  assert.match(html, /data-shell-icon="table-action-edit"/);
+  assert.match(html, /data-shell-icon="table-action-delete"/);
+  assert.doesNotMatch(html, />编辑<|>删除</);
+});
+
 test("escapeHTML escapes reserved characters", () => {
   assert.equal(
     DisplayUtils.escapeHTML(`<'">&`),

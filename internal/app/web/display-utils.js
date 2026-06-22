@@ -152,9 +152,34 @@
     const [editAttribute, deleteAttribute] = attributes;
     return `
       <div class="table-actions">
-        <button class="small-button" ${editAttribute}="${normalizedID}" type="button">编辑</button>
-        <button class="small-button danger-button" ${deleteAttribute}="${normalizedID}" type="button">删除</button>
+        <button class="small-button icon-action-button" ${editAttribute}="${normalizedID}" type="button" aria-label="编辑">
+          ${tableActionIcon("edit")}
+        </button>
+        <button class="small-button icon-action-button danger-button" ${deleteAttribute}="${normalizedID}" type="button" aria-label="删除">
+          ${tableActionIcon("delete")}
+        </button>
       </div>
+    `;
+  }
+
+  function tableActionIcon(name) {
+    const icons = {
+      edit: [
+        "M4 20h4l10-10a2.5 2.5 0 0 0-4-4L4 16v4Z",
+        "m13 7 4 4",
+      ],
+      delete: [
+        "M5 7h14",
+        "M10 11v6",
+        "M14 11v6",
+        "M7 7l1-3h8l1 3",
+        "M6 7l1 12h10l1-12",
+      ],
+    };
+    return `
+      <svg class="shell-icon table-action-icon" data-shell-icon="table-action-${name}" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        ${(icons[name] || icons.edit).map((path) => `<path d="${path}"></path>`).join("")}
+      </svg>
     `;
   }
 
