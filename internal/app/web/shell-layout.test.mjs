@@ -74,6 +74,23 @@ test("modal and drawer close controls use shell SVG icons", () => {
   }
 });
 
+test("dashboard quick actions render as icon action pills", () => {
+  const html = fs.readFileSync(new URL("./index.html", import.meta.url), "utf8");
+  const overview = matchSectionById(html, "overview");
+  const actions = [
+    ["#backends", "action-backends", "Configure Backends"],
+    ["#client-keys", "action-client-keys", "Manage Client Keys"],
+    ["#model-policies", "action-policies", "Edit Policies"],
+  ];
+
+  for (const [href, icon, label] of actions) {
+    const link = matchLinkByHref(overview, href);
+    assert.match(link, /class="page-action-pill"/);
+    assert.match(link, new RegExp(`data-shell-icon="${icon}"`));
+    assert.match(link, new RegExp(`>${label}<`));
+  }
+});
+
 function matchSidebarNav(html) {
   const match = html.match(/<nav class="sidebar-nav"[\s\S]*?<\/nav>/);
   assert.ok(match, "expected sidebar navigation");
@@ -83,6 +100,19 @@ function matchSidebarNav(html) {
 function matchButtonById(html, id) {
   const match = html.match(new RegExp(`<button\\b(?=[^>]*id="${id}")[\\s\\S]*?<\\/button>`));
   assert.ok(match, `expected button ${id}`);
+  return match[0];
+}
+
+function matchLinkByHref(html, href) {
+  const escapedHref = href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = html.match(new RegExp(`<a\\b(?=[^>]*href="${escapedHref}")[\\s\\S]*?<\\/a>`));
+  assert.ok(match, `expected link ${href}`);
+  return match[0];
+}
+
+function matchSectionById(html, id) {
+  const match = html.match(new RegExp(`<section\\b(?=[^>]*id="${id}")[\\s\\S]*?<\\/section>`));
+  assert.ok(match, `expected section ${id}`);
   return match[0];
 }
 
