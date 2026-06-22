@@ -9,18 +9,18 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <a class="brand" href="#overview" aria-label="Token Gate Overview">
+        <a class="brand" href="#overview" aria-label="Token Gate Dashboard">
           <span class="brand-mark">TG</span>
           <span class="brand-copy">
             <strong>Token Gate</strong>
-            <small>AI Proxy Console</small>
+            <small>AI Proxy Center</small>
           </span>
         </a>
 
         <nav class="nav-list" aria-label="Console sections">
           <a href="#overview" class="nav-item" data-page-link="overview">
             <span class="nav-dot"></span>
-            Overview
+            Dashboard
           </a>
           <a href="#socks-proxies" class="nav-item" data-page-link="socks-proxies">
             <span class="nav-dot"></span>
@@ -46,20 +46,24 @@
             <span class="nav-dot"></span>
             Usage Logs
           </a>
+          <a href="#settings" class="nav-item" data-page-link="settings">
+            <span class="nav-dot"></span>
+            Settings
+          </a>
         </nav>
       </aside>
 
       <div class="main-area">
         <header class="topbar">
           <div class="topbar-title">
-            <span class="breadcrumb" id="pageBreadcrumb">Dashboard / Overview</span>
-            <h1 id="pageTitle">透明代理控制台</h1>
+            <span class="breadcrumb" id="pageBreadcrumb">Dashboard</span>
+            <h1 id="pageTitle">Token Gate - AI Proxy Center</h1>
           </div>
           <button id="globalSearchBtn" class="global-search-trigger" type="button" aria-haspopup="dialog" aria-controls="searchModal">
             <span>Search backends, keys, policies...</span>
             <kbd>Ctrl K</kbd>
           </button>
-          <div class="admin-access">
+          <div class="admin-access" id="adminAccess">
             <label for="adminToken" class="field-label">Admin Token</label>
             <input id="adminToken" type="password" placeholder="输入 TG_ADMIN_TOKEN" />
             <button id="saveTokenBtn" type="button">保存</button>
@@ -69,7 +73,7 @@
         </header>
 
         <main class="workspace">
-          <section class="page overview-page" id="overview" data-page-title="运行概览" data-page-breadcrumb="Dashboard / Overview">
+          <section class="page overview-page" id="overview" data-page-title="Dashboard" data-page-breadcrumb="Dashboard">
             <div class="page-head">
               <div>
                 <span class="section-label">Transparent LLM Gateway</span>
@@ -468,6 +472,99 @@
             <datalist id="usageLogClientKeyOptions"></datalist>
             <div class="resource-layout list-only">
               <div id="usageLogList" class="resource-list"></div>
+            </div>
+          </section>
+
+          <section class="page resource-page" id="settings" data-page-title="Settings" data-page-breadcrumb="Dashboard / Settings">
+            <div class="resource-header">
+              <div class="section-heading">
+                <span class="section-label">Preferences</span>
+                <h3>Settings</h3>
+                <p>管理本地访问凭据、主题偏好和平台运行约束。</p>
+              </div>
+              <a class="ghost-button" href="#adminAccess">Edit header controls</a>
+            </div>
+            <div class="settings-grid">
+              <article class="dashboard-panel settings-panel">
+                <div class="panel-head compact">
+                  <div>
+                    <span class="section-label">Access</span>
+                    <h3>Admin Access</h3>
+                  </div>
+                </div>
+                <div class="settings-list">
+                  <div class="setting-row">
+                    <div>
+                      <strong>Admin token</strong>
+                      <small>保存在浏览器本地，只在当前设备生效。</small>
+                    </div>
+                    <span class="status-pill ok">Local only</span>
+                  </div>
+                  <div class="setting-row">
+                    <div>
+                      <strong>Global search</strong>
+                      <small>Ctrl K 可快速查找 backend、client key、policy、proxy、event 和 usage log。</small>
+                    </div>
+                    <span class="status-pill ok">Enabled</span>
+                  </div>
+                </div>
+              </article>
+              <article class="dashboard-panel settings-panel">
+                <div class="panel-head compact">
+                  <div>
+                    <span class="section-label">Routing</span>
+                    <h3>Operational Defaults</h3>
+                  </div>
+                </div>
+                <div class="settings-list">
+                  <div class="setting-row">
+                    <div>
+                      <strong>Failover</strong>
+                      <small>Backend 连续失败后进入 cooling，候选耗尽时直接返回失败。</small>
+                    </div>
+                  </div>
+                  <div class="setting-row">
+                    <div>
+                      <strong>Model mapping</strong>
+                      <small>客户端看到的是映射后的模型名，上游请求会自动改写。</small>
+                    </div>
+                  </div>
+                  <div class="setting-row">
+                    <div>
+                      <strong>Health checks</strong>
+                      <small>不会自动探测健康状态，调度仅依赖真实请求和失败统计。</small>
+                    </div>
+                  </div>
+                </div>
+              </article>
+              <article class="dashboard-panel settings-panel">
+                <div class="panel-head compact">
+                  <div>
+                    <span class="section-label">Storage</span>
+                    <h3>Data & Retention</h3>
+                  </div>
+                </div>
+                <div class="settings-list">
+                  <div class="setting-row">
+                    <div>
+                      <strong>Usage logs</strong>
+                      <small>每个 client key 的请求都会落一条日志，支持按 backend、model 和 client key 查询。</small>
+                    </div>
+                  </div>
+                  <div class="setting-row">
+                    <div>
+                      <strong>Events</strong>
+                      <small>配置变更、failover、错误和访问行为会进入事件流。</small>
+                    </div>
+                  </div>
+                  <div class="setting-row">
+                    <div>
+                      <strong>Database</strong>
+                      <small>使用轻量 SQLite，适合当前规模和本地管理场景。</small>
+                    </div>
+                  </div>
+                </div>
+              </article>
             </div>
           </section>
         </main>

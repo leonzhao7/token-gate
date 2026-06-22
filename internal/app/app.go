@@ -14,6 +14,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -66,6 +67,65 @@ type backendRecentStats struct {
 	WindowMinutes int `json:"window_minutes"`
 	Successes     int `json:"successes"`
 	Failures      int `json:"failures"`
+}
+
+type dashboardSummaryResponse struct {
+	Cards map[string]dashboardCard `json:"cards"`
+}
+
+type dashboardCard struct {
+	Count     int `json:"count"`
+	Enabled   int `json:"enabled,omitempty"`
+	Successes int `json:"successes,omitempty"`
+	Failures  int `json:"failures,omitempty"`
+}
+
+type dashboardUsageResponse struct {
+	Range  string               `json:"range"`
+	Series []dashboardUsagePoint `json:"series"`
+}
+
+type dashboardUsagePoint struct {
+	Label     string  `json:"label"`
+	Requests  int     `json:"requests"`
+	Successes int     `json:"successes"`
+	Failures  int     `json:"failures"`
+	LatencyMS int64   `json:"latency_ms"`
+	ErrorRate float64 `json:"error_rate"`
+}
+
+type dashboardActivityResponse struct {
+	Events    []domain.AuditEvent `json:"events"`
+	UsageLogs []domain.UsageLog   `json:"usage_logs"`
+}
+
+type adminSearchResponse struct {
+	Query   string                 `json:"query"`
+	Results map[string][]searchHit `json:"results"`
+}
+
+type searchHit struct {
+	ID      int64       `json:"id"`
+	Name    string      `json:"name"`
+	Detail  string      `json:"detail"`
+	Summary string      `json:"summary"`
+	Raw     any         `json:"raw"`
+}
+
+type resourceDetailResponse struct {
+	Overview      []detailEntry `json:"overview"`
+	Configuration []detailEntry `json:"configuration"`
+	Metadata      []detailEntry `json:"metadata"`
+	Raw           any           `json:"raw"`
+	Activity      struct {
+		Events    []domain.AuditEvent `json:"events"`
+		UsageLogs []domain.UsageLog   `json:"usage_logs"`
+	} `json:"activity"`
+}
+
+type detailEntry struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
@@ -121,6 +181,14 @@ func (a *App) routes() {
 	a.mux.Handle("/v1/", a.clientAuth(http.HandlerFunc(a.handleProxy)))
 
 	a.mux.Handle("GET /admin/api/overview", a.adminAuth(http.HandlerFunc(a.handleOverview)))
+	a.mux.Handle("GET /admin/api/dashboard/summary", a.adminAuth(http.HandlerFunc(a.handleDashboardSummary)))
+	a.mux.Handle("GET /admin/api/dashboard/usage", a.adminAuth(http.HandlerFunc(a.handleDashboardUsage)))
+	a.mux.Handle("GET /admin/api/dashboard/activity", a.adminAuth(http.HandlerFunc(a.handleDashboardActivity)))
+	a.mux.Handle("GET /admin/api/search", a.adminAuth(http.HandlerFunc(a.handleAdminSearch)))
+	a.mux.Handle("GET /admin/api/backends/{id}/detail", a.adminAuth(http.HandlerFunc(a.handleBackendDetail)))
+	a.mux.Handle("GET /admin/api/client-keys/{id}/detail", a.adminAuth(http.HandlerFunc(a.handleClientKeyDetail)))
+	a.mux.Handle("GET /admin/api/model-policies/{id}/detail", a.adminAuth(http.HandlerFunc(a.handleModelPolicyDetail)))
+	a.mux.Handle("GET /admin/api/socks-proxies/{id}/detail", a.adminAuth(http.HandlerFunc(a.handleSocksProxyDetail)))
 	a.mux.Handle("GET /admin/api/socks-proxies", a.adminAuth(http.HandlerFunc(a.handleListSocksProxies)))
 	a.mux.Handle("POST /admin/api/socks-proxies", a.adminAuth(http.HandlerFunc(a.handleCreateSocksProxy)))
 	a.mux.Handle("PUT /admin/api/socks-proxies/{id}", a.adminAuth(http.HandlerFunc(a.handleUpdateSocksProxy)))
@@ -512,6 +580,569 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 		ModelPolicies: len(policies),
 		Events:        ensureAuditEvents(events),
 	})
+}
+
+func (a *App) handleDashboardSummary(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	backends, err := a.store.ListBackends(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	clients, err := a.store.ListClientKeys(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	proxies, err := a.store.ListSocksProxies(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	policies, err := a.store.ListModelPolicies(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	windowStart := time.Now().UTC().Add(-30 * time.Minute)
+	stats, err := a.store.BackendRequestStatsSince(ctx, windowStart)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	enabledBackends := 0
+	for _, backend := range backends {
+		if backend.Enabled {
+			enabledBackends++
+		}
+	}
+	totalSuccesses := 0
+	totalFailures := 0
+	for _, stat := range stats {
+		totalSuccesses += stat.Successes
+		totalFailures += stat.Failures
+	}
+
+	writeJSON(w, http.StatusOK, dashboardSummaryResponse{
+		Cards: map[string]dashboardCard{
+			"backends": {
+				Count:     len(backends),
+				Enabled:   enabledBackends,
+				Successes: totalSuccesses,
+				Failures:  totalFailures,
+			},
+			"client_keys": {
+				Count: len(clients),
+			},
+			"policies": {
+				Count: len(policies),
+			},
+			"proxies": {
+				Count: len(proxies),
+			},
+		},
+	})
+}
+
+func (a *App) handleDashboardUsage(w http.ResponseWriter, r *http.Request) {
+	rangeValue := strings.TrimSpace(r.URL.Query().Get("range"))
+	if rangeValue == "" {
+		rangeValue = "7d"
+	}
+
+	now := time.Now().UTC()
+	since := now.Add(-7 * 24 * time.Hour)
+	bucket := "day"
+	if strings.EqualFold(rangeValue, "30d") {
+		since = now.Add(-30 * 24 * time.Hour)
+	} else if strings.EqualFold(rangeValue, "24h") {
+		since = now.Add(-24 * time.Hour)
+		bucket = "hour"
+	}
+
+	logs, err := a.store.ListUsageLogsSince(r.Context(), since, 2000)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	type usageBucket struct {
+		Requests  int
+		Successes int
+		Failures  int
+		LatencyMS int64
+	}
+	buckets := make(map[string]*usageBucket)
+	order := make([]string, 0)
+	for _, log := range logs {
+		key := usageBucketKey(log.CreatedAt, bucket)
+		bucketValue := buckets[key]
+		if bucketValue == nil {
+			bucketValue = &usageBucket{}
+			buckets[key] = bucketValue
+			order = append(order, key)
+		}
+		bucketValue.Requests++
+		if domain.IsBackendFailureStatus(log.StatusCode) {
+			bucketValue.Failures++
+		} else {
+			bucketValue.Successes++
+		}
+		bucketValue.LatencyMS += log.DurationMS
+	}
+
+	series := make([]dashboardUsagePoint, 0, len(order))
+	for _, key := range order {
+		value := buckets[key]
+		if value == nil {
+			continue
+		}
+		errorRate := 0.0
+		if value.Requests > 0 {
+			errorRate = float64(value.Failures) / float64(value.Requests)
+		}
+		series = append(series, dashboardUsagePoint{
+			Label:     key,
+			Requests:  value.Requests,
+			Successes: value.Successes,
+			Failures:  value.Failures,
+			LatencyMS: value.LatencyMS,
+			ErrorRate: errorRate,
+		})
+	}
+	writeJSON(w, http.StatusOK, dashboardUsageResponse{
+		Range:  rangeValue,
+		Series: series,
+	})
+}
+
+func (a *App) handleDashboardActivity(w http.ResponseWriter, r *http.Request) {
+	since := time.Now().UTC().Add(-24 * time.Hour)
+	events, err := a.store.ListAuditEventsSince(r.Context(), since, 50)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	logs, err := a.store.ListUsageLogsSince(r.Context(), since, 50)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, dashboardActivityResponse{
+		Events:    ensureAuditEvents(events),
+		UsageLogs: ensureUsageLogs(logs),
+	})
+}
+
+func (a *App) handleAdminSearch(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		writeJSON(w, http.StatusOK, adminSearchResponse{
+			Query:   "",
+			Results: emptySearchResults(),
+		})
+		return
+	}
+
+	q := strings.ToLower(query)
+	backends, err := a.store.ListBackends(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	clients, err := a.store.ListClientKeys(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	policies, err := a.store.ListModelPolicies(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	proxies, err := a.store.ListSocksProxies(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	events, err := a.store.ListAuditEventsSince(r.Context(), time.Now().UTC().Add(-30*24*time.Hour), 100)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	logs, err := a.store.ListUsageLogsSince(r.Context(), time.Now().UTC().Add(-30*24*time.Hour), 100)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	results := emptySearchResults()
+	for _, backend := range backends {
+		if containsSearch(q, backend.Name, backend.BaseURL, backend.Pool) {
+			results["backends"] = append(results["backends"], searchHit{
+				ID:      backend.ID,
+				Name:    backend.Name,
+				Detail:  backend.BaseURL,
+				Summary: backend.Pool,
+				Raw:     backend,
+			})
+		}
+	}
+	for _, client := range clients {
+		if containsSearch(q, client.Name, client.TokenPrefix, client.RouteGroup, client.RouteModeOverride) {
+			results["client_keys"] = append(results["client_keys"], searchHit{
+				ID:      client.ID,
+				Name:    client.Name,
+				Detail:  client.TokenPrefix,
+				Summary: client.RouteGroup,
+				Raw:     client,
+			})
+		}
+	}
+	for _, policy := range policies {
+		if containsSearch(q, policy.Pattern, policy.Endpoint, policy.BackendPool, policy.PlacementPolicy) {
+			results["policies"] = append(results["policies"], searchHit{
+				ID:      policy.ID,
+				Name:    policy.Pattern,
+				Detail:  policy.Endpoint,
+				Summary: policy.BackendPool,
+				Raw:     policy,
+			})
+		}
+	}
+	for _, proxy := range proxies {
+		if containsSearch(q, proxy.Name, proxy.Address, proxy.Username) {
+			results["proxies"] = append(results["proxies"], searchHit{
+				ID:      proxy.ID,
+				Name:    proxy.Name,
+				Detail:  proxy.Address,
+				Summary: proxy.Username,
+				Raw:     proxy,
+			})
+		}
+	}
+	for _, event := range events {
+		if containsSearch(q, event.Type, event.Message, event.ClientName, event.BackendName, event.Model) {
+			results["events"] = append(results["events"], searchHit{
+				ID:      event.ID,
+				Name:    event.Type,
+				Detail:  event.Message,
+				Summary: event.ClientName,
+				Raw:     event,
+			})
+		}
+	}
+	for _, log := range logs {
+		if containsSearch(q, log.RequestID, log.ClientName, log.BackendName, log.Model, log.Path, log.ErrorMessage) {
+			results["usage_logs"] = append(results["usage_logs"], searchHit{
+				ID:      log.ID,
+				Name:    log.RequestID,
+				Detail:  formatUsageRequestForSearch(log),
+				Summary: log.ErrorMessage,
+				Raw:     log,
+			})
+		}
+	}
+
+	writeJSON(w, http.StatusOK, adminSearchResponse{
+		Query:   query,
+		Results: results,
+	})
+}
+
+func (a *App) handleBackendDetail(w http.ResponseWriter, r *http.Request) {
+	a.handleResourceDetail(w, r, "backend")
+}
+
+func (a *App) handleClientKeyDetail(w http.ResponseWriter, r *http.Request) {
+	a.handleResourceDetail(w, r, "client")
+}
+
+func (a *App) handleModelPolicyDetail(w http.ResponseWriter, r *http.Request) {
+	a.handleResourceDetail(w, r, "policy")
+}
+
+func (a *App) handleSocksProxyDetail(w http.ResponseWriter, r *http.Request) {
+	a.handleResourceDetail(w, r, "proxy")
+}
+
+func (a *App) handleResourceDetail(w http.ResponseWriter, r *http.Request, kind string) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	since := time.Now().UTC().Add(-24 * time.Hour)
+	events, err := a.store.ListAuditEventsSince(r.Context(), since, 100)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	logs, err := a.store.ListUsageLogsSince(r.Context(), since, 100)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	payload := resourceDetailResponse{}
+	switch kind {
+	case "backend":
+		backend, err := a.store.GetBackend(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "backend not found")
+			return
+		}
+		payload = backendDetailResponse(backend, events, logs)
+	case "client":
+		client, err := a.store.GetClientKey(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "client key not found")
+			return
+		}
+		payload = clientKeyDetailResponse(client, events, logs)
+	case "policy":
+		policy, err := a.store.GetModelPolicy(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "policy not found")
+			return
+		}
+		payload = modelPolicyDetailResponse(policy, events, logs)
+	case "proxy":
+		proxy, err := a.store.GetSocksProxy(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "socks proxy not found")
+			return
+		}
+		payload = socksProxyDetailResponse(proxy, events, logs)
+	default:
+		writeError(w, http.StatusNotFound, "resource not found")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, payload)
+}
+
+func emptySearchResults() map[string][]searchHit {
+	return map[string][]searchHit{
+		"backends":    []searchHit{},
+		"client_keys": []searchHit{},
+		"policies":    []searchHit{},
+		"proxies":     []searchHit{},
+		"events":      []searchHit{},
+		"usage_logs":  []searchHit{},
+	}
+}
+
+func containsSearch(query string, values ...string) bool {
+	for _, value := range values {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(value)), query) {
+			return true
+		}
+	}
+	return false
+}
+
+func usageBucketKey(value time.Time, bucket string) string {
+	ts := value.UTC()
+	if strings.EqualFold(bucket, "hour") {
+		return ts.Format("2006-01-02 15:00")
+	}
+	return ts.Format("2006-01-02")
+}
+
+func formatUsageRequestForSearch(log domain.UsageLog) string {
+	method := strings.ToUpper(strings.TrimSpace(log.Method))
+	if method == "" {
+		method = "REQUEST"
+	}
+	path := strings.TrimSpace(log.Path)
+	if path == "" {
+		path = "-"
+	}
+	if query := strings.TrimSpace(log.Query); query != "" {
+		path += "?" + query
+	}
+	return method + " " + path
+}
+
+func backendDetailResponse(backend domain.Backend, events []domain.AuditEvent, logs []domain.UsageLog) resourceDetailResponse {
+	response := resourceDetailResponse{
+		Overview: []detailEntry{
+			{Label: "Name", Value: backend.Name},
+			{Label: "Base URL", Value: backend.BaseURL},
+			{Label: "Protocol", Value: domain.NormalizeBackendProtocol(backend.Protocol)},
+			{Label: "Pool", Value: nonEmpty(backend.Pool, "default")},
+			{Label: "Status", Value: boolString(backend.Enabled, "enabled", "disabled")},
+		},
+		Configuration: []detailEntry{
+			{Label: "API Key", Value: backend.APIKey},
+			{Label: "Proxy", Value: proxyDetailLabel(backend.ProxyID, backend.Proxy)},
+			{Label: "Models", Value: strings.Join(backend.Models, ", ")},
+			{Label: "Model Mapping", Value: formatStringMap(backend.ModelMapping)},
+			{Label: "Endpoints", Value: strings.Join(backend.Endpoints, ", ")},
+		},
+		Metadata: []detailEntry{
+			{Label: "ID", Value: strconv.FormatInt(backend.ID, 10)},
+			{Label: "Weight", Value: strconv.Itoa(backend.Weight)},
+			{Label: "Created", Value: formatTime(backend.CreatedAt)},
+			{Label: "Updated", Value: formatTime(backend.UpdatedAt)},
+		},
+		Raw: backend,
+	}
+	response.Activity.Events = filterActivityEvents(events, backend.Name, backend.BaseURL)
+	response.Activity.UsageLogs = filterUsageLogs(logs, backend.Name)
+	return response
+}
+
+func clientKeyDetailResponse(client domain.ClientKey, events []domain.AuditEvent, logs []domain.UsageLog) resourceDetailResponse {
+	response := resourceDetailResponse{
+		Overview: []detailEntry{
+			{Label: "Name", Value: client.Name},
+			{Label: "Token Prefix", Value: client.TokenPrefix},
+			{Label: "Route Mode", Value: nonEmpty(client.RouteModeOverride, "policy default")},
+			{Label: "Route Group", Value: nonEmpty(client.RouteGroup, "-")},
+			{Label: "Status", Value: boolString(client.Enabled, "enabled", "disabled")},
+		},
+		Configuration: []detailEntry{
+			{Label: "Token Hash", Value: client.TokenHash},
+			{Label: "Issued Token", Value: client.Token},
+		},
+		Metadata: []detailEntry{
+			{Label: "ID", Value: strconv.FormatInt(client.ID, 10)},
+			{Label: "Created", Value: formatTime(client.CreatedAt)},
+			{Label: "Updated", Value: formatTime(client.UpdatedAt)},
+		},
+		Raw: client,
+	}
+	response.Activity.Events = filterActivityEvents(events, client.Name, client.TokenPrefix)
+	response.Activity.UsageLogs = filterUsageLogs(logs, client.Name)
+	return response
+}
+
+func modelPolicyDetailResponse(policy domain.ModelPolicy, events []domain.AuditEvent, logs []domain.UsageLog) resourceDetailResponse {
+	response := resourceDetailResponse{
+		Overview: []detailEntry{
+			{Label: "Pattern", Value: policy.Pattern},
+			{Label: "Endpoint", Value: policy.Endpoint},
+			{Label: "Placement", Value: policy.PlacementPolicy},
+			{Label: "Backend Pool", Value: nonEmpty(policy.BackendPool, "-")},
+			{Label: "Failover", Value: boolString(policy.FailoverEnabled, "enabled", "disabled")},
+		},
+		Configuration: []detailEntry{
+			{Label: "Priority", Value: strconv.Itoa(policy.Priority)},
+		},
+		Metadata: []detailEntry{
+			{Label: "ID", Value: strconv.FormatInt(policy.ID, 10)},
+			{Label: "Created", Value: formatTime(policy.CreatedAt)},
+			{Label: "Updated", Value: formatTime(policy.UpdatedAt)},
+		},
+		Raw: policy,
+	}
+	response.Activity.Events = filterActivityEvents(events, policy.Pattern, policy.BackendPool)
+	response.Activity.UsageLogs = filterUsageLogs(logs, policy.Pattern)
+	return response
+}
+
+func socksProxyDetailResponse(proxy domain.SocksProxy, events []domain.AuditEvent, logs []domain.UsageLog) resourceDetailResponse {
+	response := resourceDetailResponse{
+		Overview: []detailEntry{
+			{Label: "Name", Value: proxy.Name},
+			{Label: "Address", Value: proxy.Address},
+			{Label: "Username", Value: nonEmpty(proxy.Username, "-")},
+			{Label: "Status", Value: boolString(proxy.Enabled, "enabled", "disabled")},
+		},
+		Configuration: []detailEntry{
+			{Label: "Password", Value: proxy.Password},
+		},
+		Metadata: []detailEntry{
+			{Label: "ID", Value: strconv.FormatInt(proxy.ID, 10)},
+			{Label: "Created", Value: formatTime(proxy.CreatedAt)},
+			{Label: "Updated", Value: formatTime(proxy.UpdatedAt)},
+		},
+		Raw: proxy,
+	}
+	response.Activity.Events = filterActivityEvents(events, proxy.Name, proxy.Address)
+	response.Activity.UsageLogs = filterUsageLogs(logs, proxy.Name, proxy.Address)
+	return response
+}
+
+func filterActivityEvents(events []domain.AuditEvent, values ...string) []domain.AuditEvent {
+	if len(events) == 0 {
+		return []domain.AuditEvent{}
+	}
+	var filtered []domain.AuditEvent
+	for _, event := range events {
+		if containsSearch(strings.ToLower(strings.Join(values, " ")), event.Type, event.Message, event.ClientName, event.Model, event.Endpoint, event.BackendName) ||
+			containsSearch(strings.ToLower(event.Type+" "+event.Message+" "+event.ClientName+" "+event.Model+" "+event.Endpoint+" "+event.BackendName), values...) {
+			filtered = append(filtered, event)
+		}
+	}
+	if len(filtered) == 0 {
+		return ensureAuditEvents(events)
+	}
+	return filtered
+}
+
+func filterUsageLogs(logs []domain.UsageLog, values ...string) []domain.UsageLog {
+	if len(logs) == 0 {
+		return []domain.UsageLog{}
+	}
+	var filtered []domain.UsageLog
+	for _, log := range logs {
+		if containsSearch(strings.ToLower(strings.Join(values, " ")), log.RequestID, log.ClientName, log.ClientTokenPrefix, log.RouteModeOverride, log.RouteGroup, log.Method, log.Path, log.Query, log.Endpoint, log.Model, log.BackendName, log.ClientIP, log.ErrorMessage) ||
+			containsSearch(strings.ToLower(log.RequestID+" "+log.ClientName+" "+log.BackendName+" "+log.Model+" "+log.Path+" "+log.ErrorMessage), values...) {
+			filtered = append(filtered, log)
+		}
+	}
+	if len(filtered) == 0 {
+		return ensureUsageLogs(logs)
+	}
+	return filtered
+}
+
+func formatStringMap(values map[string]string) string {
+	if len(values) == 0 {
+		return "-"
+	}
+	items := make([]string, 0, len(values))
+	for key, value := range values {
+		items = append(items, key+"="+value)
+	}
+	slices.Sort(items)
+	return strings.Join(items, ", ")
+}
+
+func proxyDetailLabel(proxyID int64, proxy *domain.SocksProxy) string {
+	if proxyID == 0 {
+		return "direct"
+	}
+	if proxy == nil {
+		return fmt.Sprintf("proxy #%d", proxyID)
+	}
+	return proxy.Name
+}
+
+func boolString(value bool, yes, no string) string {
+	if value {
+		return yes
+	}
+	return no
+}
+
+func nonEmpty(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+func formatTime(value time.Time) string {
+	if value.IsZero() {
+		return ""
+	}
+	return value.UTC().Format(time.RFC3339Nano)
 }
 
 func (a *App) handleListSocksProxies(w http.ResponseWriter, r *http.Request) {

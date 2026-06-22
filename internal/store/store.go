@@ -816,6 +816,34 @@ func (s *Store) ListAuditEventsPage(ctx context.Context, limit, offset int) ([]d
 	return events, rows.Err()
 }
 
+func (s *Store) ListAuditEventsSince(ctx context.Context, since time.Time, limit int) ([]domain.AuditEvent, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, level, type, message, client_name, model, endpoint, backend_name, created_at
+		FROM audit_events
+		WHERE created_at >= ?
+		ORDER BY id DESC
+		LIMIT ?
+	`, formatTime(since.UTC()), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []domain.AuditEvent
+	for rows.Next() {
+		event, err := scanAuditEvent(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, rows.Err()
+}
+
 func (s *Store) AppendUsageLog(ctx context.Context, log domain.UsageLog) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO usage_logs(
@@ -879,6 +907,36 @@ func (s *Store) ListUsageLogsPageFiltered(ctx context.Context, filter UsageLogFi
 		ORDER BY id DESC
 		LIMIT ? OFFSET ?
 	`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []domain.UsageLog
+	for rows.Next() {
+		entry, err := scanUsageLog(rows)
+		if err != nil {
+			return nil, err
+		}
+		logs = append(logs, entry)
+	}
+	return logs, rows.Err()
+}
+
+func (s *Store) ListUsageLogsSince(ctx context.Context, since time.Time, limit int) ([]domain.UsageLog, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 1000
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, request_id, client_id, client_name, client_token_prefix, route_mode_override, route_group,
+			method, path, query, endpoint, model, backend_id, backend_name, attempts, status_code,
+			duration_ms, error_message, client_ip, user_agent, created_at
+		FROM usage_logs
+		WHERE created_at >= ?
+		ORDER BY id DESC
+		LIMIT ?
+	`, formatTime(since.UTC()), limit)
 	if err != nil {
 		return nil, err
 	}

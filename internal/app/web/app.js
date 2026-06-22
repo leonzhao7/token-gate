@@ -75,6 +75,20 @@ const policyEditBanner = document.querySelector("#policyEditBanner");
 const ADMIN_TOKEN_KEY = "token-gate-admin-token";
 const THEME_KEY = "token-gate-theme";
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
+const SEARCH_GROUPS = [
+  { key: "backends", label: "Backends", resourceType: "backend" },
+  { key: "client_keys", label: "Client Keys", resourceType: "client" },
+  { key: "policies", label: "Policies", resourceType: "policy" },
+  { key: "proxies", label: "Proxies", resourceType: "proxy" },
+  { key: "events", label: "Events", resourceType: "event" },
+  { key: "usage_logs", label: "Usage Logs", resourceType: "usage_log" },
+];
+const RESOURCE_DETAIL_ENDPOINTS = {
+  backend: (id) => `/admin/api/backends/${id}/detail`,
+  client: (id) => `/admin/api/client-keys/${id}/detail`,
+  policy: (id) => `/admin/api/model-policies/${id}/detail`,
+  proxy: (id) => `/admin/api/socks-proxies/${id}/detail`,
+};
 const state = {
   proxies: [],
   backends: [],
@@ -82,6 +96,11 @@ const state = {
   policies: [],
   events: [],
   usageLogs: [],
+  dashboard: {
+    summary: null,
+    usage: null,
+    activity: null,
+  },
   usageLogOptions: {
     backends: [],
     models: [],
@@ -119,11 +138,14 @@ const state = {
   },
   ui: {
     theme: "light",
-    search: { open: false, query: "" },
+    search: { open: false, query: "", results: null, loading: false },
     drawer: { open: false, title: "", content: "" },
     usageChartMode: "requests",
   },
 };
+
+let searchDebounceTimer = null;
+let searchRequestSeq = 0;
 
 tokenInput.value = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
 applyTheme(resolveInitialTheme());
@@ -181,7 +203,7 @@ searchModal.addEventListener("click", (event) => {
 
 searchInput.addEventListener("input", () => {
   state.ui.search.query = searchInput.value;
-  renderSearchResults();
+  scheduleSearch();
 });
 
 searchResults.addEventListener("click", (event) => {
@@ -190,7 +212,7 @@ searchResults.addEventListener("click", (event) => {
     return;
   }
   closeSearchModal();
-  openSearchResultDetail(button.dataset.searchResult, button.dataset.searchId);
+  openSearchResultDetail(button.dataset.searchType, button.dataset.searchId).catch(reportError);
 });
 
 drawerCloseBtn.addEventListener("click", () => {
@@ -384,7 +406,7 @@ async function refreshAll() {
   const eventPage = state.pagination.events;
   const usageLogPage = state.pagination.usageLogs;
   const usageLogQuery = buildUsageLogQuery();
-  const [overview, proxies, backends, clients, policies, events, usageLogs, usageLogOptions] = await Promise.all([
+  const [overview, proxies, backends, clients, policies, events, usageLogs, usageLogOptions, dashboardSummary, dashboardUsage, dashboardActivity] = await Promise.all([
     api("/admin/api/overview"),
     api(`/admin/api/socks-proxies?page=${proxyPage.page}&limit=${proxyPage.size}`),
     api(`/admin/api/backends?page=${backendPage.page}&limit=${backendPage.size}`),
@@ -393,6 +415,9 @@ async function refreshAll() {
     api(`/admin/api/events?page=${eventPage.page}&limit=${eventPage.size}`),
     api(`/admin/api/usage-logs?page=${usageLogPage.page}&limit=${usageLogPage.size}${usageLogQuery}`),
     api("/admin/api/usage-log-options"),
+    api("/admin/api/dashboard/summary"),
+    api("/admin/api/dashboard/usage?range=7d"),
+    api("/admin/api/dashboard/activity"),
   ]);
 
   overview.backends = ensureArray(overview.backends);
@@ -406,6 +431,9 @@ async function refreshAll() {
   state.usageLogOptions.backends = ensureArray(usageLogOptions?.backends);
   state.usageLogOptions.models = ensureArray(usageLogOptions?.models);
   state.usageLogOptions.clientKeys = ensureArray(usageLogOptions?.client_keys);
+  state.dashboard.summary = dashboardSummary || null;
+  state.dashboard.usage = dashboardUsage || null;
+  state.dashboard.activity = dashboardActivity || null;
 
   renderStats(overview);
   renderProxyOptions();
@@ -500,34 +528,75 @@ function renderUsageLogFilterOptions() {
 }
 
 function renderStats(overview) {
-  const enabled = overview.backends.filter((backend) => backend.enabled).length;
+  const dashboardCards = normalizedDashboardCards(overview);
+  const backendCard = dashboardCards.backends;
+  const clientCard = dashboardCards.client_keys;
+  const policyCard = dashboardCards.policies;
+  const proxyCard = dashboardCards.proxies;
   stats.innerHTML = `
     <article class="metric-card">
-      <strong>${overview.backends.length}</strong>
+      <strong>${backendCard.count}</strong>
       <span>Backends</span>
-      <span class="metric-copy">已登记的真实上游节点数量。</span>
+      <span class="metric-copy">${escapeHTML(formatBackendCardCopy(backendCard))}</span>
     </article>
     <article class="metric-card">
-      <strong>${enabled}</strong>
-      <span>Enabled</span>
-      <span class="metric-copy">当前处于启用状态的上游节点数量。</span>
-    </article>
-    <article class="metric-card">
-      <strong>${overview.socks_proxies || 0}</strong>
-      <span>SOCKS5</span>
-      <span class="metric-copy">可被 Backend 绑定的出口代理数量。</span>
-    </article>
-    <article class="metric-card">
-      <strong>${overview.client_keys}</strong>
+      <strong>${clientCard.count}</strong>
       <span>Client Keys</span>
       <span class="metric-copy">当前可管理的客户端身份数量。</span>
     </article>
     <article class="metric-card">
-      <strong>${overview.model_policies || 0}</strong>
+      <strong>${policyCard.count}</strong>
       <span>Policies</span>
       <span class="metric-copy">正在生效的模型调度规则数量。</span>
     </article>
+    <article class="metric-card">
+      <strong>${proxyCard.count}</strong>
+      <span>Proxies</span>
+      <span class="metric-copy">可被 Backend 绑定的出口代理数量。</span>
+    </article>
   `;
+}
+
+function normalizedDashboardCards(overview) {
+  const cards = state.dashboard.summary?.cards || {};
+  return {
+    backends: normalizedDashboardCard(cards.backends, {
+      count: ensureArray(overview?.backends).length,
+      enabled: ensureArray(overview?.backends).filter((backend) => backend.enabled).length,
+    }),
+    client_keys: normalizedDashboardCard(cards.client_keys, {
+      count: Number(overview?.client_keys) || 0,
+    }),
+    policies: normalizedDashboardCard(cards.policies, {
+      count: Number(overview?.model_policies) || 0,
+    }),
+    proxies: normalizedDashboardCard(cards.proxies, {
+      count: Number(overview?.socks_proxies) || 0,
+    }),
+  };
+}
+
+function normalizedDashboardCard(card, fallback) {
+  const count = asFiniteNumber(card?.count);
+  const enabled = asFiniteNumber(card?.enabled);
+  return {
+    count: count !== null ? count : asFiniteNumber(fallback?.count) || 0,
+    enabled: enabled !== null ? enabled : asFiniteNumber(fallback?.enabled) || 0,
+    successes: asFiniteNumber(card?.successes) || 0,
+    failures: asFiniteNumber(card?.failures) || 0,
+  };
+}
+
+function formatBackendCardCopy(card) {
+  const enabledText = card.enabled > 0 ? `${card.enabled} enabled` : "0 enabled";
+  const successText = `${card.successes} ok`;
+  const failureText = `${card.failures} fail`;
+  return `${enabledText} · ${successText} / ${failureText}`;
+}
+
+function asFiniteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function pageIDFromHash() {
@@ -546,7 +615,7 @@ function activatePage(id) {
 
   const activePage = pages.find((page) => page.id === nextID);
   if (activePage) {
-    pageTitle.textContent = activePage.dataset.pageTitle || "透明代理控制台";
+    pageTitle.textContent = activePage.dataset.pageTitle || "Token Gate - AI Proxy Center";
     pageBreadcrumb.textContent = activePage.dataset.pageBreadcrumb || "Dashboard";
   }
 }
@@ -1042,16 +1111,29 @@ function renderUsageLogs() {
 
 function renderDashboardPanels(overview) {
   renderUsageChart();
-  renderEventsSummary(overview);
-  renderRecentEvents();
-  renderRecentUsageLogs();
+  renderEventsSummary(normalizedDashboardActivity(overview));
+  renderRecentEvents(state.dashboard.activity);
+  renderRecentUsageLogs(state.dashboard.activity);
+}
+
+function normalizedDashboardActivity(overview) {
+  if (state.dashboard.activity) {
+    return state.dashboard.activity;
+  }
+  return {
+    events: ensureArray(overview?.events),
+    usage_logs: [],
+  };
 }
 
 function renderUsageChart() {
   if (!usageOverviewChart) {
     return;
   }
-  const data = buildUsageChartSeries(state.usageLogs, state.ui.usageChartMode);
+  const usageSeries = ensureArray(state.dashboard.usage?.series);
+  const data = usageSeries.length > 0
+    ? buildDashboardUsageChartSeries(usageSeries, state.ui.usageChartMode)
+    : buildUsageChartSeries(state.usageLogs, state.ui.usageChartMode);
   usageOverviewChart.innerHTML = data.points.length === 0
     ? emptyState("暂无图表数据", "先加载几条使用日志，Usage Overview 会自动呈现趋势。")
     : renderSparkAreaChart(data.points, data.label, data.color, data.subtitle);
@@ -1081,11 +1163,11 @@ function renderEventsSummary(overview) {
   `).join("");
 }
 
-function renderRecentEvents() {
+function renderRecentEvents(activity) {
   if (!recentEventsPanel) {
     return;
   }
-  const items = ensureArray(state.events).slice(0, 5);
+  const items = ensureArray(activity?.events).slice(0, 5);
   recentEventsPanel.innerHTML = items.length === 0
     ? emptyState("暂无事件", "最新的配置变更和上游事件会显示在这里。")
     : items.map((event) => `
@@ -1097,11 +1179,11 @@ function renderRecentEvents() {
       `).join("");
 }
 
-function renderRecentUsageLogs() {
+function renderRecentUsageLogs(activity) {
   if (!recentUsageLogsPanel) {
     return;
   }
-  const items = ensureArray(state.usageLogs).slice(0, 5);
+  const items = ensureArray(activity?.usage_logs).slice(0, 5);
   recentUsageLogsPanel.innerHTML = items.length === 0
     ? emptyState("暂无使用日志", "客户端通过代理发起请求后会在这里看到最近记录。")
     : items.map((log) => `
@@ -1122,31 +1204,98 @@ function renderSearchResults() {
     searchResults.innerHTML = "";
     return;
   }
-  const items = [];
-  const push = (type, name, detail, id) => {
-    if (!query || name.toLowerCase().includes(query) || detail.toLowerCase().includes(query)) {
-      items.push({ type, name, detail, id });
-    }
-  };
-  state.backends.forEach((item) => push("Backend", item.name, item.base_url || "", item.id));
-  state.clients.forEach((item) => push("Client Key", item.name, item.route_group || item.route_mode_override || "", item.id));
-  state.policies.forEach((item) => push("Policy", item.pattern, item.endpoint || "", item.id));
-  state.proxies.forEach((item) => push("Proxy", item.name, item.address || "", item.id));
-  state.events.forEach((item) => push("Event", eventTitle(item), item.message || "", item.id));
-  state.usageLogs.forEach((item) => push("Usage Log", formatUsageRequest(item), formatUsageDetail(item), item.id));
+  if (state.ui.search.loading) {
+    searchResults.innerHTML = emptyState("正在搜索", "Token Gate 正在查询资源和活动记录。");
+    return;
+  }
 
-  if (items.length === 0) {
+  const results = state.ui.search.results;
+  if (!results) {
+    searchResults.innerHTML = emptyState("开始搜索", "输入 backend、client key、policy、proxy、event 或日志关键字。");
+    return;
+  }
+
+  const groups = SEARCH_GROUPS.map((group) => {
+    const items = ensureArray(results[group.key]);
+    return {
+      ...group,
+      items,
+    };
+  }).filter((group) => !query || group.items.length > 0);
+
+  const hasAny = groups.some((group) => group.items.length > 0);
+  if (!hasAny) {
     searchResults.innerHTML = emptyState("没有匹配结果", "试试输入 backend、client key、policy、proxy、event 或日志里的任意关键词。");
     return;
   }
 
-  searchResults.innerHTML = items.slice(0, 12).map((item) => `
-    <button class="search-result" type="button" data-search-result="${escapeHTML(item.type)}" data-search-id="${escapeHTML(item.id)}">
-      <span>${escapeHTML(item.type)}</span>
-      <strong>${escapeHTML(item.name)}</strong>
-      <small>${escapeHTML(item.detail || "-")}</small>
-    </button>
+  searchResults.innerHTML = groups.map((group) => `
+    <section class="search-group">
+      <div class="search-group-head">
+        <strong>${escapeHTML(group.label)}</strong>
+        <span>${group.items.length}</span>
+      </div>
+      <div class="search-group-list">
+        ${group.items.slice(0, 4).map((item) => {
+          const record = searchResultRecord(item);
+          return `
+          <button class="search-result" type="button" data-search-type="${escapeHTML(group.resourceType)}" data-search-id="${escapeHTML(record.id)}">
+            <span>${escapeHTML(record.title)}</span>
+            <strong>${escapeHTML(record.detail)}</strong>
+            <small>${escapeHTML(record.summary)}</small>
+          </button>
+        `;
+        }).join("")}
+      </div>
+    </section>
   `).join("");
+}
+
+function searchResultRecord(item) {
+  const raw = item?.raw || item || {};
+  return {
+    id: item?.target_id ?? item?.id ?? raw.id ?? "",
+    title: item?.title || item?.name || raw.name || raw.pattern || raw.request_id || `#${item?.id ?? raw.id ?? "-"}`,
+    detail: item?.subtitle || item?.detail || item?.meta || raw.detail || raw.summary || "-",
+    summary: item?.meta || item?.summary || item?.status || raw.summary || raw.status || "-",
+  };
+}
+
+function scheduleSearch() {
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer);
+  }
+  const query = String(state.ui.search.query || "").trim();
+  if (!state.ui.search.open) {
+    return;
+  }
+  if (!query) {
+    state.ui.search.results = null;
+    state.ui.search.loading = false;
+    renderSearchResults();
+    return;
+  }
+
+  state.ui.search.loading = true;
+  renderSearchResults();
+  const requestID = ++searchRequestSeq;
+  searchDebounceTimer = window.setTimeout(async () => {
+    try {
+      const response = await api(`/admin/api/search?q=${encodeURIComponent(query)}`);
+      if (requestID !== searchRequestSeq) {
+        return;
+      }
+      state.ui.search.results = response?.results || null;
+      state.ui.search.loading = false;
+      renderSearchResults();
+    } catch (error) {
+      if (requestID !== searchRequestSeq) {
+        return;
+      }
+      state.ui.search.loading = false;
+      reportError(error);
+    }
+  }, 150);
 }
 
 function bindPagination(container, key, rerender) {
@@ -1308,6 +1457,22 @@ function buildUsageChartSeries(logs, mode) {
   };
 }
 
+function buildDashboardUsageChartSeries(series, mode) {
+  const points = ensureArray(series);
+  const selected = mode === "failures" ? "failures" : mode === "latency" ? "latency" : "requests";
+  const color = selected === "failures" ? "#ef4444" : selected === "latency" ? "#f59e0b" : "#3b82f6";
+  const subtitle = selected === "failures" ? "Failure rate over time" : selected === "latency" ? "Average latency over time" : "Request volume over time";
+  return {
+    label: selected,
+    color,
+    subtitle,
+    points: points.map((point) => ({
+      x: String(point.label || "-").slice(5),
+      y: selected === "failures" ? Number(point.failures) || 0 : selected === "latency" ? Math.round(Number(point.latency_ms) / Math.max(1, Number(point.requests) || 1)) : Number(point.requests) || 0,
+    })),
+  };
+}
+
 function renderSparkAreaChart(points, label, color, subtitle) {
   const width = 640;
   const height = 240;
@@ -1394,7 +1559,7 @@ function openSearchModal() {
   searchModal.classList.remove("hidden");
   searchInput.value = state.ui.search.query || "";
   searchInput.focus();
-  renderSearchResults();
+  scheduleSearch();
 }
 
 function closeSearchModal() {
@@ -1422,6 +1587,146 @@ function closeDrawer() {
   state.ui.drawer.open = false;
   drawer.classList.add("hidden");
   drawer.setAttribute("aria-hidden", "true");
+}
+
+async function openSearchResultDetail(type, id) {
+  const endpointFactory = RESOURCE_DETAIL_ENDPOINTS[type];
+  if (!endpointFactory) {
+    const record = findSearchResultRecord(type, id);
+    if (!record) {
+      return;
+    }
+    const payload = searchResultDrawerPayload(type, record);
+    openDrawer(payload.title, renderDrawerPayload(payload));
+    return;
+  }
+  const response = await api(endpointFactory(id));
+  const title = response?.overview?.find?.((item) => item.label === "Name")?.value || response?.raw?.name || response?.raw?.pattern || response?.raw?.request_id || `${type} #${id}`;
+  openDrawer(title, renderDrawerPayload(response));
+}
+
+function findSearchResultRecord(type, id) {
+  const group = SEARCH_GROUPS.find((entry) => entry.resourceType === type);
+  if (!group || !state.ui.search.results) {
+    return null;
+  }
+  return ensureArray(state.ui.search.results[group.key]).find((item) => {
+    const record = searchResultRecord(item);
+    return String(record.id) === String(id);
+  }) || null;
+}
+
+function searchResultDrawerPayload(type, record) {
+  const raw = record?.raw || record || {};
+  if (type === "event") {
+    return {
+      title: record?.title || record?.name || raw.type || "Event",
+      overview: [
+        { label: "Type", value: raw.type || "-" },
+        { label: "Level", value: raw.level || "-" },
+        { label: "Actor", value: raw.client_name || raw.backend_name || "system" },
+        { label: "Message", value: raw.message || "-" },
+      ],
+      configuration: [
+        { label: "Client", value: raw.client_name || "-" },
+        { label: "Backend", value: raw.backend_name || "-" },
+        { label: "Model", value: raw.model || "-" },
+        { label: "Endpoint", value: raw.endpoint || "-" },
+      ],
+      metadata: [
+        { label: "ID", value: String(raw.id || "-") },
+        { label: "Timestamp", value: formatDateTime(raw.created_at) },
+      ],
+      activity: { events: [], usage_logs: [] },
+      raw,
+    };
+  }
+  return {
+    title: record?.title || record?.name || raw.request_id || "Usage Log",
+    overview: [
+      { label: "Request", value: formatUsageRequest(raw) },
+      { label: "Status", value: formatUsageStatus(raw) },
+      { label: "Client", value: raw.client_name || "-" },
+      { label: "Backend", value: raw.backend_name || "-" },
+    ],
+    configuration: [
+      { label: "Model", value: raw.model || "-" },
+      { label: "Route Override", value: raw.route_mode_override || "-" },
+      { label: "Route Group", value: raw.route_group || "-" },
+      { label: "Path", value: (raw.path || "-") + (raw.query ? `?${raw.query}` : "") },
+    ],
+    metadata: [
+      { label: "Request ID", value: raw.request_id || "-" },
+      { label: "Attempts", value: String(raw.attempts || 0) },
+      { label: "Duration", value: `${Number(raw.duration_ms) || 0} ms` },
+      { label: "Timestamp", value: formatDateTime(raw.created_at) },
+    ],
+    activity: { events: [], usage_logs: [] },
+    raw,
+  };
+}
+
+function renderDrawerPayload(payload) {
+  const overview = ensureArray(payload?.overview);
+  const configuration = ensureArray(payload?.configuration);
+  const metadata = ensureArray(payload?.metadata);
+  const raw = payload?.raw || {};
+  const activityEvents = ensureArray(payload?.activity?.events);
+  const activityLogs = ensureArray(payload?.activity?.usage_logs);
+  return `
+    <div class="drawer-section">
+      <strong>Overview</strong>
+      <div class="detail-grid">
+        ${overview.map(renderDetailEntry).join("")}
+      </div>
+    </div>
+    <div class="drawer-section">
+      <strong>Configuration</strong>
+      <div class="detail-grid">
+        ${configuration.map(renderDetailEntry).join("")}
+      </div>
+    </div>
+    <div class="drawer-section">
+      <strong>Metadata</strong>
+      <div class="detail-grid">
+        ${metadata.map(renderDetailEntry).join("")}
+      </div>
+    </div>
+    <div class="drawer-section">
+      <strong>Activity</strong>
+      ${activityEvents.length === 0 && activityLogs.length === 0 ? emptyState("暂无活动", "当前没有关联事件或日志。") : `
+        <div class="drawer-activity-grid">
+          ${activityEvents.slice(0, 4).map((event) => `
+            <article class="feed-item">
+              <strong>${escapeHTML(eventTitle(event))}</strong>
+              <small>${escapeHTML(event.message || "-")}</small>
+              <small>${escapeHTML(formatDateTime(event.created_at))}</small>
+            </article>
+          `).join("")}
+          ${activityLogs.slice(0, 4).map((log) => `
+            <article class="feed-item">
+              <strong>${escapeHTML(formatUsageRequest(log))}</strong>
+              <small>${escapeHTML(log.backend_name || "-")} · ${escapeHTML(log.model || "-")}</small>
+              <small>${escapeHTML(formatDateTime(log.created_at))}</small>
+            </article>
+          `).join("")}
+        </div>
+      `}
+    </div>
+    <div class="drawer-section">
+      <strong>Raw JSON</strong>
+      <pre class="json-preview">${escapeHTML(JSON.stringify(raw, null, 2))}</pre>
+    </div>
+  `;
+}
+
+function renderDetailEntry(entry) {
+  return `
+    <div>
+      <strong>${escapeHTML(entry.label || "-")}</strong>
+      <span>${escapeHTML(entry.value || "-")}</span>
+    </div>
+  `;
 }
 
 function renderEventRow(event) {
@@ -1565,94 +1870,6 @@ function eventTitle(event) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
-}
-
-function openSearchResultDetail(type, id) {
-  const resource = findSearchResource(type, id);
-  if (!resource) {
-    return;
-  }
-
-  openDrawer(`${resource.type}: ${resource.name}`, `
-    <div class="drawer-section">
-      <span class="timeline-label">Summary</span>
-      <strong>${escapeHTML(resource.summary)}</strong>
-      <p>${escapeHTML(resource.detail || "-")}</p>
-    </div>
-    <div class="drawer-section">
-      <span class="timeline-label">Raw JSON</span>
-      <pre class="json-preview">${escapeHTML(JSON.stringify(resource.raw, null, 2))}</pre>
-    </div>
-  `);
-}
-
-function findSearchResource(type, id) {
-  const normalizedID = String(id || "");
-  const lookup = {
-    "Backend": state.backends,
-    "Client Key": state.clients,
-    "Policy": state.policies,
-    "Proxy": state.proxies,
-    "Event": state.events,
-    "Usage Log": state.usageLogs,
-  }[type];
-  if (!lookup) {
-    return null;
-  }
-
-  const raw = lookup.find((item) => String(item.id) === normalizedID);
-  if (!raw) {
-    return null;
-  }
-
-  return {
-    type,
-    name: raw.name || raw.pattern || raw.message || raw.request_id || `#${normalizedID}`,
-    summary: resourceSummary(type, raw),
-    detail: resourceDetail(type, raw),
-    raw,
-  };
-}
-
-function resourceSummary(type, raw) {
-  if (type === "Backend") {
-    return raw.base_url || "-";
-  }
-  if (type === "Client Key") {
-    return raw.route_group || raw.route_mode_override || "-";
-  }
-  if (type === "Policy") {
-    return `${raw.endpoint || "-"} · ${raw.placement_policy || "-"}`;
-  }
-  if (type === "Proxy") {
-    return raw.address || "-";
-  }
-  if (type === "Event") {
-    return eventTitle(raw);
-  }
-  return formatUsageRequest(raw);
-}
-
-function resourceDetail(type, raw) {
-  if (type === "Event") {
-    return raw.message || "-";
-  }
-  if (type === "Usage Log") {
-    return formatUsageDetail(raw);
-  }
-  if (type === "Backend") {
-    return `${raw.protocol || "openai"} · ${raw.pool || "default"}`;
-  }
-  if (type === "Client Key") {
-    return raw.token_prefix || "-";
-  }
-  if (type === "Policy") {
-    return `${raw.priority ?? 0} · ${raw.failover_enabled ? "failover on" : "failover off"}`;
-  }
-  if (type === "Proxy") {
-    return raw.username ? `user ${raw.username}` : "direct";
-  }
-  return raw.enabled === false ? "disabled" : "enabled";
 }
 
 function parseModelMapping(value) {
