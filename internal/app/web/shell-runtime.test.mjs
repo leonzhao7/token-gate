@@ -223,6 +223,58 @@ test("theme helpers initialize persist resolve and apply theme state", () => {
   assert.equal(sidebarRoot.classList.contains("is-collapsed"), false);
 });
 
+test("sidebar runtime initializes and persists collapsed preference", () => {
+  const calls = [];
+  const appShell = createClassToggleElement();
+  const sidebarRoot = createClassToggleElement();
+  const localStorage = {
+    getItem(key) {
+      calls.push(["get", key]);
+      return "collapsed";
+    },
+    setItem(key, value) {
+      calls.push(["set", key, value]);
+    },
+    removeItem(key) {
+      calls.push(["remove", key]);
+    },
+  };
+  const shellStateUtils = {
+    parseSidebarCollapsedPreference(value) {
+      return value === "collapsed";
+    },
+    createSidebarStorageOperation(collapsed) {
+      return collapsed
+        ? { type: "set", value: "collapsed" }
+        : { type: "remove", value: "" };
+    },
+  };
+
+  const initialized = ShellRuntimeUtils.initializeSidebarState({
+    appShell,
+    sidebarRoot,
+    localStorage,
+    sidebarCollapsedKey: "sidebar-key",
+    shellStateUtils,
+  });
+  assert.equal(initialized, true);
+  assert.equal(appShell.classList.contains("sidebar-collapsed"), true);
+  assert.equal(sidebarRoot.classList.contains("is-collapsed"), true);
+
+  const nextState = ShellRuntimeUtils.toggleSidebarCollapsed({
+    appShell,
+    sidebarRoot,
+    localStorage,
+    sidebarCollapsedKey: "sidebar-key",
+    shellStateUtils,
+  });
+  assert.equal(nextState, false);
+  assert.deepEqual(calls, [
+    ["get", "sidebar-key"],
+    ["remove", "sidebar-key"],
+  ]);
+});
+
 test("header panel runtime renders utility popovers and toggles active panel", () => {
   const state = { ui: { headerPanels: { active: "" } } };
   const headerPanelRoot = { innerHTML: "" };

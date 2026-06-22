@@ -113,6 +113,20 @@
     return operation;
   }
 
+  function initializeSidebarState({
+    appShell,
+    sidebarRoot,
+    localStorage,
+    sidebarCollapsedKey,
+    shellStateUtils,
+  }) {
+    const collapsed = typeof shellStateUtils?.parseSidebarCollapsedPreference === "function"
+      ? shellStateUtils.parseSidebarCollapsedPreference(localStorage?.getItem?.(sidebarCollapsedKey) || "")
+      : false;
+    applySidebarCollapsed({ appShell, sidebarRoot, collapsed });
+    return collapsed;
+  }
+
   function applyResolvedTheme({
     state,
     systemThemeQuery,
@@ -269,13 +283,48 @@
     appShell,
     sidebarRoot,
     forceState,
+    localStorage,
+    sidebarCollapsedKey,
+    shellStateUtils,
   }) {
     const nextState = typeof forceState === "boolean"
       ? forceState
       : !appShell?.classList.contains("sidebar-collapsed");
-    appShell?.classList.toggle("sidebar-collapsed", nextState);
-    sidebarRoot?.classList.toggle("is-collapsed", nextState);
+    applySidebarCollapsed({ appShell, sidebarRoot, collapsed: nextState });
+    persistSidebarCollapsed({
+      collapsed: nextState,
+      localStorage,
+      sidebarCollapsedKey,
+      shellStateUtils,
+    });
     return nextState;
+  }
+
+  function applySidebarCollapsed({
+    appShell,
+    sidebarRoot,
+    collapsed,
+  }) {
+    appShell?.classList.toggle("sidebar-collapsed", Boolean(collapsed));
+    sidebarRoot?.classList.toggle("is-collapsed", Boolean(collapsed));
+  }
+
+  function persistSidebarCollapsed({
+    collapsed,
+    localStorage,
+    sidebarCollapsedKey,
+    shellStateUtils,
+  }) {
+    if (!localStorage || !sidebarCollapsedKey || typeof shellStateUtils?.createSidebarStorageOperation !== "function") {
+      return null;
+    }
+    const operation = shellStateUtils.createSidebarStorageOperation(Boolean(collapsed));
+    if (operation.type === "remove") {
+      localStorage.removeItem(sidebarCollapsedKey);
+      return operation;
+    }
+    localStorage.setItem(sidebarCollapsedKey, operation.value);
+    return operation;
   }
 
   function identity(value) {
@@ -294,6 +343,7 @@
     closeHeaderPanel,
     cycleThemePreference,
     initializeThemeState,
+    initializeSidebarState,
     navigateToPage,
     pageIDFromHash,
     persistThemePreference,

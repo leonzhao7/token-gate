@@ -7,9 +7,11 @@ const {
   buildPageNavigation,
   createHeaderPanelState,
   createHeaderPanelViewModel,
+  createSidebarStorageOperation,
   createSettingsSnapshot,
   createThemeRuntimeState,
   createThemeStorageOperation,
+  parseSidebarCollapsedPreference,
 } = require("./shell-state.js");
 
 test("buildPageNavigation normalizes unknown pages and avoids redundant hash updates", () => {
@@ -73,6 +75,21 @@ test("createThemeStorageOperation maps system to remove and explicit overrides t
   assert.deepEqual(createThemeStorageOperation("dark"), {
     type: "set",
     value: "dark",
+  });
+});
+
+test("sidebar collapsed helpers parse and persist compact shell preference", () => {
+  assert.equal(parseSidebarCollapsedPreference("collapsed"), true);
+  assert.equal(parseSidebarCollapsedPreference("expanded"), false);
+  assert.equal(parseSidebarCollapsedPreference(""), false);
+
+  assert.deepEqual(createSidebarStorageOperation(true), {
+    type: "set",
+    value: "collapsed",
+  });
+  assert.deepEqual(createSidebarStorageOperation(false), {
+    type: "remove",
+    value: "",
   });
 });
 

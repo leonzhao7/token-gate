@@ -33,6 +33,16 @@
       : { type: "set", value: String(preference || "") };
   }
 
+  function parseSidebarCollapsedPreference(value) {
+    return String(value || "").trim() === "collapsed";
+  }
+
+  function createSidebarStorageOperation(collapsed) {
+    return collapsed
+      ? { type: "set", value: "collapsed" }
+      : { type: "remove", value: "" };
+  }
+
   function createSettingsSnapshot({
     adminTokenValue = "",
     themePreference = "system",
@@ -147,9 +157,11 @@
     buildPageNavigation,
     createHeaderPanelState,
     createHeaderPanelViewModel,
+    createSidebarStorageOperation,
     createSettingsSnapshot,
     createThemeRuntimeState,
     createThemeStorageOperation,
+    parseSidebarCollapsedPreference,
   };
 
   if (typeof module !== "undefined" && module.exports) {

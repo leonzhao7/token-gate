@@ -106,6 +106,7 @@ const policyEditBanner = document.querySelector("#policyEditBanner");
 
 const ADMIN_TOKEN_KEY = "token-gate-admin-token";
 const THEME_PREFERENCE_KEY = "token-gate-theme-preference";
+const SIDEBAR_COLLAPSED_KEY = "token-gate-sidebar-collapsed";
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const SEARCH_LIMIT = 8;
 const SEARCH_DEBOUNCE_MS = 220;
@@ -591,6 +592,16 @@ function initializeThemeState() {
   });
 }
 
+function initializeSidebarState() {
+  ShellRuntimeUtils.initializeSidebarState({
+    appShell,
+    sidebarRoot,
+    localStorage,
+    sidebarCollapsedKey: SIDEBAR_COLLAPSED_KEY,
+    shellStateUtils: ShellStateUtils,
+  });
+}
+
 function persistThemePreference(preference) {
   ShellRuntimeUtils.persistThemePreference({
     preference,
@@ -667,6 +678,9 @@ function toggleSidebarCollapsed(forceState) {
     appShell,
     sidebarRoot,
     forceState,
+    localStorage,
+    sidebarCollapsedKey: SIDEBAR_COLLAPSED_KEY,
+    shellStateUtils: ShellStateUtils,
   });
   renderSettings();
   renderHeaderPanels();
@@ -674,6 +688,7 @@ function toggleSidebarCollapsed(forceState) {
 
 tokenInput.value = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
 initializeThemeState();
+initializeSidebarState();
 renderTheme();
 
 window.addEventListener("hashchange", () => {
