@@ -470,9 +470,18 @@ a {
     var(--shadow-sm);
 }
 
+.shell-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.shell-icon * {
+  vector-effect: non-scaling-stroke;
+}
+
 .shell-search-icon {
   color: var(--text-tertiary);
-  font-size: 1rem;
 }
 
 .shell-search-launcher {
@@ -535,8 +544,9 @@ a {
   padding: 0 14px;
 }
 
-.theme-toggle-icon {
-  font-size: 0.9rem;
+.theme-toggle-icon,
+.profile-menu-icon {
+  color: var(--text-tertiary);
 }
 
 .utility-pill,
