@@ -267,15 +267,18 @@ a {
   width: 26px;
   height: 26px;
   flex: 0 0 26px;
+  box-sizing: border-box;
   place-items: center;
+  padding: 5px;
   border: 1px solid color-mix(in srgb, var(--primary) 10%, var(--border));
   border-radius: 9px;
   background: color-mix(in srgb, var(--surface) 82%, transparent);
   color: var(--text-secondary);
-  font-size: 0.76rem;
-  font-weight: 800;
-  letter-spacing: 0.02em;
   transition: color 160ms ease, border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.nav-icon * {
+  vector-effect: non-scaling-stroke;
 }
 
 .nav-item:hover .nav-icon,
