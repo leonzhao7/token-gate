@@ -24,7 +24,7 @@ test("renderEventsPage renders timeline and summary sidebar", () => {
       tone: "warning",
       meta: "edge-a",
       actor: "system",
-      icon: "B",
+      icon: "backend",
     }],
     summary: {
       total: 1,
@@ -51,6 +51,9 @@ test("renderEventsPage renders timeline and summary sidebar", () => {
   assert.match(html, /Timeline/);
   assert.match(html, /observability-section-head/);
   assert.match(html, /pager/);
+  assert.match(html, /data-event-icon="backend"/);
+  assert.match(html, /data-event-icon-svg="backend"/);
+  assert.doesNotMatch(html, /<span class="timeline-icon">[A-Z]<\/span>/);
 });
 
 test("renderUsageLogsPage renders stats and table rows", () => {

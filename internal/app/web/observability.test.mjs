@@ -211,7 +211,7 @@ test("createEventTimelineItems maps raw events into timeline rows", () => {
   ]), [
     {
       id: "11",
-      icon: "B",
+      icon: "backend",
       title: "backend.failover",
       description: "switched backend",
       actor: "system",

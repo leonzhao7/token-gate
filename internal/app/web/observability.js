@@ -216,8 +216,16 @@
   }
 
   function eventIcon(category) {
-    const value = stringValue(category || "system");
-    return value.charAt(0).toUpperCase() || "S";
+    const normalized = stringValue(category || "system");
+    const icons = {
+      system: "system",
+      backend: "backend",
+      policy: "policy",
+      proxy: "proxy",
+      client_key: "client-key",
+      security: "security",
+    };
+    return icons[normalized] || "system";
   }
 
   function mapCounts(items, keyName) {

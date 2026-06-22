@@ -30,7 +30,9 @@
               ${ensureArray(timelineItems).map((item) => `
                 <article class="timeline-item tone-${escapeHTML(item.tone)}">
                   <div class="timeline-rail">
-                    <span class="timeline-icon">${escapeHTML(item.icon)}</span>
+                    <span class="timeline-icon" data-event-icon="${escapeHTML(item.icon)}">
+                      ${renderTimelineIcon(item.icon)}
+                    </span>
                   </div>
                   <div
                     class="timeline-card"
@@ -244,6 +246,51 @@
       return "-";
     }
     return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
+  }
+
+  function renderTimelineIcon(name) {
+    const icons = {
+      system: [
+        "M12 4v16",
+        "M4 12h16",
+        "M6.5 6.5l11 11",
+        "M17.5 6.5l-11 11",
+      ],
+      backend: [
+        "M5 6h14",
+        "M5 18h14",
+        "M7 10h10",
+        "M7 14h10",
+      ],
+      policy: [
+        "M6 7h12",
+        "M6 12h12",
+        "M6 17h12",
+        "M10 7v10",
+      ],
+      proxy: [
+        "M6 7a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z",
+        "M18 23a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z",
+        "M18 9a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z",
+        "M8.6 6.5h6.8",
+        "M8.5 7.5 15.5 16",
+      ],
+      client_key: [
+        "M8 15a4 4 0 1 1 0-8 4 4 0 0 1 0 8Z",
+        "m11 12 8-8",
+        "m15 8 3 3",
+      ],
+      security: [
+        "M12 2 20 6v6c0 5.2-3.4 9.8-8 10-4.6-.2-8-4.8-8-10V6l8-4Z",
+        "M9 12l2 2 4-5",
+      ],
+    };
+
+    return `
+      <svg class="timeline-icon-svg" data-event-icon-svg="${defaultEscapeHTML(name || "system")}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        ${(icons[name] || icons.system).map((path) => `<path d="${path}"></path>`).join("")}
+      </svg>
+    `;
   }
 
   function ensureArray(value) {

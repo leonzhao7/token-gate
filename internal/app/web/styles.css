@@ -3018,8 +3018,16 @@ button:hover {
   border: 1px solid var(--line);
   background: var(--surface-muted);
   color: var(--text-primary);
-  font-size: 0.82rem;
-  font-weight: 800;
+}
+
+.timeline-icon-svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.timeline-icon-svg * {
+  vector-effect: non-scaling-stroke;
 }
 
 .timeline-card-head {
