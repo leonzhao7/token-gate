@@ -2668,14 +2668,20 @@ button:hover {
 .chevron {
   display: inline-flex;
   align-items: center;
-  min-width: 40px;
+  width: 24px;
+  height: 24px;
   justify-content: center;
-  padding: 4px 8px;
-  border-radius: 999px;
+  flex: 0 0 24px;
+  border: 1px solid color-mix(in srgb, var(--primary) 16%, var(--border));
+  border-radius: 8px;
   color: var(--primary);
-  background: var(--primary-soft);
-  font-size: 0.72rem;
-  font-weight: 900;
+  background: color-mix(in srgb, var(--primary-soft) 68%, var(--surface));
+}
+
+.row-chevron-icon {
+  width: 13px;
+  height: 13px;
+  flex-basis: 13px;
 }
 
 .cell-subtitle {

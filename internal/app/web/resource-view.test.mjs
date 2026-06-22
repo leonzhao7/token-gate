@@ -198,8 +198,14 @@ test("resource row renderers output expandable rows with actions", () => {
 
   assert.match(proxyRow, /tokyo-proxy/);
   assert.match(proxyRow, /proxy-detail/);
+  assert.match(proxyRow, /aria-expanded="true"/);
+  assert.match(proxyRow, /data-shell-icon="row-collapse"/);
+  assert.doesNotMatch(proxyRow, />收起</);
   assert.match(backendRow, /edge-a/);
   assert.match(backendRow, /30m 18 ok \/ 1 fail/);
+  assert.match(backendRow, /aria-expanded="false"/);
+  assert.match(backendRow, /data-shell-icon="row-expand"/);
+  assert.doesNotMatch(backendRow, />展开</);
   assert.match(clientRow, /client-v\.\.\.-key/);
   assert.match(policyRow, /policy-detail/);
 });

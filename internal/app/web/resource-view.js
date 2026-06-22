@@ -125,8 +125,8 @@
     return `
       <tr class="${editing ? "is-editing" : ""} clickable-row" data-row-open="proxy" data-row-id="${escapeHTML(proxy.id)}" data-row-title="${escapeHTML(proxy.name)}">
         <td>
-          <button class="row-title" data-toggle-proxy="${proxy.id}" type="button">
-            <span class="chevron">${expanded ? "收起" : "展开"}</span>
+          <button class="row-title" data-toggle-proxy="${proxy.id}" type="button" aria-expanded="${String(Boolean(expanded))}">
+            ${renderRowChevron(expanded)}
             <span>${escapeHTML(proxy.name)}</span>
           </button>
         </td>
@@ -168,8 +168,8 @@
     return `
       <tr class="${editing ? "is-editing" : ""} clickable-row" data-row-open="backend" data-row-id="${escapeHTML(backend.id)}" data-row-title="${escapeHTML(backend.name)}">
         <td>
-          <button class="row-title" data-toggle-backend="${backend.id}" type="button">
-            <span class="chevron">${expanded ? "收起" : "展开"}</span>
+          <button class="row-title" data-toggle-backend="${backend.id}" type="button" aria-expanded="${String(Boolean(expanded))}">
+            ${renderRowChevron(expanded)}
             <span>${escapeHTML(backend.name)}</span>
           </button>
           <div class="cell-subtitle">${escapeHTML(backend.base_url)}</div>
@@ -213,8 +213,8 @@
     return `
       <tr class="${editing ? "is-editing" : ""} clickable-row" data-row-open="client" data-row-id="${escapeHTML(client.id)}" data-row-title="${escapeHTML(client.name)}">
         <td>
-          <button class="row-title" data-toggle-client="${client.id}" type="button">
-            <span class="chevron">${expanded ? "收起" : "展开"}</span>
+          <button class="row-title" data-toggle-client="${client.id}" type="button" aria-expanded="${String(Boolean(expanded))}">
+            ${renderRowChevron(expanded)}
             <span>${escapeHTML(client.name)}</span>
           </button>
           <div class="cell-subtitle"><span class="secret-text">${escapeHTML(clientTokenText || "-")}</span></div>
@@ -254,8 +254,8 @@
     return `
       <tr class="${editing ? "is-editing" : ""} clickable-row" data-row-open="policy" data-row-id="${escapeHTML(policy.id)}" data-row-title="${escapeHTML(policy.pattern)}">
         <td>
-          <button class="row-title" data-toggle-policy="${policy.id}" type="button">
-            <span class="chevron">${expanded ? "收起" : "展开"}</span>
+          <button class="row-title" data-toggle-policy="${policy.id}" type="button" aria-expanded="${String(Boolean(expanded))}">
+            ${renderRowChevron(expanded)}
             <span>${escapeHTML(policy.pattern)}</span>
           </button>
           <div class="cell-subtitle">${escapeHTML(policy.endpoint)}</div>
@@ -311,6 +311,18 @@
 
   function ensureArray(value) {
     return Array.isArray(value) ? value : [];
+  }
+
+  function renderRowChevron(expanded) {
+    const iconName = expanded ? "row-collapse" : "row-expand";
+    const label = expanded ? "Collapse row" : "Expand row";
+    return `
+      <span class="chevron" aria-label="${label}">
+        <svg class="shell-icon row-chevron-icon" data-shell-icon="${iconName}" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="${expanded ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"}"></path>
+        </svg>
+      </span>
+    `;
   }
 
   function defaultToolbarStatusLabel(activeFilters, hasChanges) {
