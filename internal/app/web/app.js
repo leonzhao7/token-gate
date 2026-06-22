@@ -9,6 +9,9 @@ const sidebarRoot = document.querySelector("#sidebarRoot");
 const sidebarToggleBtn = document.querySelector("#sidebarToggleBtn");
 const themeToggleBtn = document.querySelector("#themeToggleBtn");
 const themeToggleLabel = document.querySelector("#themeToggleLabel");
+const notificationMenuBtn = document.querySelector("#notificationMenuBtn");
+const profileMenuBtn = document.querySelector("#profileMenuBtn");
+const headerPanelRoot = document.querySelector("#headerPanelRoot");
 const dashboardRoot = document.querySelector("#dashboardRoot");
 const dashboardSummaryRow = document.querySelector("#dashboardSummaryRow");
 const dashboardUsageCard = document.querySelector("#dashboardUsageCard");
@@ -355,6 +358,9 @@ const state = {
     theme: "light",
     themePreference: "system",
     lastRefreshAt: "",
+    headerPanels: typeof ShellStateUtils.createHeaderPanelState === "function"
+      ? ShellStateUtils.createHeaderPanelState()
+      : { active: "" },
     drawer: { open: false, kind: "", id: null, title: "", tab: "overview", loading: false, data: null, error: "", detailPath: "", deletePath: "", page: "", triggerElement: null },
     search: {
       open: false,
@@ -642,6 +648,7 @@ function renderTheme() {
     themeUtils: ThemeUtils,
   });
   renderSettings();
+  renderHeaderPanels();
 }
 
 function cycleThemePreference() {
@@ -662,6 +669,7 @@ function toggleSidebarCollapsed(forceState) {
     forceState,
   });
   renderSettings();
+  renderHeaderPanels();
 }
 
 tokenInput.value = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
@@ -678,6 +686,38 @@ sidebarToggleBtn?.addEventListener("click", () => {
 
 themeToggleBtn?.addEventListener("click", () => {
   cycleThemePreference();
+});
+
+notificationMenuBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleHeaderPanel("notifications");
+});
+
+profileMenuBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleHeaderPanel("profile");
+});
+
+headerPanelRoot?.addEventListener("click", (event) => {
+  const actionButton = event.target.closest("[data-header-action]");
+  if (!actionButton) {
+    event.stopPropagation();
+    return;
+  }
+  event.stopPropagation();
+  handleSettingsAction(actionButton.dataset.headerAction || "")
+    .then(() => closeHeaderPanel())
+    .catch(reportError);
+});
+
+document.addEventListener("click", (event) => {
+  if (!state.ui.headerPanels.active) {
+    return;
+  }
+  if (headerPanelRoot?.contains(event.target) || notificationMenuBtn?.contains(event.target) || profileMenuBtn?.contains(event.target)) {
+    return;
+  }
+  closeHeaderPanel();
 });
 
 searchOpenBtn?.addEventListener("click", () => {
@@ -904,6 +944,11 @@ document.addEventListener("keydown", (event) => {
   }
 
   if (typeof SearchUtils.isSearchDismissKey === "function" && SearchUtils.isSearchDismissKey(event)) {
+    if (state.ui.headerPanels.active) {
+      event.preventDefault();
+      closeHeaderPanel();
+      return;
+    }
     if (state.ui.search.open) {
       event.preventDefault();
       closeSearchShell();
@@ -1030,7 +1075,7 @@ policyForm.addEventListener("submit", async (event) => {
 });
 
 async function refreshAll() {
-  return ConsoleDataRuntimeUtils.refreshAll({
+  const result = await ConsoleDataRuntimeUtils.refreshAll({
     state,
     startDashboardLoading,
     renderDashboardShell,
@@ -1058,6 +1103,8 @@ async function refreshAll() {
     renderSearchShell,
     renderTheme,
   });
+  renderHeaderPanels();
+  return result;
 }
 
 function buildUsageLogQuery() {
@@ -1330,6 +1377,44 @@ function renderSearchShell() {
     isOpen: Boolean(state.ui.search.open),
     query: state.ui.search.query,
     resultsMarkup: renderSearchResults(),
+  });
+}
+
+function currentHeaderPanelViewModel() {
+  return typeof ShellStateUtils.createHeaderPanelViewModel === "function"
+    ? ShellStateUtils.createHeaderPanelViewModel({
+      activePanel: state.ui.headerPanels.active,
+      dashboard: state.dashboard,
+      ui: {
+        ...state.ui,
+        lastRefreshAt: state.ui.lastRefreshAt ? formatDateTime(state.ui.lastRefreshAt) : "",
+      },
+    })
+    : { activePanel: state.ui.headerPanels.active };
+}
+
+function renderHeaderPanels() {
+  return ShellRuntimeUtils.renderHeaderPanels({
+    headerPanelRoot,
+    notificationMenuBtn,
+    profileMenuBtn,
+    shellViewUtils: ShellViewUtils,
+    viewModel: currentHeaderPanelViewModel(),
+  });
+}
+
+function toggleHeaderPanel(panel) {
+  return ShellRuntimeUtils.toggleHeaderPanel({
+    state,
+    panel,
+    renderHeaderPanels,
+  });
+}
+
+function closeHeaderPanel() {
+  return ShellRuntimeUtils.closeHeaderPanel({
+    state,
+    renderHeaderPanels,
   });
 }
 

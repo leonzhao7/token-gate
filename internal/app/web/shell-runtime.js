@@ -178,6 +178,51 @@
     return viewModel;
   }
 
+  function renderHeaderPanels({
+    headerPanelRoot,
+    notificationMenuBtn,
+    profileMenuBtn,
+    shellViewUtils,
+    viewModel,
+  }) {
+    if (!headerPanelRoot) {
+      return null;
+    }
+    const activePanel = String(viewModel?.activePanel || "");
+    headerPanelRoot.innerHTML = typeof shellViewUtils?.renderHeaderPanels === "function"
+      ? shellViewUtils.renderHeaderPanels({ viewModel })
+      : "";
+    notificationMenuBtn?.setAttribute?.("aria-expanded", String(activePanel === "notifications"));
+    profileMenuBtn?.setAttribute?.("aria-expanded", String(activePanel === "profile"));
+    return viewModel;
+  }
+
+  function toggleHeaderPanel({
+    state,
+    panel,
+    renderHeaderPanels,
+  }) {
+    const normalizedPanel = normalizeHeaderPanel(panel);
+    if (!state?.ui?.headerPanels || !normalizedPanel) {
+      return "";
+    }
+    state.ui.headerPanels.active = state.ui.headerPanels.active === normalizedPanel ? "" : normalizedPanel;
+    renderHeaderPanels?.();
+    return state.ui.headerPanels.active;
+  }
+
+  function closeHeaderPanel({
+    state,
+    renderHeaderPanels,
+  }) {
+    if (!state?.ui?.headerPanels || !state.ui.headerPanels.active) {
+      return "";
+    }
+    state.ui.headerPanels.active = "";
+    renderHeaderPanels?.();
+    return "";
+  }
+
   function buildSettingsSnapshot({
     shellStateUtils,
     localStorage,
@@ -237,18 +282,26 @@
     return value;
   }
 
+  function normalizeHeaderPanel(value) {
+    const normalized = String(value || "").trim();
+    return normalized === "notifications" || normalized === "profile" ? normalized : "";
+  }
+
   const api = {
     activatePage,
     applyResolvedTheme,
     buildSettingsSnapshot,
+    closeHeaderPanel,
     cycleThemePreference,
     initializeThemeState,
     navigateToPage,
     pageIDFromHash,
     persistThemePreference,
+    renderHeaderPanels,
     renderSettings,
     renderTheme,
     resolveThemeState,
+    toggleHeaderPanel,
     toggleSidebarCollapsed,
   };
 

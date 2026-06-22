@@ -223,6 +223,50 @@ test("theme helpers initialize persist resolve and apply theme state", () => {
   assert.equal(sidebarRoot.classList.contains("is-collapsed"), false);
 });
 
+test("header panel runtime renders utility popovers and toggles active panel", () => {
+  const state = { ui: { headerPanels: { active: "" } } };
+  const headerPanelRoot = { innerHTML: "" };
+  const notificationMenuBtn = createAttributeElement();
+  const profileMenuBtn = createAttributeElement();
+  const renderCalls = [];
+
+  ShellRuntimeUtils.renderHeaderPanels({
+    headerPanelRoot,
+    notificationMenuBtn,
+    profileMenuBtn,
+    shellViewUtils: {
+      renderHeaderPanels(input) {
+        renderCalls.push(input.viewModel.activePanel);
+        return `<div>${input.viewModel.activePanel}</div>`;
+      },
+    },
+    viewModel: { activePanel: "profile" },
+  });
+
+  assert.equal(headerPanelRoot.innerHTML, "<div>profile</div>");
+  assert.equal(notificationMenuBtn.attributes["aria-expanded"], "false");
+  assert.equal(profileMenuBtn.attributes["aria-expanded"], "true");
+
+  ShellRuntimeUtils.toggleHeaderPanel({
+    state,
+    panel: "notifications",
+    renderHeaderPanels() {
+      renderCalls.push(state.ui.headerPanels.active);
+    },
+  });
+  assert.equal(state.ui.headerPanels.active, "notifications");
+
+  ShellRuntimeUtils.toggleHeaderPanel({
+    state,
+    panel: "notifications",
+    renderHeaderPanels() {
+      renderCalls.push(state.ui.headerPanels.active);
+    },
+  });
+  assert.equal(state.ui.headerPanels.active, "");
+  assert.deepEqual(renderCalls, ["profile", "notifications", ""]);
+});
+
 function createClassToggleElement(initial = []) {
   const tokens = new Set(initial);
   return {

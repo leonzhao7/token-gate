@@ -186,6 +186,102 @@
     `;
   }
 
+  function renderHeaderPanels({
+    viewModel,
+    escapeHTML = defaultEscapeHTML,
+  } = {}) {
+    const model = viewModel && typeof viewModel === "object"
+      ? viewModel
+      : { activePanel: "", notifications: {}, profile: {} };
+    return `
+      <div class="header-panel-layer">
+        ${renderNotificationsPanel(model, escapeHTML)}
+        ${renderProfilePanel(model, escapeHTML)}
+      </div>
+    `;
+  }
+
+  function renderNotificationsPanel(model, escapeHTML) {
+    const notifications = model.notifications || {};
+    const items = ensureArray(notifications.items);
+    const isVisible = model.activePanel === "notifications";
+    return `
+      <section
+        class="header-popover header-notifications ${isVisible ? "is-visible" : ""}"
+        data-header-panel="notifications"
+        aria-hidden="${String(!isVisible)}"
+      >
+        <header class="header-popover-head">
+          <div>
+            <span class="section-label">Notifications</span>
+            <strong>${escapeHTML(String(notifications.count || items.length || 0))} recent events</strong>
+          </div>
+        </header>
+        <div class="header-popover-list">
+          ${items.length ? items.map((item) => `
+            <article class="header-notification-item tone-${escapeHTML(item.tone || "neutral")}">
+              <div>
+                <strong>${escapeHTML(item.title || "Event")}</strong>
+                <p>${escapeHTML(item.description || "-")}</p>
+              </div>
+              <footer>
+                <span>${escapeHTML(item.meta || "-")}</span>
+                <time>${escapeHTML(item.timestamp || "")}</time>
+              </footer>
+            </article>
+          `).join("") : `
+            <article class="header-empty-state">
+              <strong>${escapeHTML(notifications.emptyTitle || "No recent events")}</strong>
+              <p>${escapeHTML(notifications.emptyDescription || "Activity will appear here.")}</p>
+            </article>
+          `}
+        </div>
+        <footer class="header-popover-actions">
+          ${ensureArray(notifications.actions).map((action) => renderHeaderAction(action, escapeHTML)).join("")}
+        </footer>
+      </section>
+    `;
+  }
+
+  function renderProfilePanel(model, escapeHTML) {
+    const profile = model.profile || {};
+    const isVisible = model.activePanel === "profile";
+    return `
+      <section
+        class="header-popover header-profile ${isVisible ? "is-visible" : ""}"
+        data-header-panel="profile"
+        aria-hidden="${String(!isVisible)}"
+      >
+        <header class="header-popover-head">
+          <span class="profile-avatar" aria-hidden="true">AP</span>
+          <div>
+            <span class="section-label">${escapeHTML(profile.subtitle || "Proxy Ops")}</span>
+            <strong>${escapeHTML(profile.title || "Admin")}</strong>
+          </div>
+        </header>
+        <dl class="header-profile-facts">
+          ${ensureArray(profile.items).map((item) => `
+            <div>
+              <dt>${escapeHTML(item.label || "-")}</dt>
+              <dd>${escapeHTML(item.value || "-")}</dd>
+            </div>
+          `).join("")}
+        </dl>
+        <footer class="header-popover-actions">
+          ${ensureArray(profile.actions).map((action) => renderHeaderAction(action, escapeHTML)).join("")}
+        </footer>
+      </section>
+    `;
+  }
+
+  function renderHeaderAction(action, escapeHTML) {
+    return `
+      <button class="ghost-button small-button" type="button" data-header-action="${escapeHTML(action?.key || "")}">
+        ${escapeHTML(action?.label || "Open")}
+      </button>
+    `;
+  }
+
   function ensurePageExists(pages, id) {
     return ensureArray(pages).some((page) => page?.id === id);
   }
@@ -250,6 +346,7 @@
   const api = {
     activatePageView,
     pageIDFromHash,
+    renderHeaderPanels,
     renderSearchResults,
     renderSearchShellView,
     renderThemeView,

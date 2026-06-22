@@ -6,6 +6,7 @@ const require = createRequire(import.meta.url);
 const {
   pageIDFromHash,
   activatePageView,
+  renderHeaderPanels,
   renderThemeView,
   renderSearchShellView,
   renderSearchResults,
@@ -165,6 +166,42 @@ test("renderSearchResults renders empty loading and active grouped rows", () => 
   assert.match(html, /<kbd>↑<\/kbd>/);
   assert.match(html, /<kbd>Enter<\/kbd>/);
   assert.match(html, /<kbd>Esc<\/kbd>/);
+});
+
+test("renderHeaderPanels renders notifications and profile utility panels", () => {
+  const html = renderHeaderPanels({
+    viewModel: {
+      activePanel: "notifications",
+      notifications: {
+        count: 2,
+        items: [{
+          title: "backend.failover",
+          description: "edge-a switched",
+          meta: "edge-a · gpt-5.4",
+          timestamp: "2026-06-22 10:11:12.123",
+          tone: "warning",
+        }],
+        actions: [{ key: "view-events", label: "View Events" }],
+      },
+      profile: {
+        title: "Admin",
+        subtitle: "Proxy Ops",
+        items: [
+          { label: "Theme", value: "Auto · Dark" },
+          { label: "Last sync", value: "2026-06-22 10:12:13.123" },
+        ],
+        actions: [{ key: "open-search", label: "Open Search" }],
+      },
+    },
+  });
+
+  assert.match(html, /data-header-panel="notifications"/);
+  assert.match(html, /data-header-panel="profile"/);
+  assert.match(html, /backend\.failover/);
+  assert.match(html, /Auto · Dark/);
+  assert.match(html, /data-header-action="view-events"/);
+  assert.match(html, /data-header-action="open-search"/);
+  assert.match(html, /is-visible/);
 });
 
 function createClassList(initial = []) {

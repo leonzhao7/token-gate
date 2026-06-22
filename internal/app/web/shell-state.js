@@ -63,6 +63,60 @@
     };
   }
 
+  function createHeaderPanelState() {
+    return {
+      active: "",
+    };
+  }
+
+  function createHeaderPanelViewModel({
+    activePanel = "",
+    dashboard = {},
+    ui = {},
+  } = {}) {
+    const normalizedActive = normalizeHeaderPanel(activePanel);
+    const recentEvents = ensureArray(dashboard?.recentEvents?.data).slice(0, 5);
+    const notificationItems = recentEvents.map((event) => ({
+      title: stringValue(event?.title || event?.type || "Event"),
+      description: stringValue(event?.description || event?.message || "-"),
+      meta: stringValue(event?.meta || [event?.backend_name, event?.model].filter(Boolean).join(" · ") || "-"),
+      timestamp: stringValue(event?.timestamp || event?.createdAt || event?.created_at || ""),
+      tone: stringValue(event?.tone || event?.severity || "neutral"),
+    }));
+
+    return {
+      activePanel: normalizedActive,
+      notifications: {
+        count: notificationItems.length,
+        items: notificationItems,
+        emptyTitle: "No recent events",
+        emptyDescription: "Recent backend, policy, and security events will appear here.",
+        actions: [
+          { key: "view-events", label: "View Events" },
+          { key: "refresh-data", label: "Refresh" },
+        ],
+      },
+      profile: {
+        title: "Admin",
+        subtitle: "Proxy Ops",
+        items: [
+          { label: "Theme", value: themePanelLabel(ui?.themePreference, ui?.theme) },
+          { label: "Last sync", value: stringValue(ui?.lastRefreshAt) || "Not synced yet" },
+        ],
+        actions: [
+          { key: "open-search", label: "Open Search" },
+          { key: "cycle-theme", label: "Cycle Theme" },
+          { key: "refresh-data", label: "Refresh Data" },
+        ],
+      },
+    };
+  }
+
+  function normalizeHeaderPanel(value) {
+    const normalized = String(value || "").trim();
+    return normalized === "notifications" || normalized === "profile" ? normalized : "";
+  }
+
   function ensurePageExists(pages, id) {
     return ensureArray(pages).some((page) => page?.id === id);
   }
@@ -75,8 +129,24 @@
     return value && typeof value === "object" && !Array.isArray(value) ? value : {};
   }
 
+  function stringValue(value) {
+    return String(value ?? "").trim();
+  }
+
+  function themePanelLabel(preference, theme) {
+    const normalizedPreference = stringValue(preference || "system");
+    const normalizedTheme = stringValue(theme || "light");
+    const preferenceLabel = normalizedPreference === "system"
+      ? "Auto"
+      : normalizedPreference.charAt(0).toUpperCase() + normalizedPreference.slice(1);
+    const themeLabel = normalizedTheme.charAt(0).toUpperCase() + normalizedTheme.slice(1);
+    return `${preferenceLabel} · ${themeLabel}`;
+  }
+
   const api = {
     buildPageNavigation,
+    createHeaderPanelState,
+    createHeaderPanelViewModel,
     createSettingsSnapshot,
     createThemeRuntimeState,
     createThemeStorageOperation,

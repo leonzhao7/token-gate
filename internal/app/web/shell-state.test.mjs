@@ -5,6 +5,8 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const {
   buildPageNavigation,
+  createHeaderPanelState,
+  createHeaderPanelViewModel,
   createSettingsSnapshot,
   createThemeRuntimeState,
   createThemeStorageOperation,
@@ -104,4 +106,38 @@ test("createSettingsSnapshot collects shell state and inventory for Settings vie
     usageLogMeta: { total: 5 },
     eventSummary: { total: 2 },
   });
+});
+
+test("header panel helpers create stable shell utility state and panel content", () => {
+  assert.deepEqual(createHeaderPanelState(), {
+    active: "",
+  });
+
+  const viewModel = createHeaderPanelViewModel({
+    activePanel: "notifications",
+    dashboard: {
+      recentEvents: {
+        data: [
+          {
+            title: "backend.failover",
+            description: "edge-a switched",
+            meta: "edge-a · gpt-5.4",
+            timestamp: "2026-06-22 10:11:12.123",
+            tone: "warning",
+          },
+        ],
+      },
+    },
+    ui: {
+      theme: "dark",
+      themePreference: "system",
+      lastRefreshAt: "2026-06-22 10:12:13.123",
+    },
+  });
+
+  assert.equal(viewModel.activePanel, "notifications");
+  assert.equal(viewModel.notifications.items.length, 1);
+  assert.equal(viewModel.notifications.items[0].title, "backend.failover");
+  assert.equal(viewModel.profile.items[0].label, "Theme");
+  assert.equal(viewModel.profile.actions[0].key, "open-search");
 });

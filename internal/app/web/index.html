@@ -139,16 +139,17 @@
               <span class="theme-toggle-icon" aria-hidden="true">◐</span>
               <span id="themeToggleLabel">Auto</span>
             </button>
-            <button class="icon-button utility-pill" type="button" aria-label="通知">
+            <button class="icon-button utility-pill" id="notificationMenuBtn" type="button" aria-label="通知" aria-expanded="false" aria-controls="headerPanelRoot">
               <span aria-hidden="true">🔔</span>
             </button>
-            <button class="profile-chip" type="button" aria-label="当前用户">
+            <button class="profile-chip" id="profileMenuBtn" type="button" aria-label="当前用户" aria-expanded="false" aria-controls="headerPanelRoot">
               <span class="profile-avatar" aria-hidden="true">AP</span>
               <span class="profile-copy">
                 <strong>Admin</strong>
                 <small>Proxy Ops</small>
               </span>
             </button>
+            <div class="header-panel-root" id="headerPanelRoot"></div>
           </div>
         </header>
 
