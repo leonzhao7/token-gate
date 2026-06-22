@@ -38,6 +38,16 @@ test("header shell controls use SVG icons instead of text glyph placeholders", (
   assert.doesNotMatch(header, /[⌕◐🔔]/u);
 });
 
+test("initial shell metadata matches the branded dashboard frame", () => {
+  const html = fs.readFileSync(new URL("./index.html", import.meta.url), "utf8");
+  const header = matchShellHeader(html);
+
+  assert.match(html, /<title>Token Gate - AI Proxy Center<\/title>/);
+  assert.match(header, /<span class="eyebrow">AI Proxy Center<\/span>/);
+  assert.match(header, /<span class="breadcrumb" id="pageBreadcrumb">Dashboard \/ Overview<\/span>/);
+  assert.match(header, /<h1 id="pageTitle">Dashboard<\/h1>/);
+});
+
 function matchSidebarNav(html) {
   const match = html.match(/<nav class="sidebar-nav"[\s\S]*?<\/nav>/);
   assert.ok(match, "expected sidebar navigation");
