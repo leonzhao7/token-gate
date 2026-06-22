@@ -55,11 +55,16 @@
             <span class="breadcrumb" id="pageBreadcrumb">Dashboard / Overview</span>
             <h1 id="pageTitle">透明代理控制台</h1>
           </div>
+          <button id="globalSearchBtn" class="global-search-trigger" type="button" aria-haspopup="dialog" aria-controls="searchModal">
+            <span>Search backends, keys, policies...</span>
+            <kbd>Ctrl K</kbd>
+          </button>
           <div class="admin-access">
             <label for="adminToken" class="field-label">Admin Token</label>
             <input id="adminToken" type="password" placeholder="输入 TG_ADMIN_TOKEN" />
             <button id="saveTokenBtn" type="button">保存</button>
             <button class="ghost-button" id="refreshBtn" type="button">刷新数据</button>
+            <button class="ghost-button" id="themeToggleBtn" type="button">Theme</button>
           </div>
         </header>
 
@@ -80,6 +85,52 @@
               </div>
             </div>
             <div class="stats-grid" id="stats"></div>
+            <div class="dashboard-grid">
+              <section class="dashboard-panel dashboard-panel-wide">
+                <div class="panel-head">
+                  <div>
+                    <span class="section-label">Usage Overview</span>
+                    <h3>Usage Overview</h3>
+                    <p>基于最近已加载的使用日志，展示请求、失败和延迟趋势。</p>
+                  </div>
+                  <div class="chart-tabs" id="usageChartTabs">
+                    <button class="chip-button active" type="button" data-chart-mode="requests">Requests</button>
+                    <button class="chip-button" type="button" data-chart-mode="failures">Failures</button>
+                    <button class="chip-button" type="button" data-chart-mode="latency">Latency</button>
+                  </div>
+                </div>
+                <div id="usageOverviewChart" class="chart-frame"></div>
+              </section>
+              <section class="dashboard-panel dashboard-panel-narrow">
+                <div class="panel-head compact">
+                  <div>
+                    <span class="section-label">Events Summary</span>
+                    <h3>Events Summary</h3>
+                  </div>
+                </div>
+                <div id="eventsSummaryCards" class="summary-stack"></div>
+              </section>
+            </div>
+            <div class="dashboard-grid dashboard-grid-lower">
+              <section class="dashboard-panel">
+                <div class="panel-head compact">
+                  <div>
+                    <span class="section-label">Recent Events</span>
+                    <h3>Recent Events</h3>
+                  </div>
+                </div>
+                <div id="recentEventsPanel" class="feed-list"></div>
+              </section>
+              <section class="dashboard-panel">
+                <div class="panel-head compact">
+                  <div>
+                    <span class="section-label">Recent Usage Logs</span>
+                    <h3>Recent Usage Logs</h3>
+                  </div>
+                </div>
+                <div id="recentUsageLogsPanel" class="feed-list"></div>
+              </section>
+            </div>
           </section>
 
           <section class="page resource-page" id="socks-proxies" data-page-title="SOCKS5 Proxies" data-page-breadcrumb="Dashboard / SOCKS5 Proxies">
@@ -422,6 +473,36 @@
         </main>
       </div>
     </div>
+
+    <div id="searchModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="searchModalTitle">
+      <div class="modal-panel search-panel">
+        <div class="modal-header">
+          <div>
+            <span class="section-label">Global Search</span>
+            <h3 id="searchModalTitle">Search resources</h3>
+          </div>
+          <button class="icon-button" id="searchModalCloseBtn" type="button" aria-label="关闭搜索弹窗">×</button>
+        </div>
+        <div class="search-body">
+          <label class="field search-field">
+            <span>Search</span>
+            <input id="searchInput" type="search" placeholder="backend, client key, policy, proxy, log, event..." />
+          </label>
+          <div id="searchResults" class="search-results"></div>
+        </div>
+      </div>
+    </div>
+
+    <aside id="detailDrawer" class="drawer hidden" aria-hidden="true">
+      <div class="drawer-header">
+        <div>
+          <span class="section-label">Detail Drawer</span>
+          <h3 id="drawerTitle">Resource detail</h3>
+        </div>
+        <button class="icon-button" id="drawerCloseBtn" type="button" aria-label="关闭详情面板">×</button>
+      </div>
+      <div id="drawerBody" class="drawer-body"></div>
+    </aside>
 
     <script src="./app.js" type="module"></script>
   </body>

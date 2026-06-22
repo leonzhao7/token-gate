@@ -1,8 +1,23 @@
 const tokenInput = document.querySelector("#adminToken");
 const saveTokenBtn = document.querySelector("#saveTokenBtn");
 const refreshBtn = document.querySelector("#refreshBtn");
+const globalSearchBtn = document.querySelector("#globalSearchBtn");
+const themeToggleBtn = document.querySelector("#themeToggleBtn");
 const pageTitle = document.querySelector("#pageTitle");
 const pageBreadcrumb = document.querySelector("#pageBreadcrumb");
+const searchModal = document.querySelector("#searchModal");
+const searchModalCloseBtn = document.querySelector("#searchModalCloseBtn");
+const searchInput = document.querySelector("#searchInput");
+const searchResults = document.querySelector("#searchResults");
+const drawer = document.querySelector("#detailDrawer");
+const drawerTitle = document.querySelector("#drawerTitle");
+const drawerBody = document.querySelector("#drawerBody");
+const drawerCloseBtn = document.querySelector("#drawerCloseBtn");
+const usageOverviewChart = document.querySelector("#usageOverviewChart");
+const usageChartTabs = document.querySelector("#usageChartTabs");
+const eventsSummaryCards = document.querySelector("#eventsSummaryCards");
+const recentEventsPanel = document.querySelector("#recentEventsPanel");
+const recentUsageLogsPanel = document.querySelector("#recentUsageLogsPanel");
 const stats = document.querySelector("#stats");
 const proxyList = document.querySelector("#proxyList");
 const backendList = document.querySelector("#backendList");
@@ -58,6 +73,7 @@ const policyCancelBtn = document.querySelector("#policyCancelBtn");
 const policyEditBanner = document.querySelector("#policyEditBanner");
 
 const ADMIN_TOKEN_KEY = "token-gate-admin-token";
+const THEME_KEY = "token-gate-theme";
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const state = {
   proxies: [],
@@ -87,6 +103,7 @@ const state = {
   expandedBackends: new Set(),
   expandedClients: new Set(),
   expandedPolicies: new Set(),
+  expandedUsageLogs: new Set(),
   usageLogFilters: {
     backend: "",
     model: "",
@@ -100,20 +117,84 @@ const state = {
     events: { page: 1, size: 10 },
     usageLogs: { page: 1, size: 10 },
   },
+  ui: {
+    theme: "light",
+    search: { open: false, query: "" },
+    drawer: { open: false, title: "", content: "" },
+    usageChartMode: "requests",
+  },
 };
 
 tokenInput.value = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
+applyTheme(resolveInitialTheme());
 
 window.addEventListener("hashchange", () => {
   activatePage(pageIDFromHash());
+});
+
+window.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    openSearchModal();
+  }
+  if (event.key === "Escape") {
+    closeSearchModal();
+    closeDrawer();
+  }
 });
 
 saveTokenBtn.addEventListener("click", () => {
   localStorage.setItem(ADMIN_TOKEN_KEY, tokenInput.value.trim());
 });
 
+globalSearchBtn.addEventListener("click", () => {
+  openSearchModal();
+});
+
+themeToggleBtn.addEventListener("click", () => {
+  const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  applyTheme(nextTheme);
+});
+
 refreshBtn.addEventListener("click", () => {
   refreshAll().catch(reportError);
+});
+
+usageChartTabs.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-chart-mode]");
+  if (!button) {
+    return;
+  }
+  state.ui.usageChartMode = button.dataset.chartMode || "requests";
+  renderUsageChart();
+});
+
+searchModalCloseBtn.addEventListener("click", () => {
+  closeSearchModal();
+});
+
+searchModal.addEventListener("click", (event) => {
+  if (event.target === searchModal) {
+    closeSearchModal();
+  }
+});
+
+searchInput.addEventListener("input", () => {
+  state.ui.search.query = searchInput.value;
+  renderSearchResults();
+});
+
+searchResults.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-search-result]");
+  if (!button) {
+    return;
+  }
+  closeSearchModal();
+  openSearchResultDetail(button.dataset.searchResult, button.dataset.searchId);
+});
+
+drawerCloseBtn.addEventListener("click", () => {
+  closeDrawer();
 });
 
 addProxyBtn.addEventListener("click", () => {
@@ -335,6 +416,8 @@ async function refreshAll() {
   renderPolicies();
   renderEvents();
   renderUsageLogs();
+  renderDashboardPanels(overview);
+  renderSearchResults();
 }
 
 function buildUsageLogQuery() {
@@ -918,31 +1001,8 @@ function renderEvents() {
   const pageData = currentPageData("events", events);
 
   eventList.innerHTML = `
-    <div class="event-table-shell">
-      <div class="event-table">
-        <div class="event-table-head">
-          <span>Time</span>
-          <span>Type</span>
-          <span>Client</span>
-          <span>Backend</span>
-          <span>Endpoint</span>
-          <span>Model</span>
-          <span>Message</span>
-        </div>
-        <div class="event-table-body">
-          ${pageData.items.map((event) => `
-            <div class="event-row">
-              <span>${escapeHTML(formatDateTime(event.created_at))}</span>
-              <span>${escapeHTML(event.type)}</span>
-              <span>${escapeHTML(event.client_name || "-")}</span>
-              <span>${escapeHTML(event.backend_name || "-")}</span>
-              <span>${escapeHTML(event.endpoint || "-")}</span>
-              <span>${escapeHTML(event.model || "-")}</span>
-              <span>${escapeHTML(event.message)}</span>
-            </div>
-          `).join("")}
-        </div>
-      </div>
+    <div class="timeline-shell">
+      ${pageData.items.map(renderEventRow).join("")}
     </div>
     ${renderPagination("events", pageData)}
   `;
@@ -964,36 +1024,129 @@ function renderUsageLogs() {
   const pageData = currentPageData("usageLogs", logs);
 
   usageLogList.innerHTML = `
-    <div class="event-table-shell">
-      <div class="event-table usage-log-table">
-        <div class="event-table-head usage-log-head">
-          <span>Time</span>
-          <span>Client Key</span>
-          <span>Client</span>
-          <span>Model</span>
-          <span>Backend</span>
-          <span>Status</span>
-          <span>Detail</span>
-        </div>
-        <div class="event-table-body">
-          ${pageData.items.map((log) => `
-            <div class="event-row usage-log-row">
-              <span>${escapeHTML(formatDateTime(log.created_at))}</span>
-              <span>${escapeHTML(log.client_name || "-")}</span>
-              <span>${escapeHTML(log.client_ip || "-")}</span>
-              <span>${escapeHTML(log.model || "-")}</span>
-              <span>${escapeHTML(log.backend_name || "-")}</span>
-              <span>${escapeHTML(formatUsageStatus(log))}</span>
-              <span>${escapeHTML(formatUsageDetail(log))}</span>
-            </div>
-          `).join("")}
-        </div>
-      </div>
+    <div class="timeline-shell">
+      ${pageData.items.map(renderUsageLogRow).join("")}
     </div>
     ${renderPagination("usageLogs", pageData)}
   `;
 
+  usageLogList.querySelectorAll("[data-toggle-usage-log]").forEach((button) => {
+    button.addEventListener("click", () => {
+      toggleExpanded(state.expandedUsageLogs, button.dataset.toggleUsageLog);
+      renderUsageLogs();
+    });
+  });
+
   bindPagination(usageLogList, "usageLogs", refreshAll);
+}
+
+function renderDashboardPanels(overview) {
+  renderUsageChart();
+  renderEventsSummary(overview);
+  renderRecentEvents();
+  renderRecentUsageLogs();
+}
+
+function renderUsageChart() {
+  if (!usageOverviewChart) {
+    return;
+  }
+  const data = buildUsageChartSeries(state.usageLogs, state.ui.usageChartMode);
+  usageOverviewChart.innerHTML = data.points.length === 0
+    ? emptyState("暂无图表数据", "先加载几条使用日志，Usage Overview 会自动呈现趋势。")
+    : renderSparkAreaChart(data.points, data.label, data.color, data.subtitle);
+  usageChartTabs.querySelectorAll("[data-chart-mode]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.chartMode === state.ui.usageChartMode);
+  });
+}
+
+function renderEventsSummary(overview) {
+  if (!eventsSummaryCards) {
+    return;
+  }
+  const events = ensureArray(overview?.events);
+  const counts = countEventsByCategory(events);
+  eventsSummaryCards.innerHTML = [
+    ["Warnings", counts.warning, "System and upstream warnings"],
+    ["Errors", counts.error, "Backend or client failures"],
+    ["Policy Changes", counts.policy, "Policy create/update/delete"],
+    ["Key Creations", counts.client, "Client key provisioning"],
+    ["Backend Updates", counts.backend, "Backend configuration changes"],
+  ].map(([title, value, detail]) => `
+    <article class="summary-item">
+      <strong>${escapeHTML(title)}</strong>
+      <span class="metric-copy">${escapeHTML(String(value))}</span>
+      <small>${escapeHTML(detail)}</small>
+    </article>
+  `).join("");
+}
+
+function renderRecentEvents() {
+  if (!recentEventsPanel) {
+    return;
+  }
+  const items = ensureArray(state.events).slice(0, 5);
+  recentEventsPanel.innerHTML = items.length === 0
+    ? emptyState("暂无事件", "最新的配置变更和上游事件会显示在这里。")
+    : items.map((event) => `
+        <article class="feed-item">
+          <strong>${escapeHTML(eventTitle(event))}</strong>
+          <small>${escapeHTML(event.message || "-")}</small>
+          <small>${escapeHTML(formatDateTime(event.created_at))}</small>
+        </article>
+      `).join("");
+}
+
+function renderRecentUsageLogs() {
+  if (!recentUsageLogsPanel) {
+    return;
+  }
+  const items = ensureArray(state.usageLogs).slice(0, 5);
+  recentUsageLogsPanel.innerHTML = items.length === 0
+    ? emptyState("暂无使用日志", "客户端通过代理发起请求后会在这里看到最近记录。")
+    : items.map((log) => `
+        <article class="feed-item">
+          <strong>${escapeHTML(formatUsageRequest(log))}</strong>
+          <small>${escapeHTML(log.client_name || "-")} · ${escapeHTML(log.backend_name || "-")}</small>
+          <small>${escapeHTML(formatDateTime(log.created_at))}</small>
+        </article>
+      `).join("");
+}
+
+function renderSearchResults() {
+  if (!searchResults) {
+    return;
+  }
+  const query = String(state.ui.search.query || "").trim().toLowerCase();
+  if (!state.ui.search.open) {
+    searchResults.innerHTML = "";
+    return;
+  }
+  const items = [];
+  const push = (type, name, detail, id) => {
+    if (!query || name.toLowerCase().includes(query) || detail.toLowerCase().includes(query)) {
+      items.push({ type, name, detail, id });
+    }
+  };
+  state.backends.forEach((item) => push("Backend", item.name, item.base_url || "", item.id));
+  state.clients.forEach((item) => push("Client Key", item.name, item.route_group || item.route_mode_override || "", item.id));
+  state.policies.forEach((item) => push("Policy", item.pattern, item.endpoint || "", item.id));
+  state.proxies.forEach((item) => push("Proxy", item.name, item.address || "", item.id));
+  state.events.forEach((item) => push("Event", eventTitle(item), item.message || "", item.id));
+  state.usageLogs.forEach((item) => push("Usage Log", formatUsageRequest(item), formatUsageDetail(item), item.id));
+
+  if (items.length === 0) {
+    searchResults.innerHTML = emptyState("没有匹配结果", "试试输入 backend、client key、policy、proxy、event 或日志里的任意关键词。");
+    return;
+  }
+
+  searchResults.innerHTML = items.slice(0, 12).map((item) => `
+    <button class="search-result" type="button" data-search-result="${escapeHTML(item.type)}" data-search-id="${escapeHTML(item.id)}">
+      <span>${escapeHTML(item.type)}</span>
+      <strong>${escapeHTML(item.name)}</strong>
+      <small>${escapeHTML(item.detail || "-")}</small>
+    </button>
+  `).join("");
 }
 
 function bindPagination(container, key, rerender) {
@@ -1127,6 +1280,379 @@ function formatUsageDetail(log) {
     parts.push(`err ${log.error_message}`);
   }
   return parts.join(" · ") || "-";
+}
+
+function buildUsageChartSeries(logs, mode) {
+  const buckets = new Map();
+  for (const log of ensureArray(logs)) {
+    const key = formatDayBucket(log.created_at);
+    const bucket = buckets.get(key) || { key, requests: 0, failures: 0, latency: 0, count: 0 };
+    bucket.requests += 1;
+    bucket.failures += isUsageFailure(log) ? 1 : 0;
+    bucket.latency += Number(log.duration_ms) || 0;
+    bucket.count += 1;
+    buckets.set(key, bucket);
+  }
+  const points = Array.from(buckets.values()).sort((a, b) => a.key.localeCompare(b.key)).slice(-14);
+  const selected = mode === "failures" ? "failures" : mode === "latency" ? "latency" : "requests";
+  const color = selected === "failures" ? "#ef4444" : selected === "latency" ? "#f59e0b" : "#3b82f6";
+  const subtitle = selected === "failures" ? "Failure rate over time" : selected === "latency" ? "Average latency over time" : "Request volume over time";
+  return {
+    label: selected,
+    color,
+    subtitle,
+    points: points.map((bucket) => ({
+      x: bucket.key.slice(5),
+      y: selected === "failures" ? bucket.failures : selected === "latency" ? Math.round(bucket.latency / Math.max(1, bucket.count)) : bucket.requests,
+    })),
+  };
+}
+
+function renderSparkAreaChart(points, label, color, subtitle) {
+  const width = 640;
+  const height = 240;
+  const values = points.map((point) => Number(point.y) || 0);
+  const max = Math.max(1, ...values);
+  const step = points.length > 1 ? width / (points.length - 1) : width;
+  const coords = points.map((point, index) => {
+    const x = Math.round(index * step);
+    const y = Math.round(height - ((Number(point.y) || 0) / max) * (height - 26) - 10);
+    return { ...point, x, y };
+  });
+  const linePath = coords.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const areaPath = `${linePath} L ${width} ${height} L 0 ${height} Z`;
+
+  return `
+    <div class="chart-wrap">
+      <div class="chart-copy">
+        <strong>${escapeHTML(subtitle)}</strong>
+        <small>${escapeHTML(label)}</small>
+      </div>
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(subtitle)}" style="color: ${color};">
+        <defs>
+          <linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stop-color="currentColor" stop-opacity="0.28" />
+            <stop offset="100%" stop-color="currentColor" stop-opacity="0.02" />
+          </linearGradient>
+        </defs>
+        <path d="${areaPath}" fill="url(#chartFill)"></path>
+        <path d="${linePath}" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+        ${coords.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="4" fill="currentColor"></circle>`).join("")}
+      </svg>
+      <div class="chart-foot">
+        ${points.map((point) => `<span>${escapeHTML(point.x)} · ${escapeHTML(String(point.y))}</span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function countEventsByCategory(events) {
+  const counts = { warning: 0, error: 0, policy: 0, client: 0, backend: 0 };
+  for (const event of ensureArray(events)) {
+    const type = String(event.type || "").toLowerCase();
+    const level = String(event.level || "").toLowerCase();
+    if (level.includes("warn") || type.includes("warn")) counts.warning += 1;
+    if (level.includes("error") || type.includes("error")) counts.error += 1;
+    if (type.includes("policy")) counts.policy += 1;
+    if (type.includes("client")) counts.client += 1;
+    if (type.includes("backend")) counts.backend += 1;
+  }
+  return counts;
+}
+
+function formatDayBucket(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return "unknown";
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+function isUsageFailure(log) {
+  const status = Number(log.status_code) || 0;
+  return status >= 500 || (status >= 401 && status !== 400);
+}
+
+function resolveInitialTheme() {
+  const stored = localStorage.getItem(THEME_KEY);
+  if (stored === "dark" || stored === "light") {
+    return stored;
+  }
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyTheme(theme) {
+  const nextTheme = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = nextTheme;
+  state.ui.theme = nextTheme;
+  localStorage.setItem(THEME_KEY, nextTheme);
+  themeToggleBtn.textContent = nextTheme === "dark" ? "Dark" : "Light";
+}
+
+function openSearchModal() {
+  state.ui.search.open = true;
+  searchModal.classList.remove("hidden");
+  searchInput.value = state.ui.search.query || "";
+  searchInput.focus();
+  renderSearchResults();
+}
+
+function closeSearchModal() {
+  if (!state.ui.search.open) {
+    return;
+  }
+  state.ui.search.open = false;
+  searchModal.classList.add("hidden");
+}
+
+function openDrawer(title, content) {
+  state.ui.drawer.open = true;
+  state.ui.drawer.title = title;
+  state.ui.drawer.content = content;
+  drawerTitle.textContent = title;
+  drawerBody.innerHTML = content;
+  drawer.classList.remove("hidden");
+  drawer.setAttribute("aria-hidden", "false");
+}
+
+function closeDrawer() {
+  if (!state.ui.drawer.open) {
+    return;
+  }
+  state.ui.drawer.open = false;
+  drawer.classList.add("hidden");
+  drawer.setAttribute("aria-hidden", "true");
+}
+
+function renderEventRow(event) {
+  const level = String(event.level || "info").toLowerCase();
+  const category = eventCategoryLabel(event.type);
+  return `
+    <article class="timeline-row event-card level-${escapeHTML(level)}">
+      <div class="timeline-icon">
+        <span class="timeline-dot"></span>
+      </div>
+      <div class="timeline-content">
+        <div class="timeline-grid">
+          <div>
+            <strong>${escapeHTML(eventTitle(event))}</strong>
+            <p>${escapeHTML(event.message || "-")}</p>
+          </div>
+          <div>
+            <span class="timeline-label">Actor</span>
+            <span>${escapeHTML(event.client_name || event.backend_name || "system")}</span>
+          </div>
+          <div>
+            <span class="timeline-label">Timestamp</span>
+            <span>${escapeHTML(formatDateTime(event.created_at))}</span>
+          </div>
+          <div>
+            <span class="timeline-label">Category</span>
+            <span>${escapeHTML(category)}</span>
+          </div>
+          <div>
+            <span class="timeline-label">Client</span>
+            <span>${escapeHTML(event.client_name || "-")}</span>
+          </div>
+          <div>
+            <span class="timeline-label">Backend</span>
+            <span>${escapeHTML(event.backend_name || "-")}</span>
+          </div>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderUsageLogRow(log) {
+  const id = String(log.id);
+  const expanded = state.expandedUsageLogs.has(id);
+  return `
+    <article class="timeline-row usage-log-row-card ${expanded ? "is-open" : ""}">
+      <button class="timeline-icon toggle-row" data-toggle-usage-log="${log.id}" type="button" aria-expanded="${expanded ? "true" : "false"}">
+        <span class="timeline-dot"></span>
+        <span class="toggle-indicator">${expanded ? "收起" : "展开"}</span>
+      </button>
+      <div class="timeline-content">
+        <div class="timeline-grid usage-grid">
+          <div>
+            <strong>${escapeHTML(formatUsageRequest(log))}</strong>
+            <p>${escapeHTML(formatUsageDetail(log))}</p>
+          </div>
+          <div>
+            <span class="timeline-label">Client Key</span>
+            <span>${escapeHTML(log.client_name || "-")}</span>
+          </div>
+          <div>
+            <span class="timeline-label">Client</span>
+            <span>${escapeHTML(log.client_ip || "-")}</span>
+          </div>
+          <div>
+            <span class="timeline-label">Model</span>
+            <span>${escapeHTML(log.model || "-")}</span>
+          </div>
+          <div>
+            <span class="timeline-label">Backend</span>
+            <span>${escapeHTML(log.backend_name || "-")}</span>
+          </div>
+          <div>
+            <span class="timeline-label">Status</span>
+            <span>${escapeHTML(formatUsageStatus(log))}</span>
+          </div>
+          <div>
+            <span class="timeline-label">Timestamp</span>
+            <span>${escapeHTML(formatDateTime(log.created_at))}</span>
+          </div>
+          <div>
+            <span class="timeline-label">Trace</span>
+            <span>${escapeHTML(log.request_id || "-")}</span>
+          </div>
+        </div>
+        ${expanded ? renderUsageLogDetail(log) : ""}
+      </div>
+    </article>
+  `;
+}
+
+function renderUsageLogDetail(log) {
+  return `
+    <div class="timeline-detail">
+      <div class="detail-grid usage-detail-grid">
+        <div><strong>Request ID</strong><span>${escapeHTML(log.request_id || "-")}</span></div>
+        <div><strong>Client ID</strong><span>${escapeHTML(log.client_id || "-")}</span></div>
+        <div><strong>Route Override</strong><span>${escapeHTML(log.route_mode_override || "-")}</span></div>
+        <div><strong>Route Group</strong><span>${escapeHTML(log.route_group || "-")}</span></div>
+        <div><strong>Method</strong><span>${escapeHTML(log.method || "-")}</span></div>
+        <div><strong>Path</strong><span>${escapeHTML((log.path || "-") + (log.query ? `?${log.query}` : ""))}</span></div>
+        <div><strong>Attempts</strong><span>${escapeHTML(log.attempts || 0)}</span></div>
+        <div><strong>Status Code</strong><span>${escapeHTML(log.status_code || 0)}</span></div>
+        <div><strong>Duration</strong><span>${escapeHTML(`${Number(log.duration_ms) || 0} ms`)}</span></div>
+        <div><strong>Client IP</strong><span>${escapeHTML(log.client_ip || "-")}</span></div>
+        <div><strong>User Agent</strong><span>${escapeHTML(log.user_agent || "-")}</span></div>
+        <div><strong>Error</strong><span>${escapeHTML(log.error_message || "-")}</span></div>
+      </div>
+      <div class="detail-section">
+        <strong>Raw JSON</strong>
+        <pre class="json-preview">${escapeHTML(JSON.stringify(log, null, 2))}</pre>
+      </div>
+    </div>
+  `;
+}
+
+function eventCategoryLabel(type) {
+  const normalized = String(type || "").toLowerCase();
+  if (normalized.includes("backend")) {
+    return "Backend";
+  }
+  if (normalized.includes("client")) {
+    return "Client Key";
+  }
+  if (normalized.includes("proxy")) {
+    return "Proxy";
+  }
+  if (normalized.includes("security") || normalized.includes("auth")) {
+    return "Security";
+  }
+  if (normalized.includes("policy")) {
+    return "Policy";
+  }
+  return "System";
+}
+
+function eventTitle(event) {
+  return String(event.type || "event")
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function openSearchResultDetail(type, id) {
+  const resource = findSearchResource(type, id);
+  if (!resource) {
+    return;
+  }
+
+  openDrawer(`${resource.type}: ${resource.name}`, `
+    <div class="drawer-section">
+      <span class="timeline-label">Summary</span>
+      <strong>${escapeHTML(resource.summary)}</strong>
+      <p>${escapeHTML(resource.detail || "-")}</p>
+    </div>
+    <div class="drawer-section">
+      <span class="timeline-label">Raw JSON</span>
+      <pre class="json-preview">${escapeHTML(JSON.stringify(resource.raw, null, 2))}</pre>
+    </div>
+  `);
+}
+
+function findSearchResource(type, id) {
+  const normalizedID = String(id || "");
+  const lookup = {
+    "Backend": state.backends,
+    "Client Key": state.clients,
+    "Policy": state.policies,
+    "Proxy": state.proxies,
+    "Event": state.events,
+    "Usage Log": state.usageLogs,
+  }[type];
+  if (!lookup) {
+    return null;
+  }
+
+  const raw = lookup.find((item) => String(item.id) === normalizedID);
+  if (!raw) {
+    return null;
+  }
+
+  return {
+    type,
+    name: raw.name || raw.pattern || raw.message || raw.request_id || `#${normalizedID}`,
+    summary: resourceSummary(type, raw),
+    detail: resourceDetail(type, raw),
+    raw,
+  };
+}
+
+function resourceSummary(type, raw) {
+  if (type === "Backend") {
+    return raw.base_url || "-";
+  }
+  if (type === "Client Key") {
+    return raw.route_group || raw.route_mode_override || "-";
+  }
+  if (type === "Policy") {
+    return `${raw.endpoint || "-"} · ${raw.placement_policy || "-"}`;
+  }
+  if (type === "Proxy") {
+    return raw.address || "-";
+  }
+  if (type === "Event") {
+    return eventTitle(raw);
+  }
+  return formatUsageRequest(raw);
+}
+
+function resourceDetail(type, raw) {
+  if (type === "Event") {
+    return raw.message || "-";
+  }
+  if (type === "Usage Log") {
+    return formatUsageDetail(raw);
+  }
+  if (type === "Backend") {
+    return `${raw.protocol || "openai"} · ${raw.pool || "default"}`;
+  }
+  if (type === "Client Key") {
+    return raw.token_prefix || "-";
+  }
+  if (type === "Policy") {
+    return `${raw.priority ?? 0} · ${raw.failover_enabled ? "failover on" : "failover off"}`;
+  }
+  if (type === "Proxy") {
+    return raw.username ? `user ${raw.username}` : "direct";
+  }
+  return raw.enabled === false ? "disabled" : "enabled";
 }
 
 function parseModelMapping(value) {
