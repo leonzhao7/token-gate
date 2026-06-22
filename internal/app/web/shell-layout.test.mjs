@@ -56,9 +56,33 @@ test("sidebar collapse control uses a shell SVG icon", () => {
   assert.doesNotMatch(sidebarTop, /☰/u);
 });
 
+test("modal and drawer close controls use shell SVG icons", () => {
+  const html = fs.readFileSync(new URL("./index.html", import.meta.url), "utf8");
+  const closeButtonIds = [
+    "proxyModalCloseBtn",
+    "backendModalCloseBtn",
+    "clientModalCloseBtn",
+    "policyModalCloseBtn",
+    "searchCloseBtn",
+    "drawerCloseBtn",
+  ];
+
+  for (const id of closeButtonIds) {
+    const button = matchButtonById(html, id);
+    assert.match(button, /<svg\b[^>]*class="[^"]*shell-icon[^"]*"[^>]*data-shell-icon="close"/);
+    assert.doesNotMatch(button, /×/u);
+  }
+});
+
 function matchSidebarNav(html) {
   const match = html.match(/<nav class="sidebar-nav"[\s\S]*?<\/nav>/);
   assert.ok(match, "expected sidebar navigation");
+  return match[0];
+}
+
+function matchButtonById(html, id) {
+  const match = html.match(new RegExp(`<button\\b(?=[^>]*id="${id}")[\\s\\S]*?<\\/button>`));
+  assert.ok(match, `expected button ${id}`);
   return match[0];
 }
 
