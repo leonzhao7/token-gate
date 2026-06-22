@@ -829,9 +829,20 @@ drawerRoot?.addEventListener("click", (event) => {
   }
 });
 
-saveTokenBtn.addEventListener("click", () => {
-  localStorage.setItem(ADMIN_TOKEN_KEY, tokenInput.value.trim());
+async function saveAdminToken() {
+  const token = tokenInput.value.trim();
+  if (token) {
+    localStorage.setItem(ADMIN_TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+  }
   renderSettings();
+  renderHeaderPanels();
+  return refreshAll();
+}
+
+saveTokenBtn.addEventListener("click", () => {
+  saveAdminToken().catch(reportError);
 });
 
 refreshBtn.addEventListener("click", () => {
@@ -1090,6 +1101,11 @@ policyForm.addEventListener("submit", async (event) => {
 });
 
 async function refreshAll() {
+  if (!buildSettingsSnapshot().adminTokenPresent) {
+    renderSettings();
+    renderHeaderPanels();
+    return null;
+  }
   const result = await ConsoleDataRuntimeUtils.refreshAll({
     state,
     startDashboardLoading,

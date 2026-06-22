@@ -1431,6 +1431,147 @@ test("app.js initializes resource view defaults through ResourceStateUtils", () 
   assert.deepEqual(calls, ["proxies", "backends", "clients", "policies"]);
 });
 
+test("app.js skips the initial console refresh when no admin token is saved", async () => {
+  const fetchCalls = [];
+  const alerts = [];
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+      requireDrawerViewUtils,
+      requireDrawerRuntimeUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
+      requireDisplayUtils,
+      requireDashboardRuntimeUtils,
+      requireDashboardViewUtils,
+      requireSearchRuntimeUtils,
+      requireObservabilityRuntimeUtils,
+      requireResourceListRuntimeUtils,
+      requireResourceRenderRuntimeUtils,
+      requireResourceDataRuntimeUtils,
+      requireConsoleDataRuntimeUtils,
+    },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
+    DrawerViewUtils,
+    DrawerRuntimeUtils,
+    ShellRuntimeUtils,
+    PaginationUtils,
+    DisplayUtils,
+    DashboardRuntimeUtils,
+    DashboardViewUtils,
+    SearchRuntimeUtils,
+    ObservabilityRuntimeUtils,
+    ResourceListRuntimeUtils,
+    ResourceRenderRuntimeUtils,
+    ResourceDataRuntimeUtils,
+    ConsoleDataRuntimeUtils,
+    SettingsUtils,
+  });
+
+  context.fetch = async (...args) => {
+    fetchCalls.push(args);
+    return {
+      ok: false,
+      status: 401,
+      async json() {
+        return { error: { message: "invalid admin token" } };
+      },
+    };
+  };
+  context.alert = (message) => {
+    alerts.push(message);
+  };
+
+  vm.runInContext(fs.readFileSync(new URL("./app.js", import.meta.url), "utf8"), context, {
+    filename: "app.js",
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(fetchCalls.length, 0);
+  assert.deepEqual(alerts, []);
+});
+
+test("app.js saving an admin token refreshes console data immediately", async () => {
+  const storage = new Map();
+  const refreshCalls = [];
+  const context = createAppVmContext({
+    ResourceRuntimeUtils: {
+      requireResourceViewUtils,
+      requireResourceStateUtils,
+      requireResourceCrudUtils,
+      requireShellStateUtils,
+      requireShellViewUtils,
+      requireDrawerViewUtils,
+      requireDrawerRuntimeUtils,
+      requireShellRuntimeUtils,
+      requirePaginationUtils,
+      requireDisplayUtils,
+      requireDashboardRuntimeUtils,
+      requireDashboardViewUtils,
+      requireSearchRuntimeUtils,
+      requireObservabilityRuntimeUtils,
+      requireResourceListRuntimeUtils,
+      requireResourceRenderRuntimeUtils,
+      requireResourceDataRuntimeUtils,
+      requireConsoleDataRuntimeUtils,
+    },
+    ResourceViewUtils,
+    ResourceStateUtils,
+    ResourceCrudUtils,
+    ShellStateUtils,
+    ShellViewUtils,
+    DrawerViewUtils,
+    DrawerRuntimeUtils,
+    ShellRuntimeUtils,
+    PaginationUtils,
+    DisplayUtils,
+    DashboardRuntimeUtils,
+    DashboardViewUtils,
+    SearchRuntimeUtils,
+    ObservabilityRuntimeUtils,
+    ResourceListRuntimeUtils,
+    ResourceRenderRuntimeUtils,
+    ResourceDataRuntimeUtils,
+    ConsoleDataRuntimeUtils: {
+      ...ConsoleDataRuntimeUtils,
+      refreshAll(input) {
+        refreshCalls.push(input);
+        return Promise.resolve({ ok: true });
+      },
+    },
+    SettingsUtils,
+  });
+
+  context.localStorage = {
+    getItem(key) {
+      return storage.has(key) ? storage.get(key) : "";
+    },
+    setItem(key, value) {
+      storage.set(key, String(value));
+    },
+    removeItem(key) {
+      storage.delete(key);
+    },
+  };
+
+  loadAppWithoutBootstrap(context);
+  await vm.runInContext(`
+    tokenInput.value = "dev-admin-token";
+    saveAdminToken();
+  `, context);
+
+  assert.equal(storage.get("token-gate-admin-token"), "dev-admin-token");
+  assert.equal(refreshCalls.length, 1);
+});
+
 test("index.html loads resource runtime dependencies before app.js", () => {
   const html = fs.readFileSync(new URL("./index.html", import.meta.url), "utf8");
   const shellViewIndex = html.indexOf("./shell-view.js");
