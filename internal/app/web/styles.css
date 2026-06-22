@@ -2485,6 +2485,20 @@ button:hover {
   justify-content: flex-end;
 }
 
+.observability-toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.observability-toolbar-button .shell-icon {
+  width: 14px;
+  height: 14px;
+  flex-basis: 14px;
+}
+
 .observability-section-head,
 .observability-panel-head {
   display: grid;

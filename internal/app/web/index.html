@@ -615,9 +615,31 @@
                 </label>
               </div>
               <div class="observability-toolbar-actions">
-                <button class="ghost-button" id="refreshEventsBtn" type="button">刷新</button>
-                <button id="applyEventFiltersBtn" type="button">查询</button>
-                <button class="ghost-button" id="resetEventFiltersBtn" type="button">重置</button>
+                <button class="ghost-button observability-toolbar-button" id="refreshEventsBtn" type="button" aria-label="刷新事件" title="刷新事件">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-refresh" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6v6h-6"></path>
+                    <path d="M4 18v-6h6"></path>
+                    <path d="M18 12a6 6 0 0 0-10-4.5"></path>
+                    <path d="M6 12a6 6 0 0 0 10 4.5"></path>
+                  </svg>
+                  <span>刷新</span>
+                </button>
+                <button class="observability-toolbar-button" id="applyEventFiltersBtn" type="button" aria-label="查询事件" title="查询事件">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-query" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <path d="m20 20-4-4"></path>
+                  </svg>
+                  <span>查询</span>
+                </button>
+                <button class="ghost-button observability-toolbar-button" id="resetEventFiltersBtn" type="button" aria-label="重置事件过滤器" title="重置事件过滤器">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-reset" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4v6h6"></path>
+                    <path d="M20 20v-6h-6"></path>
+                    <path d="M5 15a7 7 0 0 0 11 4"></path>
+                    <path d="M19 9A7 7 0 0 0 8 5"></path>
+                  </svg>
+                  <span>重置</span>
+                </button>
               </div>
             </div>
             <div class="resource-layout list-only">
@@ -686,11 +708,48 @@
                 </label>
               </div>
               <div class="observability-toolbar-actions">
-                <button class="ghost-button" id="refreshUsageLogsBtn" type="button">刷新</button>
-                <button id="applyUsageLogFiltersBtn" type="button">查询</button>
-                <button class="ghost-button" id="resetUsageLogFiltersBtn" type="button">重置</button>
-                <button class="danger-button" id="deleteUsageLogsBtn" type="button">删除查询结果</button>
-                <button class="ghost-button" id="clearUsageLogsBtn" type="button">清空</button>
+                <button class="ghost-button observability-toolbar-button" id="refreshUsageLogsBtn" type="button" aria-label="刷新使用日志" title="刷新使用日志">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-refresh" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6v6h-6"></path>
+                    <path d="M4 18v-6h6"></path>
+                    <path d="M18 12a6 6 0 0 0-10-4.5"></path>
+                    <path d="M6 12a6 6 0 0 0 10 4.5"></path>
+                  </svg>
+                  <span>刷新</span>
+                </button>
+                <button class="observability-toolbar-button" id="applyUsageLogFiltersBtn" type="button" aria-label="查询使用日志" title="查询使用日志">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-query" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <path d="m20 20-4-4"></path>
+                  </svg>
+                  <span>查询</span>
+                </button>
+                <button class="ghost-button observability-toolbar-button" id="resetUsageLogFiltersBtn" type="button" aria-label="重置使用日志过滤器" title="重置使用日志过滤器">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-reset" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4v6h6"></path>
+                    <path d="M20 20v-6h-6"></path>
+                    <path d="M5 15a7 7 0 0 0 11 4"></path>
+                    <path d="M19 9A7 7 0 0 0 8 5"></path>
+                  </svg>
+                  <span>重置</span>
+                </button>
+                <button class="danger-button observability-toolbar-button" id="deleteUsageLogsBtn" type="button" aria-label="删除查询结果" title="删除查询结果">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-delete" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 7h14"></path>
+                    <path d="M10 11v6"></path>
+                    <path d="M14 11v6"></path>
+                    <path d="M7 7l1-3h8l1 3"></path>
+                    <path d="M6 7l1 12h10l1-12"></path>
+                  </svg>
+                  <span>删除</span>
+                </button>
+                <button class="ghost-button observability-toolbar-button" id="clearUsageLogsBtn" type="button" aria-label="清空使用日志" title="清空使用日志">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-clear" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 5v14"></path>
+                    <path d="M5 12h14"></path>
+                  </svg>
+                  <span>清空</span>
+                </button>
               </div>
             </div>
             <datalist id="usageLogBackendOptions"></datalist>

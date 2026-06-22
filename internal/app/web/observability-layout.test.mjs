@@ -24,6 +24,11 @@ test("index.html renders structured events observability toolbar", () => {
   assert.match(section, /observability-toolbar-actions/);
   assert.match(section, /Events timeline filters/);
   assertSectionIds(section, expectedIds);
+  assert.match(section, /data-shell-icon="toolbar-refresh"/);
+  assert.match(section, /data-shell-icon="toolbar-query"/);
+  assert.match(section, /data-shell-icon="toolbar-reset"/);
+  assert.match(section, /observability-toolbar-button/);
+  assert.doesNotMatch(section, /<button[^>]*>(刷新|查询|重置)<\/button>/);
 });
 
 test("index.html renders structured usage log observability toolbar", () => {
@@ -52,6 +57,13 @@ test("index.html renders structured usage log observability toolbar", () => {
   assert.match(section, /observability-toolbar-actions/);
   assert.match(section, /Usage request filters/);
   assertSectionIds(section, expectedIds);
+  assert.match(section, /data-shell-icon="toolbar-refresh"/);
+  assert.match(section, /data-shell-icon="toolbar-query"/);
+  assert.match(section, /data-shell-icon="toolbar-reset"/);
+  assert.match(section, /data-shell-icon="toolbar-delete"/);
+  assert.match(section, /data-shell-icon="toolbar-clear"/);
+  assert.match(section, /observability-toolbar-button/);
+  assert.doesNotMatch(section, /<button[^>]*>(刷新|查询|重置|删除|清空)<\/button>/);
 });
 
 function matchSection(html, id) {
