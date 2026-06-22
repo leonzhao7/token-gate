@@ -530,6 +530,109 @@ func TestAdminClientKeyStoresAndReturnsToken(t *testing.T) {
 	}
 }
 
+func TestAdminClientKeyListIncludesUsageSummary(t *testing.T) {
+	application := newTestApp(t)
+	client := createTestClient(t, application, "client-visible-key")
+
+	ctx := context.Background()
+	for i := 0; i < 2; i++ {
+		if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+			RequestID:         fmt.Sprintf("client-list-%d", i),
+			ClientID:          client.ID,
+			ClientName:        client.Name,
+			ClientTokenPrefix: client.TokenPrefix,
+			Method:            http.MethodPost,
+			Path:              "/v1/chat/completions",
+			Endpoint:          domain.EndpointChat,
+			Model:             "gpt-4o",
+			BackendID:         1,
+			BackendName:       "alpha",
+			Attempts:          1,
+			StatusCode:        http.StatusOK,
+			DurationMS:        45,
+		}); err != nil {
+			t.Fatalf("append usage log %d: %v", i, err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/client-keys", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected list status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID          int64     `json:"id"`
+			Name        string    `json:"name"`
+			Token       string    `json:"token"`
+			MaskedToken string    `json:"masked_token"`
+			UsageCount  int       `json:"usage_count"`
+			LastUsedAt  time.Time `json:"last_used_at"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal client key list: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one client item, got %#v", payload.Items)
+	}
+	item := payload.Items[0]
+	if item.ID != client.ID || item.Name != client.Name {
+		t.Fatalf("unexpected client identity: %#v", item)
+	}
+	if item.Token != client.Token {
+		t.Fatalf("expected full client token %q, got %q", client.Token, item.Token)
+	}
+	if item.MaskedToken == "" || item.MaskedToken == client.Token {
+		t.Fatalf("expected masked token distinct from raw token, got %q", item.MaskedToken)
+	}
+	if item.UsageCount != 2 {
+		t.Fatalf("expected usage_count=2, got %#v", item)
+	}
+	if item.LastUsedAt.IsZero() {
+		t.Fatalf("expected last_used_at to be populated, got %#v", item)
+	}
+}
+
+func TestAdminClientKeyListMasksShortTokens(t *testing.T) {
+	application := newTestApp(t)
+	client := createTestClient(t, application, "short1")
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/client-keys", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected list status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			Token       string `json:"token"`
+			MaskedToken string `json:"masked_token"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal short-token list: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one client item, got %#v", payload.Items)
+	}
+	if payload.Items[0].Token != client.Token {
+		t.Fatalf("expected raw token %q, got %#v", client.Token, payload.Items[0])
+	}
+	if payload.Items[0].MaskedToken == "" || payload.Items[0].MaskedToken == client.Token {
+		t.Fatalf("expected short token to be masked, got %#v", payload.Items[0])
+	}
+}
+
 func TestAdminSocksProxyCRUDAndBackendBinding(t *testing.T) {
 	application := newTestApp(t)
 
@@ -600,6 +703,191 @@ func TestAdminSocksProxyCRUDAndBackendBinding(t *testing.T) {
 	}
 	if updatedBackend.ProxyID != 0 || updatedBackend.Proxy != nil {
 		t.Fatalf("expected backend proxy binding to be cleared, got %#v", updatedBackend)
+	}
+}
+
+func TestAdminSocksProxyListIncludesBindingAndUsageSummary(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	proxy, err := application.store.CreateSocksProxy(ctx, domain.SocksProxy{
+		Name:     "tokyo-socks",
+		Address:  "127.0.0.1:1080",
+		Username: "proxy-user",
+		Password: "proxy-pass",
+		Enabled:  true,
+	})
+	if err != nil {
+		t.Fatalf("create socks proxy: %v", err)
+	}
+
+	createTestBackend(t, application, domain.Backend{
+		Name:      "alpha",
+		BaseURL:   "https://alpha.local/v1",
+		APIKey:    "alpha-key",
+		ProxyID:   proxy.ID,
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:     "proxy-list-1",
+		ClientID:      1,
+		ClientName:    "prod-web",
+		Method:        http.MethodPost,
+		Path:          "/v1/chat/completions",
+		Endpoint:      domain.EndpointChat,
+		Model:         "gpt-4o",
+		ProxyID:       proxy.ID,
+		ProxyName:     proxy.Name,
+		BackendID:     7,
+		BackendName:   "alpha",
+		Attempts:      1,
+		StatusCode:    http.StatusOK,
+		DurationMS:    88,
+		RequestBytes:  120,
+		ResponseBytes: 640,
+	}); err != nil {
+		t.Fatalf("append usage log: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/socks-proxies", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected list status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID                int64     `json:"id"`
+			BoundBackendCount int       `json:"bound_backend_count"`
+			RequestCount      int       `json:"request_count"`
+			TrafficBytes      int64     `json:"traffic_bytes"`
+			AvgLatencyMS      float64   `json:"avg_latency_ms"`
+			LastUsedAt        time.Time `json:"last_used_at"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal proxy list: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one proxy item, got %#v", payload.Items)
+	}
+	item := payload.Items[0]
+	if item.ID != proxy.ID {
+		t.Fatalf("expected proxy id %d, got %#v", proxy.ID, item)
+	}
+	if item.BoundBackendCount != 1 || item.RequestCount != 1 {
+		t.Fatalf("unexpected proxy counts: %#v", item)
+	}
+	if item.TrafficBytes != 760 {
+		t.Fatalf("expected traffic_bytes=760, got %#v", item)
+	}
+	if item.AvgLatencyMS != 88 {
+		t.Fatalf("expected avg_latency_ms=88, got %#v", item)
+	}
+	if item.LastUsedAt.IsZero() {
+		t.Fatalf("expected last_used_at populated, got %#v", item)
+	}
+}
+
+func TestPolicyListIncludesUsageSummary(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	policy := createTestPolicy(t, application, domain.ModelPolicy{
+		Pattern:         "alpha-*",
+		Endpoint:        domain.EndpointChat,
+		PlacementPolicy: domain.PlacementSticky,
+		BackendPool:     "alpha-pool",
+		FailoverEnabled: true,
+		Priority:        10,
+	})
+
+	for index, entry := range []domain.UsageLog{
+		{
+			RequestID:         "policy-list-1",
+			ClientID:          1,
+			ClientName:        "client-a",
+			ClientTokenPrefix: "cli-a",
+			Method:            http.MethodPost,
+			Path:              "/v1/chat/completions",
+			Endpoint:          domain.EndpointChat,
+			Model:             "alpha-1",
+			PolicyID:          policy.ID,
+			PolicyName:        policy.Pattern,
+			BackendID:         11,
+			BackendName:       "backend-a",
+			Attempts:          1,
+			StatusCode:        http.StatusOK,
+			DurationMS:        40,
+		},
+		{
+			RequestID:         "policy-list-2",
+			ClientID:          2,
+			ClientName:        "client-b",
+			ClientTokenPrefix: "cli-b",
+			Method:            http.MethodPost,
+			Path:              "/v1/chat/completions",
+			Endpoint:          domain.EndpointChat,
+			Model:             "alpha-2",
+			PolicyID:          policy.ID,
+			PolicyName:        policy.Pattern,
+			BackendID:         12,
+			BackendName:       "backend-b",
+			Attempts:          1,
+			StatusCode:        http.StatusTooManyRequests,
+			DurationMS:        80,
+		},
+	} {
+		if err := application.store.AppendUsageLog(ctx, entry); err != nil {
+			t.Fatalf("append usage log %d: %v", index+1, err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/model-policies", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected policy list status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID           int64      `json:"id"`
+			RequestCount int        `json:"request_count"`
+			BackendCount int        `json:"backend_count"`
+			ModelCount   int        `json:"model_count"`
+			LastUsedAt   *time.Time `json:"last_used_at"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal policy list: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one policy item, got %#v", payload.Items)
+	}
+	item := payload.Items[0]
+	if item.ID != policy.ID {
+		t.Fatalf("expected policy id %d, got %#v", policy.ID, item)
+	}
+	if item.RequestCount != 2 {
+		t.Fatalf("expected request_count 2, got %#v", item)
+	}
+	if item.BackendCount != 2 || item.ModelCount != 2 {
+		t.Fatalf("expected backend/model counts 2/2, got %#v", item)
+	}
+	if item.LastUsedAt == nil || item.LastUsedAt.IsZero() {
+		t.Fatalf("expected last_used_at populated, got %#v", item)
 	}
 }
 
@@ -768,7 +1056,7 @@ func TestAdminDashboardApisReturnAggregatedData(t *testing.T) {
 			Successes int     `json:"successes"`
 			Failures  int     `json:"failures"`
 			LatencyMS int64   `json:"latency_ms"`
-			ErrorRate  float64 `json:"error_rate"`
+			ErrorRate float64 `json:"error_rate"`
 		} `json:"series"`
 	}
 	if err := json.Unmarshal(usageRecorder.Body.Bytes(), &usagePayload); err != nil {
@@ -1122,8 +1410,13 @@ func TestBackendListIncludesRecentRequestStats(t *testing.T) {
 
 	var payload struct {
 		Items []struct {
-			ID          int64 `json:"id"`
-			RecentStats struct {
+			ID            int64      `json:"id"`
+			RequestCount  int        `json:"request_count"`
+			AvgLatencyMS  float64    `json:"avg_latency_ms"`
+			LastUsedAt    *time.Time `json:"last_used_at"`
+			ModelCount    int        `json:"model_count"`
+			EndpointCount int        `json:"endpoint_count"`
+			RecentStats   struct {
 				WindowMinutes int `json:"window_minutes"`
 				Successes     int `json:"successes"`
 				Failures      int `json:"failures"`
@@ -1138,6 +1431,18 @@ func TestBackendListIncludesRecentRequestStats(t *testing.T) {
 	}
 	if payload.Items[0].ID != backend.ID {
 		t.Fatalf("unexpected backend item: %#v", payload.Items[0])
+	}
+	if payload.Items[0].RequestCount != 2 {
+		t.Fatalf("expected request_count 2, got %d", payload.Items[0].RequestCount)
+	}
+	if payload.Items[0].AvgLatencyMS < 0 {
+		t.Fatalf("expected avg_latency_ms >= 0, got %f", payload.Items[0].AvgLatencyMS)
+	}
+	if payload.Items[0].LastUsedAt == nil || payload.Items[0].LastUsedAt.IsZero() {
+		t.Fatalf("expected last_used_at to be populated, got %#v", payload.Items[0].LastUsedAt)
+	}
+	if payload.Items[0].ModelCount != 1 || payload.Items[0].EndpointCount != 1 {
+		t.Fatalf("unexpected capability counts: models=%d endpoints=%d", payload.Items[0].ModelCount, payload.Items[0].EndpointCount)
 	}
 	if payload.Items[0].RecentStats.WindowMinutes != 30 || payload.Items[0].RecentStats.Successes != 1 || payload.Items[0].RecentStats.Failures != 1 {
 		t.Fatalf("unexpected recent stats: %#v", payload.Items[0].RecentStats)
@@ -1202,6 +1507,104 @@ func TestBackendListExcludesBadRequestFromFailureStats(t *testing.T) {
 	}
 	if payload.Items[0].RecentStats.Failures != 0 {
 		t.Fatalf("expected 400 not to count as backend failure, got %#v", payload.Items[0].RecentStats)
+	}
+}
+
+func TestBackendListIncludesUsageAndRelationshipSummaries(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	proxyItem, err := application.store.CreateSocksProxy(ctx, domain.SocksProxy{
+		Name:    "summary-proxy",
+		Address: "127.0.0.1:1080",
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create proxy: %v", err)
+	}
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "alpha",
+		Pool:      "premium",
+		BaseURL:   "https://alpha.local/v1",
+		APIKey:    "alpha-key",
+		ProxyID:   proxyItem.ID,
+		Enabled:   true,
+		Weight:    2,
+		Models:    []string{"gpt-4o", "gpt-4.1"},
+		Endpoints: []string{domain.EndpointChat, domain.EndpointResponses},
+	})
+
+	for i, duration := range []int64{45, 75} {
+		if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+			RequestID:         fmt.Sprintf("backend-summary-%d", i+1),
+			ClientID:          1,
+			ClientName:        "summary-client",
+			ClientTokenPrefix: "summ",
+			Method:            http.MethodPost,
+			Path:              "/v1/chat/completions",
+			Endpoint:          domain.EndpointChat,
+			Model:             "gpt-4o",
+			BackendID:         backend.ID,
+			BackendName:       backend.Name,
+			ProxyID:           proxyItem.ID,
+			ProxyName:         proxyItem.Name,
+			Attempts:          1,
+			StatusCode:        http.StatusOK,
+			DurationMS:        duration,
+		}); err != nil {
+			t.Fatalf("append usage log %d: %v", i+1, err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/backends", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected backend list status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID            int64     `json:"id"`
+			APIKey        string    `json:"api_key"`
+			RequestCount  int       `json:"request_count"`
+			AvgLatencyMS  float64   `json:"avg_latency_ms"`
+			LastUsedAt    time.Time `json:"last_used_at"`
+			ModelCount    int       `json:"model_count"`
+			EndpointCount int       `json:"endpoint_count"`
+			Proxy         *struct {
+				Name string `json:"name"`
+			} `json:"proxy"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal backend list: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one backend item, got %#v", payload.Items)
+	}
+	item := payload.Items[0]
+	if item.ID != backend.ID {
+		t.Fatalf("unexpected backend item: %#v", item)
+	}
+	if item.APIKey != backend.APIKey {
+		t.Fatalf("expected backend list to keep raw api key available, got %#v", item)
+	}
+	if item.RequestCount != 2 || item.AvgLatencyMS != 60 {
+		t.Fatalf("unexpected usage summary: %#v", item)
+	}
+	if item.LastUsedAt.IsZero() {
+		t.Fatalf("expected last_used_at populated, got %#v", item)
+	}
+	if item.ModelCount != 2 || item.EndpointCount != 2 {
+		t.Fatalf("unexpected relationship counts: %#v", item)
+	}
+	if item.Proxy == nil || item.Proxy.Name != proxyItem.Name {
+		t.Fatalf("expected proxy relationship in payload, got %#v", item.Proxy)
 	}
 }
 
@@ -1393,6 +1796,16 @@ func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) 
 	application := newTestApp(t)
 	ctx := context.Background()
 
+	proxyItem, err := application.store.CreateSocksProxy(ctx, domain.SocksProxy{
+		Name:     "tokyo",
+		Address:  "127.0.0.1:1080",
+		Username: "proxy-user",
+		Password: "proxy-pass",
+		Enabled:  true,
+	})
+	if err != nil {
+		t.Fatalf("create socks proxy: %v", err)
+	}
 	if _, err := application.store.CreateClientKey(ctx, domain.ClientKey{
 		Name:        "client-a",
 		TokenHash:   store.HashToken("client-a-token"),
@@ -1415,6 +1828,7 @@ func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) 
 		Name:         "alpha",
 		BaseURL:      "https://alpha.local/v1",
 		APIKey:       "alpha-key",
+		ProxyID:      proxyItem.ID,
 		Enabled:      true,
 		Weight:       1,
 		Models:       []string{"gpt-4o", "gpt-image-*"},
@@ -1434,6 +1848,16 @@ func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) 
 	}); err != nil {
 		t.Fatalf("create backend beta: %v", err)
 	}
+	if _, err := application.store.CreateModelPolicy(ctx, domain.ModelPolicy{
+		Pattern:         "gpt-*",
+		Endpoint:        domain.EndpointResponses,
+		PlacementPolicy: domain.PlacementSticky,
+		BackendPool:     "default",
+		FailoverEnabled: true,
+		Priority:        10,
+	}); err != nil {
+		t.Fatalf("create model policy: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/api/usage-log-options", nil)
 	req.Header.Set("Authorization", "Bearer test-admin")
@@ -1448,6 +1872,8 @@ func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) 
 		Backends   []string `json:"backends"`
 		Models     []string `json:"models"`
 		ClientKeys []string `json:"client_keys"`
+		Policies   []string `json:"policies"`
+		Proxies    []string `json:"proxies"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal usage log options: %v", err)
@@ -1470,6 +1896,8 @@ func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) 
 	assertHas(payload.Models, "gpt-5.4")
 	assertHas(payload.ClientKeys, "client-a")
 	assertHas(payload.ClientKeys, "client-b")
+	assertHas(payload.Policies, "gpt-*")
+	assertHas(payload.Proxies, "tokyo")
 }
 
 func TestUsageLogDeleteFilteredAndClear(t *testing.T) {
@@ -1519,6 +1947,15 @@ func TestUsageLogDeleteFilteredAndClear(t *testing.T) {
 	if deleteRecorder.Code != http.StatusOK {
 		t.Fatalf("expected delete status 200, got %d body=%s", deleteRecorder.Code, deleteRecorder.Body.String())
 	}
+	var deletePayload struct {
+		Deleted int64 `json:"deleted"`
+	}
+	if err := json.Unmarshal(deleteRecorder.Body.Bytes(), &deletePayload); err != nil {
+		t.Fatalf("unmarshal filtered delete response: %v", err)
+	}
+	if deletePayload.Deleted != 1 {
+		t.Fatalf("expected filtered delete to remove 1 usage log, got %d", deletePayload.Deleted)
+	}
 
 	logs, err := application.store.ListUsageLogsPage(ctx, 10, 0)
 	if err != nil {
@@ -1537,6 +1974,15 @@ func TestUsageLogDeleteFilteredAndClear(t *testing.T) {
 	application.Handler().ServeHTTP(clearRecorder, clearReq)
 	if clearRecorder.Code != http.StatusOK {
 		t.Fatalf("expected clear status 200, got %d body=%s", clearRecorder.Code, clearRecorder.Body.String())
+	}
+	var clearPayload struct {
+		Deleted int64 `json:"deleted"`
+	}
+	if err := json.Unmarshal(clearRecorder.Body.Bytes(), &clearPayload); err != nil {
+		t.Fatalf("unmarshal clear response: %v", err)
+	}
+	if clearPayload.Deleted != 1 {
+		t.Fatalf("expected clear to remove remaining usage log, got %d", clearPayload.Deleted)
 	}
 
 	total, err := application.store.CountUsageLogs(ctx)
@@ -1585,6 +2031,1320 @@ func TestUsageLogPersistsAfterClientWriteFailure(t *testing.T) {
 	}
 	if logs[0].BackendID != backend.ID {
 		t.Fatalf("unexpected backend id in usage log: %#v", logs[0])
+	}
+}
+
+func TestUsageLogsRejectInvalidStatusFilter(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "invalid-status-1",
+		ClientID:          1,
+		ClientName:        "client-a",
+		ClientTokenPrefix: "sk-a",
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "gpt-4o",
+		BackendID:         11,
+		BackendName:       "alpha",
+		Attempts:          1,
+		StatusCode:        http.StatusTooManyRequests,
+		DurationMS:        120,
+		TraceID:           "trace-invalid-status",
+	}); err != nil {
+		t.Fatalf("append usage log: %v", err)
+	}
+
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/admin/api/usage-logs?status=warning"},
+		{method: http.MethodGet, path: "/admin/api/usage-logs/stats?status=warning"},
+		{method: http.MethodDelete, path: "/admin/api/usage-logs?status=warning"},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		req.Header.Set("Authorization", "Bearer test-admin")
+		recorder := httptest.NewRecorder()
+		application.Handler().ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("%s %s expected status 400, got %d body=%s", tc.method, tc.path, recorder.Code, recorder.Body.String())
+		}
+		if !strings.Contains(recorder.Body.String(), "invalid usage log status filter") {
+			t.Fatalf("%s %s expected invalid status error, got %s", tc.method, tc.path, recorder.Body.String())
+		}
+	}
+
+	total, err := application.store.CountUsageLogs(ctx)
+	if err != nil {
+		t.Fatalf("count usage logs: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected invalid delete filter to preserve usage logs, got %d entries", total)
+	}
+}
+
+func TestUsageLogStatsReturnsFilteredMetrics(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	for _, entry := range []domain.UsageLog{
+		{
+			RequestID:         "stats-1",
+			ClientID:          1,
+			ClientName:        "client-a",
+			ClientTokenPrefix: "sk-a",
+			Method:            http.MethodPost,
+			Path:              "/v1/chat/completions",
+			Endpoint:          domain.EndpointChat,
+			Model:             "gpt-4o",
+			BackendID:         11,
+			BackendName:       "alpha",
+			Attempts:          1,
+			StatusCode:        http.StatusOK,
+			DurationMS:        100,
+		},
+		{
+			RequestID:         "stats-2",
+			ClientID:          2,
+			ClientName:        "client-b",
+			ClientTokenPrefix: "sk-b",
+			Method:            http.MethodPost,
+			Path:              "/v1/responses",
+			Endpoint:          domain.EndpointResponses,
+			Model:             "gpt-4.1",
+			BackendID:         22,
+			BackendName:       "beta",
+			Attempts:          1,
+			StatusCode:        http.StatusBadGateway,
+			DurationMS:        300,
+			ErrorMessage:      "upstream failed",
+		},
+	} {
+		if err := application.store.AppendUsageLog(ctx, entry); err != nil {
+			t.Fatalf("append usage log %q: %v", entry.RequestID, err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/usage-logs/stats?backend=alpha&status=2xx", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Totals struct {
+			Requests  int `json:"requests"`
+			Successes int `json:"successes"`
+			Failures  int `json:"failures"`
+		} `json:"totals"`
+		Latency struct {
+			AvgMS float64 `json:"avg_ms"`
+		} `json:"latency"`
+		StatusFamilies []struct {
+			Family string `json:"family"`
+			Count  int    `json:"count"`
+		} `json:"status_families"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal usage log stats: %v", err)
+	}
+	if payload.Totals.Requests != 1 || payload.Totals.Successes != 1 || payload.Totals.Failures != 0 {
+		t.Fatalf("unexpected totals: %#v", payload.Totals)
+	}
+	if payload.Latency.AvgMS != 100 {
+		t.Fatalf("expected avg latency 100, got %#v", payload.Latency)
+	}
+	if len(payload.StatusFamilies) == 0 || payload.StatusFamilies[0].Family != "2xx" || payload.StatusFamilies[0].Count != 1 {
+		t.Fatalf("unexpected status family summary: %#v", payload.StatusFamilies)
+	}
+}
+
+func TestUsageLogsQueryMatchesTraceIDAndPath(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	for _, entry := range []domain.UsageLog{
+		{
+			RequestID:         "query-1",
+			ClientID:          1,
+			ClientName:        "client-a",
+			ClientTokenPrefix: "sk-a",
+			Method:            http.MethodPost,
+			Path:              "/v1/responses",
+			Endpoint:          domain.EndpointResponses,
+			Model:             "gpt-4o",
+			BackendID:         11,
+			BackendName:       "alpha",
+			Attempts:          1,
+			StatusCode:        http.StatusOK,
+			DurationMS:        100,
+			TraceID:           "trace-needle",
+		},
+		{
+			RequestID:         "query-2",
+			ClientID:          2,
+			ClientName:        "client-b",
+			ClientTokenPrefix: "sk-b",
+			Method:            http.MethodPost,
+			Path:              "/v1/chat/completions",
+			Endpoint:          domain.EndpointChat,
+			Model:             "gpt-4.1",
+			BackendID:         22,
+			BackendName:       "beta",
+			Attempts:          1,
+			StatusCode:        http.StatusBadGateway,
+			DurationMS:        300,
+			TraceID:           "trace-other",
+		},
+	} {
+		if err := application.store.AppendUsageLog(ctx, entry); err != nil {
+			t.Fatalf("append usage log %q: %v", entry.RequestID, err)
+		}
+	}
+
+	for _, tc := range []struct {
+		name      string
+		query     string
+		requestID string
+	}{
+		{name: "trace-id", query: "trace-needle", requestID: "query-1"},
+		{name: "path", query: "/v1/chat/completions", requestID: "query-2"},
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/admin/api/usage-logs?q="+url.QueryEscape(tc.query), nil)
+		req.Header.Set("Authorization", "Bearer test-admin")
+		recorder := httptest.NewRecorder()
+		application.Handler().ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("%s expected status 200, got %d body=%s", tc.name, recorder.Code, recorder.Body.String())
+		}
+
+		var payload struct {
+			Items []domain.UsageLog `json:"items"`
+			Total int               `json:"total"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("%s unmarshal usage logs: %v", tc.name, err)
+		}
+		if payload.Total != 1 || len(payload.Items) != 1 {
+			t.Fatalf("%s expected exactly one usage log, got total=%d items=%d", tc.name, payload.Total, len(payload.Items))
+		}
+		if payload.Items[0].RequestID != tc.requestID {
+			t.Fatalf("%s expected request %q, got %#v", tc.name, tc.requestID, payload.Items[0])
+		}
+	}
+}
+
+func TestUsageLogDetailReturnsPreviewData(t *testing.T) {
+	application := newTestApp(t)
+	client := createTestClient(t, application, "detail-client-secret")
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "alpha",
+		BaseURL:   "https://alpha.local/v1",
+		APIKey:    "alpha-key",
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointResponses},
+	})
+	createTestPolicy(t, application, domain.ModelPolicy{
+		Pattern:         "gpt-*",
+		Endpoint:        domain.EndpointResponses,
+		PlacementPolicy: domain.PlacementSticky,
+		FailoverEnabled: true,
+		Priority:        10,
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o","input":"hello detail"}`))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	req.Header.Set("X-Request-ID", "trace-detail-1")
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected proxy request to succeed, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	logs, err := application.store.ListUsageLogsPage(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatalf("list usage logs: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected one usage log, got %d", len(logs))
+	}
+
+	detailReq := httptest.NewRequest(http.MethodGet, "/admin/api/usage-logs/"+strconv.FormatInt(logs[0].ID, 10), nil)
+	detailReq.Header.Set("Authorization", "Bearer test-admin")
+	detailRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(detailRecorder, detailReq)
+
+	if detailRecorder.Code != http.StatusOK {
+		t.Fatalf("expected detail status 200, got %d body=%s", detailRecorder.Code, detailRecorder.Body.String())
+	}
+
+	var payload struct {
+		Overview struct {
+			RequestID  string `json:"request_id"`
+			StatusCode int    `json:"status_code"`
+		} `json:"overview"`
+		Metadata struct {
+			ID      int64  `json:"id"`
+			TraceID string `json:"trace_id"`
+		} `json:"metadata"`
+		Request struct {
+			Method      string `json:"method"`
+			Path        string `json:"path"`
+			Query       string `json:"query"`
+			Bytes       int64  `json:"bytes"`
+			BodyPreview string `json:"body_preview"`
+		} `json:"request"`
+		Response struct {
+			Bytes        int64  `json:"bytes"`
+			BodyPreview  string `json:"body_preview"`
+			StatusFamily string `json:"status_family"`
+		} `json:"response"`
+		Raw domain.UsageLog `json:"raw"`
+	}
+	if err := json.Unmarshal(detailRecorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal usage log detail: %v", err)
+	}
+	if payload.Metadata.ID != logs[0].ID || payload.Raw.ID != logs[0].ID {
+		t.Fatalf("unexpected usage log ids: metadata=%#v raw=%#v", payload.Metadata, payload.Raw)
+	}
+	if payload.Metadata.TraceID != "trace-detail-1" {
+		t.Fatalf("expected trace id trace-detail-1, got %#v", payload.Metadata)
+	}
+	if payload.Overview.RequestID == "" || payload.Overview.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected overview payload: %#v", payload.Overview)
+	}
+	if payload.Request.Bytes <= 0 || !strings.Contains(payload.Request.BodyPreview, "hello detail") {
+		t.Fatalf("unexpected request preview payload: %#v", payload.Request)
+	}
+	if payload.Request.Method != http.MethodPost || payload.Request.Path != "/v1/responses" || payload.Request.Query != "" {
+		t.Fatalf("unexpected request metadata payload: %#v", payload.Request)
+	}
+	if payload.Response.Bytes <= 0 || payload.Response.StatusFamily != "2xx" || !strings.Contains(payload.Response.BodyPreview, backend.Name) {
+		t.Fatalf("unexpected response preview payload: %#v", payload.Response)
+	}
+}
+
+func TestEventSummaryReturnsCategoryCounts(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	for _, event := range []domain.AuditEvent{
+		{Level: "warn", Type: "backend", Message: "alpha failed", ClientName: "ops"},
+		{Level: "info", Type: "backend", Message: "alpha recovered", ClientName: "ops"},
+		{Level: "warn", Type: "policy", Message: "policy changed", ClientName: "admin"},
+	} {
+		if err := application.store.AppendAuditEvent(ctx, event); err != nil {
+			t.Fatalf("append audit event: %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/events/summary", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Total      int `json:"total"`
+		Categories []struct {
+			Category string `json:"category"`
+			Count    int    `json:"count"`
+		} `json:"categories"`
+		Severities []struct {
+			Severity string `json:"severity"`
+			Count    int    `json:"count"`
+		} `json:"severities"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal event summary: %v", err)
+	}
+	if payload.Total != 3 {
+		t.Fatalf("expected total=3, got %#v", payload)
+	}
+
+	categoryCounts := make(map[string]int)
+	for _, item := range payload.Categories {
+		categoryCounts[item.Category] = item.Count
+	}
+	if categoryCounts["backend"] != 2 || categoryCounts["policy"] != 1 {
+		t.Fatalf("unexpected category counts: %#v", payload.Categories)
+	}
+
+	severityCounts := make(map[string]int)
+	for _, item := range payload.Severities {
+		severityCounts[item.Severity] = item.Count
+	}
+	if severityCounts["warning"] != 2 || severityCounts["info"] != 1 {
+		t.Fatalf("unexpected severity counts: %#v", payload.Severities)
+	}
+}
+
+func TestEventsFilterByCategoryAndDateRange(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	for _, event := range []domain.AuditEvent{
+		{Level: "warn", Type: "backend", Message: "backend event"},
+		{Level: "info", Type: "policy", Message: "policy event"},
+	} {
+		if err := application.store.AppendAuditEvent(ctx, event); err != nil {
+			t.Fatalf("append audit event: %v", err)
+		}
+	}
+
+	dateFrom := url.QueryEscape(time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339))
+	dateTo := url.QueryEscape(time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339))
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/events?category=backend&date_from="+dateFrom+"&date_to="+dateTo, nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []domain.AuditEvent `json:"items"`
+		Total int                 `json:"total"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal filtered events: %v", err)
+	}
+	if payload.Total != 1 || len(payload.Items) != 1 || payload.Items[0].Type != "backend" {
+		t.Fatalf("unexpected filtered event payload: %#v", payload)
+	}
+
+	emptyReq := httptest.NewRequest(http.MethodGet, "/admin/api/events?category=backend&date_from="+url.QueryEscape(time.Now().UTC().Add(1*time.Hour).Format(time.RFC3339)), nil)
+	emptyReq.Header.Set("Authorization", "Bearer test-admin")
+	emptyRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(emptyRecorder, emptyReq)
+	if emptyRecorder.Code != http.StatusOK {
+		t.Fatalf("expected empty filter status 200, got %d body=%s", emptyRecorder.Code, emptyRecorder.Body.String())
+	}
+	if err := json.Unmarshal(emptyRecorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal empty filtered events: %v", err)
+	}
+	if payload.Total != 0 || len(payload.Items) != 0 {
+		t.Fatalf("expected empty filtered events, got %#v", payload)
+	}
+}
+
+func TestEventDetailReturnsDrawerPayload(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	event := domain.AuditEvent{
+		Level:        "warn",
+		Type:         "backend.failover",
+		Category:     "backend",
+		Severity:     "warning",
+		Actor:        "system",
+		ResourceType: "backend",
+		ResourceID:   42,
+		Message:      "switched to backup backend",
+		ClientName:   "web-prod",
+		Model:        "gpt-4o",
+		Endpoint:     domain.EndpointResponses,
+		BackendName:  "alpha",
+	}
+	if err := application.store.AppendAuditEvent(ctx, event); err != nil {
+		t.Fatalf("append audit event: %v", err)
+	}
+
+	events, err := application.store.ListAuditEvents(ctx, 10)
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected one event, got %d", len(events))
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/events/"+strconv.FormatInt(events[0].ID, 10), nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Overview map[string]any    `json:"overview"`
+		Metadata map[string]any    `json:"metadata"`
+		Raw      domain.AuditEvent `json:"raw"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal event detail: %v", err)
+	}
+	if payload.Raw.ID != events[0].ID || payload.Raw.Type != "backend.failover" {
+		t.Fatalf("unexpected raw event payload: %#v", payload.Raw)
+	}
+	if payload.Overview["message"] != "switched to backup backend" {
+		t.Fatalf("unexpected overview payload: %#v", payload.Overview)
+	}
+	if payload.Metadata["resource_type"] != "backend" {
+		t.Fatalf("unexpected metadata payload: %#v", payload.Metadata)
+	}
+}
+
+func TestDashboardSummaryReturnsCountsAndSeries(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	proxyItem, err := application.store.CreateSocksProxy(ctx, domain.SocksProxy{
+		Name:     "alpha-proxy",
+		Address:  "127.0.0.1:1080",
+		Username: "proxy-user",
+		Password: "proxy-pass",
+		Enabled:  true,
+	})
+	if err != nil {
+		t.Fatalf("create proxy: %v", err)
+	}
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "alpha",
+		Pool:      "primary",
+		BaseURL:   "https://alpha.local/v1",
+		APIKey:    "alpha-key",
+		ProxyID:   proxyItem.ID,
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+	createTestClient(t, application, "alpha-client-token")
+	createTestPolicy(t, application, domain.ModelPolicy{
+		Pattern:         "gpt-*",
+		Endpoint:        domain.EndpointChat,
+		PlacementPolicy: domain.PlacementSticky,
+		BackendPool:     "primary",
+		FailoverEnabled: true,
+		Priority:        10,
+	})
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "dash-1",
+		ClientID:          1,
+		ClientName:        "alpha-client",
+		ClientTokenPrefix: tokenPrefix("alpha-client-token"),
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "gpt-4o",
+		BackendID:         backend.ID,
+		BackendName:       backend.Name,
+		Attempts:          1,
+		StatusCode:        http.StatusOK,
+		DurationMS:        120,
+	}); err != nil {
+		t.Fatalf("append usage log: %v", err)
+	}
+	if err := application.store.AppendAuditEvent(ctx, domain.AuditEvent{
+		Level:       "info",
+		Type:        "backend.updated",
+		Message:     "backend alpha updated",
+		BackendName: "alpha",
+	}); err != nil {
+		t.Fatalf("append audit event: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/dashboard/summary", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Counts struct {
+			Backends      int `json:"backends"`
+			ClientKeys    int `json:"client_keys"`
+			ModelPolicies int `json:"model_policies"`
+			SocksProxies  int `json:"socks_proxies"`
+		} `json:"counts"`
+		Growth struct {
+			Requests float64 `json:"requests"`
+			Errors   float64 `json:"errors"`
+		} `json:"growth"`
+		Status struct {
+			HealthyBackends int `json:"healthy_backends"`
+			RecentErrors    int `json:"recent_errors"`
+			ActiveClients   int `json:"active_clients"`
+		} `json:"status"`
+		Sparkline []struct {
+			Label    string `json:"label"`
+			Requests int    `json:"requests"`
+		} `json:"sparkline"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal dashboard summary: %v", err)
+	}
+	if payload.Counts.Backends != 1 || payload.Counts.ClientKeys != 1 || payload.Counts.ModelPolicies != 1 || payload.Counts.SocksProxies != 1 {
+		t.Fatalf("unexpected counts payload: %#v", payload.Counts)
+	}
+	if payload.Status.HealthyBackends != 1 || payload.Status.ActiveClients != 1 {
+		t.Fatalf("unexpected status payload: %#v", payload.Status)
+	}
+	if len(payload.Sparkline) != 7 {
+		t.Fatalf("expected 7 sparkline points, got %d", len(payload.Sparkline))
+	}
+	if payload.Sparkline[len(payload.Sparkline)-1].Requests < 1 {
+		t.Fatalf("expected latest sparkline bucket to include requests, got %#v", payload.Sparkline)
+	}
+}
+
+func TestDashboardUsageReturnsSeries(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "usage-backend",
+		BaseURL:   "https://usage.local/v1",
+		APIKey:    "usage-key",
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "usage-1",
+		ClientID:          1,
+		ClientName:        "alpha-client",
+		ClientTokenPrefix: "alpha",
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "gpt-4o",
+		BackendID:         backend.ID,
+		BackendName:       backend.Name,
+		Attempts:          1,
+		StatusCode:        http.StatusOK,
+		DurationMS:        256,
+		RequestBytes:      120,
+		ResponseBytes:     880,
+	}); err != nil {
+		t.Fatalf("append usage log 1: %v", err)
+	}
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "usage-2",
+		ClientID:          2,
+		ClientName:        "beta-client",
+		ClientTokenPrefix: "beta",
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "gpt-4o",
+		BackendID:         backend.ID,
+		BackendName:       backend.Name,
+		Attempts:          1,
+		StatusCode:        http.StatusBadGateway,
+		DurationMS:        512,
+		RequestBytes:      64,
+		ResponseBytes:     256,
+		ErrorMessage:      "upstream failed",
+	}); err != nil {
+		t.Fatalf("append usage log 2: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/dashboard/usage?range=7d", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Range  string `json:"range"`
+		Series []struct {
+			Label        string  `json:"label"`
+			Requests     int     `json:"requests"`
+			TrafficBytes int64   `json:"traffic_bytes"`
+			ErrorRate    float64 `json:"error_rate"`
+		} `json:"series"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal dashboard usage: %v", err)
+	}
+	if payload.Range != "7d" {
+		t.Fatalf("expected range 7d, got %q", payload.Range)
+	}
+	if len(payload.Series) != 7 {
+		t.Fatalf("expected 7 series points, got %d", len(payload.Series))
+	}
+	latest := payload.Series[len(payload.Series)-1]
+	if latest.Requests != 2 {
+		t.Fatalf("expected latest requests=2, got %#v", latest)
+	}
+	if latest.TrafficBytes != 1320 {
+		t.Fatalf("expected latest traffic_bytes=1320, got %#v", latest)
+	}
+	if latest.ErrorRate <= 0 {
+		t.Fatalf("expected latest error rate > 0, got %#v", latest)
+	}
+}
+
+func TestDashboardUsageSupportsThirtyDayRange(t *testing.T) {
+	application := newTestApp(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/dashboard/usage?range=30d", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Range  string `json:"range"`
+		Series []struct {
+			Label    string `json:"label"`
+			Requests int    `json:"requests"`
+		} `json:"series"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal dashboard usage: %v", err)
+	}
+	if payload.Range != "30d" {
+		t.Fatalf("expected range 30d, got %q", payload.Range)
+	}
+	if len(payload.Series) != 30 {
+		t.Fatalf("expected 30 series points, got %d", len(payload.Series))
+	}
+}
+
+func TestDashboardActivityReturnsRecentLists(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	if err := application.store.AppendAuditEvent(ctx, domain.AuditEvent{
+		Level:       "warn",
+		Type:        "policy.changed",
+		Message:     "policy updated",
+		BackendName: "alpha",
+	}); err != nil {
+		t.Fatalf("append audit event: %v", err)
+	}
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "activity-1",
+		ClientID:          1,
+		ClientName:        "alpha-client",
+		ClientTokenPrefix: "alpha",
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "gpt-4o",
+		BackendID:         11,
+		BackendName:       "alpha",
+		Attempts:          1,
+		StatusCode:        http.StatusTooManyRequests,
+		DurationMS:        99,
+		ErrorMessage:      "rate limited",
+	}); err != nil {
+		t.Fatalf("append usage log: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/dashboard/activity", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Events  []domain.AuditEvent `json:"events"`
+		Usage   []domain.UsageLog   `json:"usage"`
+		Summary []struct {
+			Category string `json:"category"`
+			Count    int    `json:"count"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal dashboard activity: %v", err)
+	}
+	if !containsAuditEvent(payload.Events, func(event domain.AuditEvent) bool {
+		return event.Type == "policy.changed"
+	}) {
+		t.Fatalf("expected recent event in payload, got %#v", payload.Events)
+	}
+	if !containsUsageLog(payload.Usage, func(entry domain.UsageLog) bool {
+		return entry.RequestID == "activity-1"
+	}) {
+		t.Fatalf("expected recent usage in payload, got %#v", payload.Usage)
+	}
+	if len(payload.Summary) == 0 {
+		t.Fatalf("expected activity summary categories, got %#v", payload.Summary)
+	}
+}
+
+func TestDashboardActivitySummaryCountsEventTypes(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	for _, event := range []domain.AuditEvent{
+		{Level: "info", Type: "policy.changed", Message: "policy one"},
+		{Level: "warn", Type: "policy.changed", Message: "policy two"},
+		{Level: "info", Type: "backend.updated", Message: "backend one"},
+	} {
+		if err := application.store.AppendAuditEvent(ctx, event); err != nil {
+			t.Fatalf("append audit event: %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/dashboard/activity", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Summary []struct {
+			Category string `json:"category"`
+			Count    int    `json:"count"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal dashboard activity: %v", err)
+	}
+
+	counts := make(map[string]int)
+	for _, item := range payload.Summary {
+		counts[item.Category] = item.Count
+	}
+	if counts["policy.changed"] != 2 {
+		t.Fatalf("expected policy.changed count=2, got summary %#v", payload.Summary)
+	}
+	if counts["backend.updated"] != 1 {
+		t.Fatalf("expected backend.updated count=1, got summary %#v", payload.Summary)
+	}
+}
+
+func TestSearchReturnsGroupedResults(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	proxyItem, err := application.store.CreateSocksProxy(ctx, domain.SocksProxy{
+		Name:    "alpha-proxy",
+		Address: "127.0.0.1:1080",
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create proxy: %v", err)
+	}
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "alpha-backend",
+		Pool:      "alpha-pool",
+		BaseURL:   "https://alpha.local/v1",
+		APIKey:    "alpha-key",
+		ProxyID:   proxyItem.ID,
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+	client, err := application.store.CreateClientKey(ctx, domain.ClientKey{
+		Name:        "alpha-client",
+		TokenHash:   store.HashToken("alpha-client-token"),
+		Token:       "alpha-client-token",
+		TokenPrefix: tokenPrefix("alpha-client-token"),
+		Enabled:     true,
+	})
+	if err != nil {
+		t.Fatalf("create client key: %v", err)
+	}
+	policy := createTestPolicy(t, application, domain.ModelPolicy{
+		Pattern:         "alpha-*",
+		Endpoint:        domain.EndpointChat,
+		PlacementPolicy: domain.PlacementSticky,
+		BackendPool:     "alpha-pool",
+		FailoverEnabled: true,
+		Priority:        10,
+	})
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "search-alpha-1",
+		ClientID:          client.ID,
+		ClientName:        client.Name,
+		ClientTokenPrefix: client.TokenPrefix,
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "alpha-model",
+		BackendID:         backend.ID,
+		BackendName:       backend.Name,
+		Attempts:          1,
+		StatusCode:        http.StatusOK,
+		DurationMS:        44,
+	}); err != nil {
+		t.Fatalf("append usage log: %v", err)
+	}
+	if err := application.store.AppendAuditEvent(ctx, domain.AuditEvent{
+		Level:       "info",
+		Type:        "alpha.event",
+		Message:     "alpha backend promoted",
+		BackendName: backend.Name,
+		Model:       policy.Pattern,
+	}); err != nil {
+		t.Fatalf("append audit event: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/search?q=alpha", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Query   string                             `json:"query"`
+		Results map[string][]searchResultAssertion `json:"results"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal search payload: %v", err)
+	}
+	if payload.Query != "alpha" {
+		t.Fatalf("expected query alpha, got %q", payload.Query)
+	}
+	for _, section := range []string{"backends", "client_keys", "policies", "proxies", "usage_logs", "events"} {
+		items, ok := payload.Results[section]
+		if !ok {
+			t.Fatalf("expected section %q in results, got %#v", section, payload.Results)
+		}
+		if len(items) == 0 {
+			t.Fatalf("expected matches in section %q, got %#v", section, payload.Results)
+		}
+	}
+	if !containsSearchResult(payload.Results["backends"], func(item searchResultAssertion) bool {
+		return item.TargetPage == "backends" && item.TargetID == backend.ID
+	}) {
+		t.Fatalf("unexpected backend search results: %#v", payload.Results["backends"])
+	}
+}
+
+func TestSearchHonorsLimitAndRanksExactMatchesFirst(t *testing.T) {
+	application := newTestApp(t)
+
+	exact := createTestBackend(t, application, domain.Backend{
+		Name:      "alpha",
+		BaseURL:   "https://alpha.local/v1",
+		APIKey:    "alpha-key",
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+	createTestBackend(t, application, domain.Backend{
+		Name:      "zz-alpha-later",
+		BaseURL:   "https://zz-alpha.local/v1",
+		APIKey:    "zz-alpha-key",
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/search?q=alpha&limit=1", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Results map[string][]searchResultAssertion `json:"results"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal search payload: %v", err)
+	}
+	if len(payload.Results["backends"]) != 1 {
+		t.Fatalf("expected one backend result, got %#v", payload.Results["backends"])
+	}
+	if got := payload.Results["backends"][0]; got.TargetID != exact.ID || got.Title != exact.Name {
+		t.Fatalf("expected exact match first, got %#v", got)
+	}
+}
+
+func TestBackendDetailReturnsDrawerData(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	proxyItem, err := application.store.CreateSocksProxy(ctx, domain.SocksProxy{
+		Name:    "drawer-proxy",
+		Address: "127.0.0.1:1080",
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create proxy: %v", err)
+	}
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:         "alpha-backend",
+		Pool:         "drawer-pool",
+		BaseURL:      "https://alpha.local/v1",
+		APIKey:       "alpha-key",
+		ProxyID:      proxyItem.ID,
+		Enabled:      true,
+		Weight:       2,
+		Models:       []string{"gpt-4o"},
+		ModelMapping: map[string]string{"alpha": "gpt-4o"},
+		Endpoints:    []string{domain.EndpointChat},
+	})
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "backend-detail-1",
+		ClientID:          1,
+		ClientName:        "drawer-client",
+		ClientTokenPrefix: "draw",
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "gpt-4o",
+		BackendID:         backend.ID,
+		BackendName:       backend.Name,
+		Attempts:          1,
+		StatusCode:        http.StatusOK,
+		DurationMS:        77,
+	}); err != nil {
+		t.Fatalf("append usage log: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/detail", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Overview      []resourceDetailEntry `json:"overview"`
+		Configuration []resourceDetailEntry `json:"configuration"`
+		Metadata      []resourceDetailEntry `json:"metadata"`
+		Raw           domain.Backend        `json:"raw"`
+		Activity      struct {
+			Usage []domain.UsageLog `json:"usage"`
+		} `json:"activity"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal backend detail: %v", err)
+	}
+	metadata := detailEntriesToMap(payload.Metadata)
+	configuration := detailEntriesToMap(payload.Configuration)
+	if metadata["id"] != float64(backend.ID) || payload.Raw.ID != backend.ID {
+		t.Fatalf("expected backend ids in payload, got metadata=%#v raw=%#v", metadata, payload.Raw)
+	}
+	models, _ := configuration["models"].([]any)
+	modelMapping, _ := configuration["model_mapping"].(map[string]any)
+	if len(models) == 0 || modelMapping["alpha"] != "gpt-4o" {
+		t.Fatalf("expected backend configuration in payload, got %#v", configuration)
+	}
+	if !containsUsageLog(payload.Activity.Usage, func(entry domain.UsageLog) bool {
+		return entry.BackendID == backend.ID
+	}) {
+		t.Fatalf("expected backend activity usage, got %#v", payload.Activity.Usage)
+	}
+}
+
+func TestClientKeyDetailReturnsDrawerData(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	client, err := application.store.CreateClientKey(ctx, domain.ClientKey{
+		Name:              "alpha-client",
+		TokenHash:         store.HashToken("alpha-client-token"),
+		Token:             "alpha-client-token",
+		TokenPrefix:       tokenPrefix("alpha-client-token"),
+		Enabled:           true,
+		RouteModeOverride: domain.PlacementSticky,
+		RouteGroup:        "alpha-group",
+	})
+	if err != nil {
+		t.Fatalf("create client key: %v", err)
+	}
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "client-detail-1",
+		ClientID:          client.ID,
+		ClientName:        client.Name,
+		ClientTokenPrefix: client.TokenPrefix,
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "gpt-4o",
+		BackendID:         7,
+		BackendName:       "alpha-backend",
+		Attempts:          1,
+		StatusCode:        http.StatusOK,
+		DurationMS:        50,
+	}); err != nil {
+		t.Fatalf("append usage log: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/client-keys/"+strconv.FormatInt(client.ID, 10)+"/detail", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Overview      []resourceDetailEntry `json:"overview"`
+		Configuration []resourceDetailEntry `json:"configuration"`
+		Metadata      []resourceDetailEntry `json:"metadata"`
+		Raw           domain.ClientKey      `json:"raw"`
+		Activity      struct {
+			Usage []domain.UsageLog `json:"usage"`
+		} `json:"activity"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal client key detail: %v", err)
+	}
+	overview := detailEntriesToMap(payload.Overview)
+	configuration := detailEntriesToMap(payload.Configuration)
+	metadata := detailEntriesToMap(payload.Metadata)
+	if metadata["id"] != float64(client.ID) || payload.Raw.ID != client.ID {
+		t.Fatalf("expected client ids in payload, got metadata=%#v raw=%#v", metadata, payload.Raw)
+	}
+	if configuration["token"] != client.Token {
+		t.Fatalf("expected detail configuration token %q, got %#v", client.Token, configuration)
+	}
+	if configuration["route_mode_override"] != domain.PlacementSticky || configuration["route_group"] != "alpha-group" {
+		t.Fatalf("unexpected client configuration: %#v", configuration)
+	}
+	if overview["usage_count"] != float64(1) {
+		t.Fatalf("expected overview usage_count=1, got %#v", overview)
+	}
+	if _, ok := overview["last_used_at"].(string); !ok {
+		t.Fatalf("expected overview last_used_at string, got %#v", overview)
+	}
+	if !containsUsageLog(payload.Activity.Usage, func(entry domain.UsageLog) bool {
+		return entry.ClientID == client.ID
+	}) {
+		t.Fatalf("expected client usage activity, got %#v", payload.Activity.Usage)
+	}
+}
+
+func TestPolicyDetailReturnsDrawerData(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "policy-alpha-backend",
+		Pool:      "alpha-pool",
+		BaseURL:   "https://policy-alpha.local/v1",
+		APIKey:    "alpha-key",
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"alpha-model"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+	policy := createTestPolicy(t, application, domain.ModelPolicy{
+		Pattern:         "alpha-*",
+		Endpoint:        domain.EndpointChat,
+		PlacementPolicy: domain.PlacementSticky,
+		BackendPool:     "alpha-pool",
+		FailoverEnabled: true,
+		Priority:        10,
+	})
+	if err := application.store.AppendAuditEvent(ctx, domain.AuditEvent{
+		Level:   "info",
+		Type:    "policy.changed",
+		Message: "alpha policy changed",
+		Model:   policy.Pattern,
+	}); err != nil {
+		t.Fatalf("append audit event: %v", err)
+	}
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "policy-detail-1",
+		ClientID:          1,
+		ClientName:        "policy-client",
+		ClientTokenPrefix: "pol",
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "alpha-model",
+		PolicyID:          policy.ID,
+		PolicyName:        policy.Pattern,
+		BackendID:         backend.ID,
+		BackendName:       backend.Name,
+		Attempts:          1,
+		StatusCode:        http.StatusOK,
+		DurationMS:        42,
+	}); err != nil {
+		t.Fatalf("append policy usage log: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/model-policies/"+strconv.FormatInt(policy.ID, 10)+"/detail", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Overview      []resourceDetailEntry `json:"overview"`
+		Configuration []resourceDetailEntry `json:"configuration"`
+		Metadata      []resourceDetailEntry `json:"metadata"`
+		Raw           domain.ModelPolicy    `json:"raw"`
+		Activity      struct {
+			Events   []domain.AuditEvent `json:"events"`
+			Usage    []domain.UsageLog   `json:"usage"`
+			Backends []domain.Backend    `json:"backends"`
+		} `json:"activity"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal policy detail: %v", err)
+	}
+	configuration := detailEntriesToMap(payload.Configuration)
+	metadata := detailEntriesToMap(payload.Metadata)
+	if metadata["id"] != float64(policy.ID) || payload.Raw.ID != policy.ID {
+		t.Fatalf("expected policy ids in payload, got metadata=%#v raw=%#v", metadata, payload.Raw)
+	}
+	if configuration["pattern"] != "alpha-*" || configuration["endpoint"] != domain.EndpointChat {
+		t.Fatalf("unexpected policy configuration: %#v", configuration)
+	}
+	if !containsAuditEvent(payload.Activity.Events, func(event domain.AuditEvent) bool {
+		return event.Model == "alpha-*"
+	}) {
+		t.Fatalf("expected policy activity events, got %#v", payload.Activity.Events)
+	}
+	if !containsUsageLog(payload.Activity.Usage, func(entry domain.UsageLog) bool {
+		return entry.PolicyID == policy.ID
+	}) {
+		t.Fatalf("expected policy usage activity, got %#v", payload.Activity.Usage)
+	}
+	if !containsBackend(payload.Activity.Backends, func(item domain.Backend) bool {
+		return item.ID == backend.ID
+	}) {
+		t.Fatalf("expected policy related backend, got %#v", payload.Activity.Backends)
+	}
+}
+
+func TestProxyDetailReturnsDrawerData(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	proxyItem, err := application.store.CreateSocksProxy(ctx, domain.SocksProxy{
+		Name:     "alpha-proxy",
+		Address:  "127.0.0.1:1080",
+		Username: "proxy-user",
+		Password: "proxy-pass",
+		Enabled:  true,
+	})
+	if err != nil {
+		t.Fatalf("create proxy: %v", err)
+	}
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "alpha-backend",
+		BaseURL:   "https://alpha.local/v1",
+		APIKey:    "alpha-key",
+		ProxyID:   proxyItem.ID,
+		Enabled:   true,
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "proxy-detail-1",
+		ClientID:          1,
+		ClientName:        "proxy-client",
+		ClientTokenPrefix: "prx",
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "gpt-4o",
+		BackendID:         backend.ID,
+		BackendName:       backend.Name,
+		ProxyID:           proxyItem.ID,
+		ProxyName:         proxyItem.Name,
+		Attempts:          1,
+		StatusCode:        http.StatusOK,
+		DurationMS:        64,
+	}); err != nil {
+		t.Fatalf("append proxy usage log: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/socks-proxies/"+strconv.FormatInt(proxyItem.ID, 10)+"/detail", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Overview      []resourceDetailEntry `json:"overview"`
+		Configuration []resourceDetailEntry `json:"configuration"`
+		Metadata      []resourceDetailEntry `json:"metadata"`
+		Raw           domain.SocksProxy     `json:"raw"`
+		Activity      struct {
+			Usage    []domain.UsageLog `json:"usage"`
+			Backends []domain.Backend  `json:"backends"`
+		} `json:"activity"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal proxy detail: %v", err)
+	}
+	configuration := detailEntriesToMap(payload.Configuration)
+	metadata := detailEntriesToMap(payload.Metadata)
+	if metadata["id"] != float64(proxyItem.ID) || payload.Raw.ID != proxyItem.ID {
+		t.Fatalf("expected proxy ids in payload, got metadata=%#v raw=%#v", metadata, payload.Raw)
+	}
+	if configuration["address"] != "127.0.0.1:1080" || configuration["username"] != "proxy-user" {
+		t.Fatalf("unexpected proxy configuration: %#v", configuration)
+	}
+	if !containsBackend(payload.Activity.Backends, func(item domain.Backend) bool {
+		return item.ID == backend.ID
+	}) {
+		t.Fatalf("expected proxy-bound backends in activity, got %#v", payload.Activity.Backends)
+	}
+	if !containsUsageLog(payload.Activity.Usage, func(entry domain.UsageLog) bool {
+		return entry.ProxyID == proxyItem.ID
+	}) {
+		t.Fatalf("expected proxy usage activity, got %#v", payload.Activity.Usage)
 	}
 }
 
@@ -1750,4 +3510,59 @@ func createTestPolicy(t *testing.T, application *App, policy domain.ModelPolicy)
 		t.Fatalf("create policy %q: %v", policy.Pattern, err)
 	}
 	return created
+}
+
+func containsUsageLog(items []domain.UsageLog, match func(domain.UsageLog) bool) bool {
+	for _, item := range items {
+		if match(item) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAuditEvent(items []domain.AuditEvent, match func(domain.AuditEvent) bool) bool {
+	for _, item := range items {
+		if match(item) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsBackend(items []domain.Backend, match func(domain.Backend) bool) bool {
+	for _, item := range items {
+		if match(item) {
+			return true
+		}
+	}
+	return false
+}
+
+func detailEntriesToMap(entries []resourceDetailEntry) map[string]any {
+	values := make(map[string]any, len(entries))
+	for _, entry := range entries {
+		values[entry.Key] = entry.Value
+	}
+	return values
+}
+
+type searchResultAssertion struct {
+	Kind       string         `json:"kind"`
+	ID         int64          `json:"id"`
+	Title      string         `json:"title"`
+	Subtitle   string         `json:"subtitle"`
+	Meta       map[string]any `json:"meta"`
+	Status     string         `json:"status"`
+	TargetPage string         `json:"target_page"`
+	TargetID   int64          `json:"target_id"`
+}
+
+func containsSearchResult(items []searchResultAssertion, match func(searchResultAssertion) bool) bool {
+	for _, item := range items {
+		if match(item) {
+			return true
+		}
+	}
+	return false
 }

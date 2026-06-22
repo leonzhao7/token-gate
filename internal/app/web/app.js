@@ -1,40 +1,72 @@
 const tokenInput = document.querySelector("#adminToken");
 const saveTokenBtn = document.querySelector("#saveTokenBtn");
 const refreshBtn = document.querySelector("#refreshBtn");
-const globalSearchBtn = document.querySelector("#globalSearchBtn");
-const themeToggleBtn = document.querySelector("#themeToggleBtn");
 const pageTitle = document.querySelector("#pageTitle");
 const pageBreadcrumb = document.querySelector("#pageBreadcrumb");
-const searchModal = document.querySelector("#searchModal");
-const searchModalCloseBtn = document.querySelector("#searchModalCloseBtn");
-const searchInput = document.querySelector("#searchInput");
-const searchResults = document.querySelector("#searchResults");
-const drawer = document.querySelector("#detailDrawer");
+const appShell = document.querySelector(".app-shell");
+const rootElement = document.documentElement;
+const sidebarRoot = document.querySelector("#sidebarRoot");
+const sidebarToggleBtn = document.querySelector("#sidebarToggleBtn");
+const themeToggleBtn = document.querySelector("#themeToggleBtn");
+const themeToggleLabel = document.querySelector("#themeToggleLabel");
+const notificationMenuBtn = document.querySelector("#notificationMenuBtn");
+const profileMenuBtn = document.querySelector("#profileMenuBtn");
+const headerPanelRoot = document.querySelector("#headerPanelRoot");
+const dashboardRoot = document.querySelector("#dashboardRoot");
+const dashboardSummaryRow = document.querySelector("#dashboardSummaryRow");
+const dashboardUsageCard = document.querySelector("#dashboardUsageCard");
+const dashboardEventsSummaryCard = document.querySelector("#dashboardEventsSummaryCard");
+const dashboardRecentEventsCard = document.querySelector("#dashboardRecentEventsCard");
+const dashboardRecentUsageCard = document.querySelector("#dashboardRecentUsageCard");
+const drawerRoot = document.querySelector("#drawerRoot");
+const drawerPanel = document.querySelector(".drawer-shell-panel");
 const drawerTitle = document.querySelector("#drawerTitle");
-const drawerBody = document.querySelector("#drawerBody");
 const drawerCloseBtn = document.querySelector("#drawerCloseBtn");
-const usageOverviewChart = document.querySelector("#usageOverviewChart");
-const usageChartTabs = document.querySelector("#usageChartTabs");
-const eventsSummaryCards = document.querySelector("#eventsSummaryCards");
-const recentEventsPanel = document.querySelector("#recentEventsPanel");
-const recentUsageLogsPanel = document.querySelector("#recentUsageLogsPanel");
-const stats = document.querySelector("#stats");
+const drawerBodyRoot = document.querySelector("#drawerBodyRoot");
+const drawerTabRoot = document.querySelector("#drawerTabRoot");
+const drawerFooterRoot = document.querySelector("#drawerFooterRoot");
+const searchModalRoot = document.querySelector("#searchModalRoot");
+const searchModalPanel = document.querySelector(".search-modal-panel");
+const searchOpenBtn = document.querySelector("#searchOpenBtn");
+const searchCloseBtn = document.querySelector("#searchCloseBtn");
+const searchInput = document.querySelector("#searchInput");
+const searchResultsRoot = document.querySelector("#searchResultsRoot");
 const proxyList = document.querySelector("#proxyList");
 const backendList = document.querySelector("#backendList");
 const clientList = document.querySelector("#clientList");
 const policyList = document.querySelector("#policyList");
 const eventList = document.querySelector("#eventList");
+const eventQueryFilter = document.querySelector("#eventQueryFilter");
+const eventActorFilter = document.querySelector("#eventActorFilter");
+const eventBackendFilter = document.querySelector("#eventBackendFilter");
+const eventCategoryFilter = document.querySelector("#eventCategoryFilter");
+const eventSeverityFilter = document.querySelector("#eventSeverityFilter");
+const eventDateFromFilter = document.querySelector("#eventDateFromFilter");
+const eventDateToFilter = document.querySelector("#eventDateToFilter");
+const refreshEventsBtn = document.querySelector("#refreshEventsBtn");
+const applyEventFiltersBtn = document.querySelector("#applyEventFiltersBtn");
+const resetEventFiltersBtn = document.querySelector("#resetEventFiltersBtn");
 const usageLogList = document.querySelector("#usageLogList");
 const deleteUsageLogsBtn = document.querySelector("#deleteUsageLogsBtn");
 const clearUsageLogsBtn = document.querySelector("#clearUsageLogsBtn");
+const usageLogQueryFilter = document.querySelector("#usageLogQueryFilter");
+const usageLogDateFromFilter = document.querySelector("#usageLogDateFromFilter");
+const usageLogDateToFilter = document.querySelector("#usageLogDateToFilter");
 const usageLogBackendFilter = document.querySelector("#usageLogBackendFilter");
 const usageLogModelFilter = document.querySelector("#usageLogModelFilter");
 const usageLogClientKeyFilter = document.querySelector("#usageLogClientKeyFilter");
+const usageLogPolicyFilter = document.querySelector("#usageLogPolicyFilter");
+const usageLogProxyFilter = document.querySelector("#usageLogProxyFilter");
+const usageLogStatusFilter = document.querySelector("#usageLogStatusFilter");
 const usageLogBackendOptions = document.querySelector("#usageLogBackendOptions");
 const usageLogModelOptions = document.querySelector("#usageLogModelOptions");
 const usageLogClientKeyOptions = document.querySelector("#usageLogClientKeyOptions");
+const usageLogPolicyOptions = document.querySelector("#usageLogPolicyOptions");
+const usageLogProxyOptions = document.querySelector("#usageLogProxyOptions");
+const refreshUsageLogsBtn = document.querySelector("#refreshUsageLogsBtn");
 const applyUsageLogFiltersBtn = document.querySelector("#applyUsageLogFiltersBtn");
 const resetUsageLogFiltersBtn = document.querySelector("#resetUsageLogFiltersBtn");
+const settingsRoot = document.querySelector("#settingsRoot");
 const pages = Array.from(document.querySelectorAll(".page"));
 const pageLinks = Array.from(document.querySelectorAll("[data-page-link]"));
 
@@ -73,38 +105,209 @@ const policyCancelBtn = document.querySelector("#policyCancelBtn");
 const policyEditBanner = document.querySelector("#policyEditBanner");
 
 const ADMIN_TOKEN_KEY = "token-gate-admin-token";
-const THEME_KEY = "token-gate-theme";
+const THEME_PREFERENCE_KEY = "token-gate-theme-preference";
+const SIDEBAR_COLLAPSED_KEY = "token-gate-sidebar-collapsed";
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
-const SEARCH_GROUPS = [
-  { key: "backends", label: "Backends", resourceType: "backend" },
-  { key: "client_keys", label: "Client Keys", resourceType: "client" },
-  { key: "policies", label: "Policies", resourceType: "policy" },
-  { key: "proxies", label: "Proxies", resourceType: "proxy" },
-  { key: "events", label: "Events", resourceType: "event" },
-  { key: "usage_logs", label: "Usage Logs", resourceType: "usage_log" },
-];
-const RESOURCE_DETAIL_ENDPOINTS = {
-  backend: (id) => `/admin/api/backends/${id}/detail`,
-  client: (id) => `/admin/api/client-keys/${id}/detail`,
-  policy: (id) => `/admin/api/model-policies/${id}/detail`,
-  proxy: (id) => `/admin/api/socks-proxies/${id}/detail`,
+const SEARCH_LIMIT = 8;
+const SEARCH_DEBOUNCE_MS = 220;
+const RESOURCE_VIEW_CONFIG = {
+  proxies: {
+    searchPlaceholder: "Search proxies by name or address",
+    filterOptions: [
+      { value: "all", label: "All status" },
+      { value: "enabled", label: "Enabled" },
+      { value: "disabled", label: "Disabled" },
+    ],
+    sortOptions: [
+      { value: "updated_desc", label: "Updated" },
+      { value: "name_asc", label: "Name" },
+    ],
+  },
+  backends: {
+    searchPlaceholder: "Search backends, base URL, models",
+    filterOptions: [
+      { value: "all", label: "All status" },
+      { value: "enabled", label: "Enabled" },
+      { value: "disabled", label: "Disabled" },
+    ],
+    sortOptions: [
+      { value: "updated_desc", label: "Updated" },
+      { value: "name_asc", label: "Name" },
+      { value: "weight_desc", label: "Weight" },
+    ],
+  },
+  clients: {
+    searchPlaceholder: "Search client keys, groups, routes",
+    filterOptions: [
+      { value: "all", label: "All status" },
+      { value: "enabled", label: "Enabled" },
+      { value: "disabled", label: "Disabled" },
+    ],
+    sortOptions: [
+      { value: "updated_desc", label: "Updated" },
+      { value: "name_asc", label: "Name" },
+      { value: "group_asc", label: "Route group" },
+    ],
+  },
+  policies: {
+    searchPlaceholder: "Search patterns, endpoints, pools",
+    filterOptions: [
+      { value: "all", label: "All failover" },
+      { value: "enabled", label: "Failover on" },
+      { value: "disabled", label: "Failover off" },
+    ],
+    sortOptions: [
+      { value: "priority_asc", label: "Priority" },
+      { value: "updated_desc", label: "Updated" },
+      { value: "pattern_asc", label: "Pattern" },
+    ],
+  },
+};
+const ThemeUtils = globalThis.ThemeUtils || {};
+const SearchUtils = globalThis.SearchUtils || {};
+const ResourceRuntimeUtils = globalThis.ResourceRuntimeUtils || {};
+const ShellStateUtils = typeof ResourceRuntimeUtils.requireShellStateUtils === "function"
+  ? ResourceRuntimeUtils.requireShellStateUtils(globalThis.ShellStateUtils)
+  : (() => {
+    throw new Error("shell-state.js failed to load before app.js");
+  })();
+const ShellViewUtils = typeof ResourceRuntimeUtils.requireShellViewUtils === "function"
+  ? ResourceRuntimeUtils.requireShellViewUtils(globalThis.ShellViewUtils)
+  : (() => {
+    throw new Error("shell-view.js failed to load before app.js");
+  })();
+const DrawerViewUtils = typeof ResourceRuntimeUtils.requireDrawerViewUtils === "function"
+  ? ResourceRuntimeUtils.requireDrawerViewUtils(globalThis.DrawerViewUtils)
+  : (() => {
+    throw new Error("drawer-view.js failed to load before app.js");
+  })();
+const DrawerRuntimeUtils = typeof ResourceRuntimeUtils.requireDrawerRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireDrawerRuntimeUtils(globalThis.DrawerRuntimeUtils)
+  : (() => {
+    throw new Error("drawer-runtime.js failed to load before app.js");
+  })();
+const ShellRuntimeUtils = typeof ResourceRuntimeUtils.requireShellRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireShellRuntimeUtils(globalThis.ShellRuntimeUtils)
+  : (() => {
+    throw new Error("shell-runtime.js failed to load before app.js");
+  })();
+const PaginationUtils = typeof ResourceRuntimeUtils.requirePaginationUtils === "function"
+  ? ResourceRuntimeUtils.requirePaginationUtils(globalThis.PaginationUtils)
+  : (() => {
+    throw new Error("pagination.js failed to load before app.js");
+  })();
+const DisplayUtils = typeof ResourceRuntimeUtils.requireDisplayUtils === "function"
+  ? ResourceRuntimeUtils.requireDisplayUtils(globalThis.DisplayUtils)
+  : (() => {
+    throw new Error("display-utils.js failed to load before app.js");
+  })();
+const DashboardRuntimeUtils = typeof ResourceRuntimeUtils.requireDashboardRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireDashboardRuntimeUtils(globalThis.DashboardRuntimeUtils)
+  : (() => {
+    throw new Error("dashboard-runtime.js failed to load before app.js");
+  })();
+const SearchRuntimeUtils = typeof ResourceRuntimeUtils.requireSearchRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireSearchRuntimeUtils(globalThis.SearchRuntimeUtils)
+  : (() => {
+    throw new Error("search-runtime.js failed to load before app.js");
+  })();
+const ObservabilityRuntimeUtils = typeof ResourceRuntimeUtils.requireObservabilityRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireObservabilityRuntimeUtils(globalThis.ObservabilityRuntimeUtils)
+  : (() => {
+    throw new Error("observability-runtime.js failed to load before app.js");
+  })();
+const ResourceListRuntimeUtils = typeof ResourceRuntimeUtils.requireResourceListRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireResourceListRuntimeUtils(globalThis.ResourceListRuntimeUtils)
+  : (() => {
+    throw new Error("resource-list-runtime.js failed to load before app.js");
+  })();
+const ResourceRenderRuntimeUtils = typeof ResourceRuntimeUtils.requireResourceRenderRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireResourceRenderRuntimeUtils(globalThis.ResourceRenderRuntimeUtils)
+  : (() => {
+    throw new Error("resource-runtime.js failed to load before app.js");
+  })();
+const ResourceDataRuntimeUtils = typeof ResourceRuntimeUtils.requireResourceDataRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireResourceDataRuntimeUtils(globalThis.ResourceDataRuntimeUtils)
+  : (() => {
+    throw new Error("resource-runtime.js failed to load before app.js");
+  })();
+const ConsoleDataRuntimeUtils = typeof ResourceRuntimeUtils.requireConsoleDataRuntimeUtils === "function"
+  ? ResourceRuntimeUtils.requireConsoleDataRuntimeUtils(globalThis.ConsoleDataRuntimeUtils)
+  : (() => {
+    throw new Error("resource-runtime.js failed to load before app.js");
+  })();
+const escapeHTML = DisplayUtils.escapeHTML;
+const formatDateTime = DisplayUtils.formatDateTime;
+const DashboardUtils = globalThis.DashboardUtils || {};
+const DashboardViewUtils = typeof ResourceRuntimeUtils.requireDashboardViewUtils === "function"
+  ? ResourceRuntimeUtils.requireDashboardViewUtils(globalThis.DashboardViewUtils)
+  : (() => {
+    throw new Error("dashboard-view.js failed to load before app.js");
+  })();
+const ChartsUtils = globalThis.ChartsUtils || {};
+const DrawerUtils = globalThis.DrawerUtils || {};
+const ObservabilityUtils = globalThis.ObservabilityUtils || {};
+const ObservabilityViewUtils = globalThis.ObservabilityViewUtils || {};
+const ResourceViewUtils = typeof ResourceRuntimeUtils.requireResourceViewUtils === "function"
+  ? ResourceRuntimeUtils.requireResourceViewUtils(globalThis.ResourceViewUtils)
+  : (() => {
+    throw new Error("resource-runtime.js failed to load before app.js");
+  })();
+const ResourceStateUtils = typeof ResourceRuntimeUtils.requireResourceStateUtils === "function"
+  ? ResourceRuntimeUtils.requireResourceStateUtils(globalThis.ResourceStateUtils)
+  : (() => {
+    throw new Error("resource-runtime.js failed to load before app.js");
+  })();
+const ResourceCrudUtils = typeof ResourceRuntimeUtils.requireResourceCrudUtils === "function"
+  ? ResourceRuntimeUtils.requireResourceCrudUtils(globalThis.ResourceCrudUtils)
+  : (() => {
+    throw new Error("resource-runtime.js failed to load before app.js");
+  })();
+const RendererUtils = globalThis.RendererUtils || {};
+const SettingsUtils = globalThis.SettingsUtils || {};
+const systemThemeQuery = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+const searchDebounce = typeof SearchUtils.createDebouncedTask === "function"
+  ? SearchUtils.createDebouncedTask((query) => {
+    executeSearch(query).catch(reportError);
+  }, SEARCH_DEBOUNCE_MS)
+  : null;
+const initialDashboardState = typeof DashboardUtils.createDashboardState === "function"
+  ? DashboardUtils.createDashboardState()
+  : {
+    summaryCards: {
+      backends: { status: "loading", data: null, error: "" },
+      client_keys: { status: "loading", data: null, error: "" },
+      policies: { status: "loading", data: null, error: "" },
+      proxies: { status: "loading", data: null, error: "" },
+    },
+    usage: { status: "loading", data: null, error: "", metric: "requests", range: "7d" },
+    eventsSummary: { status: "loading", data: null, error: "" },
+    recentEvents: { status: "loading", data: null, error: "" },
+    recentUsage: { status: "loading", data: null, error: "" },
+  };
+const resourceViewDefaults = {
+  proxies: ResourceStateUtils.defaultResourceView("proxies"),
+  backends: ResourceStateUtils.defaultResourceView("backends"),
+  clients: ResourceStateUtils.defaultResourceView("clients"),
+  policies: ResourceStateUtils.defaultResourceView("policies"),
 };
 const state = {
+  dashboard: initialDashboardState,
   proxies: [],
   backends: [],
   clients: [],
   policies: [],
   events: [],
   usageLogs: [],
-  dashboard: {
-    summary: null,
-    usage: null,
-    activity: null,
-  },
+  usageLogStats: null,
+  eventSummary: null,
+  usageLogDetailCache: new Map(),
   usageLogOptions: {
     backends: [],
     models: [],
     clientKeys: [],
+    policies: [],
+    proxies: [],
   },
   paginationMeta: {
     proxies: { total: 0, page: 1, limit: 10 },
@@ -124,10 +327,26 @@ const state = {
   expandedPolicies: new Set(),
   expandedUsageLogs: new Set(),
   usageLogFilters: {
+    q: "",
+    dateFrom: "",
+    dateTo: "",
     backend: "",
     model: "",
     clientKey: "",
+    policy: "",
+    proxy: "",
+    status: "",
   },
+  eventFilters: {
+    q: "",
+    actor: "",
+    backend: "",
+    category: "",
+    severity: "",
+    dateFrom: "",
+    dateTo: "",
+  },
+  resourceViews: { ...resourceViewDefaults },
   pagination: {
     proxies: { page: 1, size: 10 },
     backends: { page: 1, size: 10 },
@@ -138,85 +357,496 @@ const state = {
   },
   ui: {
     theme: "light",
-    search: { open: false, query: "", results: null, loading: false },
-    drawer: { open: false, title: "", content: "" },
-    usageChartMode: "requests",
+    themePreference: "system",
+    lastRefreshAt: "",
+    headerPanels: typeof ShellStateUtils.createHeaderPanelState === "function"
+      ? ShellStateUtils.createHeaderPanelState()
+      : { active: "" },
+    drawer: { open: false, kind: "", id: null, title: "", tab: "overview", loading: false, data: null, error: "", detailPath: "", deletePath: "", page: "", triggerElement: null },
+    search: {
+      open: false,
+      query: "",
+      loading: false,
+      activeIndex: -1,
+      results: { query: "", total: 0, groups: [] },
+      requestSequence: 0,
+      activeSequence: 0,
+      triggerElement: null,
+    },
   },
 };
+const resourceCrud = ResourceCrudUtils.createResourceCrud({
+  state,
+  resources: {
+    proxies: {
+      form: proxyForm,
+      modal: proxyModal,
+      title: proxyModalTitle,
+      submitButton: proxySubmitBtn,
+      cancelButton: proxyCancelBtn,
+      editBanner: proxyEditBanner,
+      editingStateKey: "editingProxyID",
+      collectionStateKey: "proxies",
+      render: renderProxies,
+      createTitle: "新增 Proxy",
+      editTitle: "编辑 Proxy",
+      createSubmitLabel: "新增 Proxy",
+      editSubmitLabel: "保存 Proxy",
+      editBannerText(proxy) {
+        return `正在编辑 SOCKS5 Proxy: ${proxy.name}`;
+      },
+      focusField: "name",
+      defaults: {
+        enabled: true,
+      },
+      assignEditValues(form, proxy) {
+        form.elements.name.value = proxy.name || "";
+        form.elements.address.value = proxy.address || "";
+        form.elements.username.value = proxy.username || "";
+        form.elements.password.value = proxy.password || "";
+        form.elements.enabled.checked = Boolean(proxy.enabled);
+      },
+    },
+    backends: {
+      form: backendForm,
+      modal: backendModal,
+      title: backendModalTitle,
+      submitButton: backendSubmitBtn,
+      cancelButton: backendCancelBtn,
+      editBanner: backendEditBanner,
+      editingStateKey: "editingBackendID",
+      collectionStateKey: "backends",
+      render: renderBackends,
+      createTitle: "新增 Backend",
+      editTitle: "编辑 Backend",
+      createSubmitLabel: "新增 Backend",
+      editSubmitLabel: "保存 Backend",
+      editBannerText(backend) {
+        return `正在编辑 Backend: ${backend.name}`;
+      },
+      focusField: "name",
+      defaults: {
+        protocol: "openai",
+        api_key: { placeholder: "Backend API key" },
+        proxy_id: "0",
+        model_mapping: "",
+        weight: 1,
+        enabled: true,
+      },
+      assignEditValues(form, backend, helpers) {
+        form.elements.name.value = backend.name || "";
+        form.elements.pool.value = backend.pool || "";
+        form.elements.protocol.value = backend.protocol || "openai";
+        form.elements.base_url.value = backend.base_url || "";
+        form.elements.api_key.value = backend.api_key || "";
+        form.elements.api_key.placeholder = "Backend API key";
+        form.elements.proxy_id.value = String(backend.proxy_id || 0);
+        form.elements.models.value = (backend.models || []).join(", ");
+        form.elements.model_mapping.value = helpers.formatModelMappingInput(backend.model_mapping);
+        form.elements.endpoints.value = (backend.endpoints || []).join(", ");
+        form.elements.weight.value = backend.weight || 1;
+        form.elements.enabled.checked = Boolean(backend.enabled);
+      },
+    },
+    clients: {
+      form: clientForm,
+      modal: clientModal,
+      title: clientModalTitle,
+      submitButton: clientSubmitBtn,
+      cancelButton: clientCancelBtn,
+      editBanner: clientEditBanner,
+      editingStateKey: "editingClientID",
+      collectionStateKey: "clients",
+      render: renderClients,
+      createTitle: "新增 Client Key",
+      editTitle: "编辑 Client Key",
+      createSubmitLabel: "新增 Client Key",
+      editSubmitLabel: "保存 Client Key",
+      editBannerText(client) {
+        return `正在编辑 Client Key: ${client.name}`;
+      },
+      focusField: "name",
+      defaults: {
+        token: { placeholder: "Leave blank to auto-generate" },
+        enabled: true,
+      },
+      assignEditValues(form, client) {
+        form.elements.name.value = client.name || "";
+        form.elements.token.value = client.token || "";
+        form.elements.token.placeholder = client.token ? "Client token" : "历史 key 仅保存了 hash；重新填写后可显示";
+        form.elements.route_mode_override.value = client.route_mode_override || "";
+        form.elements.route_group.value = client.route_group || "";
+        form.elements.enabled.checked = Boolean(client.enabled);
+      },
+    },
+    policies: {
+      form: policyForm,
+      modal: policyModal,
+      title: policyModalTitle,
+      submitButton: policySubmitBtn,
+      cancelButton: policyCancelBtn,
+      editBanner: policyEditBanner,
+      editingStateKey: "editingPolicyID",
+      collectionStateKey: "policies",
+      render: renderPolicies,
+      createTitle: "新增 Policy",
+      editTitle: "编辑 Policy",
+      createSubmitLabel: "新增 Policy",
+      editSubmitLabel: "保存 Policy",
+      editBannerText(policy) {
+        return `正在编辑 Model Policy: ${policy.pattern}`;
+      },
+      focusField: "pattern",
+      defaults: {
+        endpoint: "chat",
+        placement_policy: "sticky",
+        priority: 100,
+        failover_enabled: true,
+      },
+      assignEditValues(form, policy) {
+        form.elements.pattern.value = policy.pattern || "";
+        form.elements.endpoint.value = policy.endpoint || "chat";
+        form.elements.placement_policy.value = policy.placement_policy || "sticky";
+        form.elements.backend_pool.value = policy.backend_pool || "";
+        form.elements.priority.value = policy.priority || 100;
+        form.elements.failover_enabled.checked = Boolean(policy.failover_enabled);
+      },
+    },
+  },
+});
+const { readForm, splitList } = resourceCrud;
+const parseModelMapping = ResourceCrudUtils.parseModelMapping;
+const startCreateProxy = () => resourceCrud.startCreate("proxies");
+const startEditProxy = (id) => resourceCrud.startEdit("proxies", id);
+const resetProxyForm = () => resourceCrud.reset("proxies");
+function startCreateBackend() {
+  renderProxyOptions();
+  resourceCrud.startCreate("backends");
+}
 
-let searchDebounceTimer = null;
-let searchRequestSeq = 0;
+function startEditBackend(id) {
+  renderProxyOptions();
+  resourceCrud.startEdit("backends", id);
+}
+
+function resetBackendForm() {
+  resourceCrud.reset("backends");
+  renderProxyOptions();
+}
+const startCreateClient = () => resourceCrud.startCreate("clients");
+const startEditClient = (id) => resourceCrud.startEdit("clients", id);
+const resetClientForm = () => resourceCrud.reset("clients");
+const startCreatePolicy = () => resourceCrud.startCreate("policies");
+const startEditPolicy = (id) => resourceCrud.startEdit("policies", id);
+const resetPolicyForm = () => resourceCrud.reset("policies");
+
+function renderProxyOptions() {
+  return ResourceDataRuntimeUtils.renderProxyOptions({
+    backendForm,
+    state,
+    displayUtils: DisplayUtils,
+  });
+}
+
+function pageIDFromHash() {
+  return ShellRuntimeUtils.pageIDFromHash({
+    windowObject: window,
+    pages,
+    shellViewUtils: ShellViewUtils,
+  });
+}
+
+function activatePage(id) {
+  return ShellRuntimeUtils.activatePage({
+    id,
+    pages,
+    pageLinks,
+    pageTitle,
+    pageBreadcrumb,
+    shellViewUtils: ShellViewUtils,
+  });
+}
+
+function navigateToPage(id) {
+  return ShellRuntimeUtils.navigateToPage({
+    id,
+    windowObject: window,
+    pages,
+    pageLinks,
+    pageTitle,
+    pageBreadcrumb,
+    shellStateUtils: ShellStateUtils,
+    shellViewUtils: ShellViewUtils,
+  });
+}
+
+function initializeThemeState() {
+  ShellRuntimeUtils.initializeThemeState({
+    state,
+    rootElement,
+    localStorage,
+    themePreferenceKey: THEME_PREFERENCE_KEY,
+    systemThemeQuery,
+    shellStateUtils: ShellStateUtils,
+    themeUtils: ThemeUtils,
+  });
+}
+
+function initializeSidebarState() {
+  ShellRuntimeUtils.initializeSidebarState({
+    appShell,
+    sidebarRoot,
+    localStorage,
+    sidebarCollapsedKey: SIDEBAR_COLLAPSED_KEY,
+    shellStateUtils: ShellStateUtils,
+  });
+}
+
+function persistThemePreference(preference) {
+  ShellRuntimeUtils.persistThemePreference({
+    preference,
+    localStorage,
+    themePreferenceKey: THEME_PREFERENCE_KEY,
+    shellStateUtils: ShellStateUtils,
+  });
+}
+
+function applyResolvedTheme() {
+  ShellRuntimeUtils.applyResolvedTheme({
+    state,
+    systemThemeQuery,
+    themeUtils: ThemeUtils,
+  });
+}
+
+function buildSettingsSnapshot() {
+  return ShellRuntimeUtils.buildSettingsSnapshot({
+    shellStateUtils: ShellStateUtils,
+    localStorage,
+    adminTokenKey: ADMIN_TOKEN_KEY,
+    themePreference: state.ui.themePreference,
+    resolvedTheme: state.ui.theme,
+    appShell,
+    lastRefreshAt: state.ui.lastRefreshAt,
+    formatDateTime,
+    backends: state.backends,
+    clients: state.clients,
+    policies: state.policies,
+    proxies: state.proxies,
+    usageLogStats: state.usageLogStats,
+    usageLogMeta: state.paginationMeta.usageLogs,
+    eventSummary: state.eventSummary,
+  });
+}
+
+function renderSettings() {
+  ShellRuntimeUtils.renderSettings({
+    settingsRoot,
+    settingsUtils: SettingsUtils,
+    buildSettingsSnapshot,
+  });
+}
+
+function renderTheme() {
+  ShellRuntimeUtils.renderTheme({
+    rootElement,
+    appShell,
+    themeToggleBtn,
+    themeToggleLabel,
+    theme: state.ui.theme,
+    preference: state.ui.themePreference,
+    shellViewUtils: ShellViewUtils,
+    themeUtils: ThemeUtils,
+  });
+  renderSettings();
+  renderHeaderPanels();
+}
+
+function cycleThemePreference() {
+  const nextPreference = ShellRuntimeUtils.cycleThemePreference({
+    currentPreference: state.ui.themePreference,
+    themeUtils: ThemeUtils,
+  });
+  state.ui.themePreference = nextPreference;
+  persistThemePreference(nextPreference);
+  applyResolvedTheme();
+  renderTheme();
+}
+
+function toggleSidebarCollapsed(forceState) {
+  ShellRuntimeUtils.toggleSidebarCollapsed({
+    appShell,
+    sidebarRoot,
+    forceState,
+    localStorage,
+    sidebarCollapsedKey: SIDEBAR_COLLAPSED_KEY,
+    shellStateUtils: ShellStateUtils,
+  });
+  renderSettings();
+  renderHeaderPanels();
+}
 
 tokenInput.value = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
-applyTheme(resolveInitialTheme());
+initializeThemeState();
+initializeSidebarState();
+renderTheme();
 
 window.addEventListener("hashchange", () => {
   activatePage(pageIDFromHash());
 });
 
-window.addEventListener("keydown", (event) => {
-  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-    event.preventDefault();
-    openSearchModal();
+sidebarToggleBtn?.addEventListener("click", () => {
+  toggleSidebarCollapsed();
+});
+
+themeToggleBtn?.addEventListener("click", () => {
+  cycleThemePreference();
+});
+
+notificationMenuBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleHeaderPanel("notifications");
+});
+
+profileMenuBtn?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleHeaderPanel("profile");
+});
+
+headerPanelRoot?.addEventListener("click", (event) => {
+  const actionButton = event.target.closest("[data-header-action]");
+  if (!actionButton) {
+    event.stopPropagation();
+    return;
   }
-  if (event.key === "Escape") {
-    closeSearchModal();
-    closeDrawer();
+  event.stopPropagation();
+  handleSettingsAction(actionButton.dataset.headerAction || "")
+    .then(() => closeHeaderPanel())
+    .catch(reportError);
+});
+
+document.addEventListener("click", (event) => {
+  if (!state.ui.headerPanels.active) {
+    return;
+  }
+  if (headerPanelRoot?.contains(event.target) || notificationMenuBtn?.contains(event.target) || profileMenuBtn?.contains(event.target)) {
+    return;
+  }
+  closeHeaderPanel();
+});
+
+searchOpenBtn?.addEventListener("click", () => {
+  openSearchShell();
+});
+
+searchOpenBtn?.addEventListener("input", (event) => {
+  updateSearchQuery(String(event.currentTarget.value || ""));
+  if (!state.ui.search.open) {
+    openSearchShell();
+  }
+  renderSearchShell();
+});
+
+searchOpenBtn?.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") {
+    return;
+  }
+  event.preventDefault();
+  openSearchShell();
+});
+
+searchCloseBtn?.addEventListener("click", () => {
+  closeSearchShell();
+});
+
+searchModalRoot?.addEventListener("click", (event) => {
+  if (event.target === searchModalRoot) {
+    closeSearchShell();
   }
 });
+
+searchInput?.addEventListener("input", (event) => {
+  updateSearchQuery(String(event.currentTarget.value || ""));
+  renderSearchShell();
+});
+
+searchInput?.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    moveSearchSelection(1);
+    return;
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    moveSearchSelection(-1);
+    return;
+  }
+  if (event.key === "Enter") {
+    const keyboardState = currentSearchKeyboardState();
+    if (!keyboardState.activeItem) {
+      return;
+    }
+    event.preventDefault();
+    navigateToSearchResult({
+      group: keyboardState.activeItem.groupKey,
+      kind: keyboardState.activeItem.kind || "",
+      title: keyboardState.activeItem.title || "",
+      targetPage: keyboardState.activeItem.targetPage || "",
+      targetId: keyboardState.activeItem.targetId || "",
+    });
+  }
+});
+
+settingsRoot?.addEventListener("click", (event) => {
+  const actionButton = event.target.closest("[data-settings-action]");
+  if (!actionButton) {
+    return;
+  }
+  handleSettingsAction(actionButton.dataset.settingsAction || "").catch(reportError);
+});
+
+searchResultsRoot?.addEventListener("click", (event) => {
+  const target = event.target.closest("[data-search-result]");
+  if (!target) {
+    return;
+  }
+
+  const group = target.dataset.searchGroup || "";
+  const kind = target.dataset.searchKind || "";
+  const title = target.dataset.searchTitle || "";
+  const targetPage = target.dataset.searchPage || "";
+  const targetID = target.dataset.searchId || "";
+  navigateToSearchResult({ group, kind, title, targetPage, targetId: targetID });
+});
+
+drawerCloseBtn?.addEventListener("click", () => {
+  closeDrawerShell();
+});
+
+drawerRoot?.addEventListener("click", (event) => {
+  if (event.target === drawerRoot) {
+    closeDrawerShell();
+  }
+});
+
+async function saveAdminToken() {
+  const token = tokenInput.value.trim();
+  if (token) {
+    localStorage.setItem(ADMIN_TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(ADMIN_TOKEN_KEY);
+  }
+  renderSettings();
+  renderHeaderPanels();
+  return refreshAll();
+}
 
 saveTokenBtn.addEventListener("click", () => {
-  localStorage.setItem(ADMIN_TOKEN_KEY, tokenInput.value.trim());
-});
-
-globalSearchBtn.addEventListener("click", () => {
-  openSearchModal();
-});
-
-themeToggleBtn.addEventListener("click", () => {
-  const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  applyTheme(nextTheme);
+  saveAdminToken().catch(reportError);
 });
 
 refreshBtn.addEventListener("click", () => {
   refreshAll().catch(reportError);
-});
-
-usageChartTabs.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-chart-mode]");
-  if (!button) {
-    return;
-  }
-  state.ui.usageChartMode = button.dataset.chartMode || "requests";
-  renderUsageChart();
-});
-
-searchModalCloseBtn.addEventListener("click", () => {
-  closeSearchModal();
-});
-
-searchModal.addEventListener("click", (event) => {
-  if (event.target === searchModal) {
-    closeSearchModal();
-  }
-});
-
-searchInput.addEventListener("input", () => {
-  state.ui.search.query = searchInput.value;
-  scheduleSearch();
-});
-
-searchResults.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-search-result]");
-  if (!button) {
-    return;
-  }
-  closeSearchModal();
-  openSearchResultDetail(button.dataset.searchType, button.dataset.searchId).catch(reportError);
-});
-
-drawerCloseBtn.addEventListener("click", () => {
-  closeDrawer();
 });
 
 addProxyBtn.addEventListener("click", () => {
@@ -299,6 +929,22 @@ resetUsageLogFiltersBtn.addEventListener("click", () => {
   resetUsageLogFilters().catch(reportError);
 });
 
+refreshUsageLogsBtn?.addEventListener("click", () => {
+  refreshUsageLogs().catch(reportError);
+});
+
+applyEventFiltersBtn?.addEventListener("click", () => {
+  applyEventFilters().catch(reportError);
+});
+
+resetEventFiltersBtn?.addEventListener("click", () => {
+  resetEventFilters().catch(reportError);
+});
+
+refreshEventsBtn?.addEventListener("click", () => {
+  refreshEvents().catch(reportError);
+});
+
 clearUsageLogsBtn.addEventListener("click", () => {
   clearUsageLogs().catch(reportError);
 });
@@ -307,11 +953,67 @@ deleteUsageLogsBtn.addEventListener("click", () => {
   deleteFilteredUsageLogs().catch(reportError);
 });
 
-[usageLogBackendFilter, usageLogModelFilter, usageLogClientKeyFilter].forEach((input) => {
-  input.addEventListener("keydown", (event) => {
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Tab") {
+    if (state.ui.search.open && trapFocusWithin(searchModalRoot, event)) {
+      return;
+    }
+    if (state.ui.drawer.open && trapFocusWithin(drawerRoot, event)) {
+      return;
+    }
+  }
+
+  if (typeof SearchUtils.isSearchShortcut === "function" && SearchUtils.isSearchShortcut(event)) {
+    event.preventDefault();
+    openSearchShell();
+    return;
+  }
+
+  if (typeof SearchUtils.isSearchDismissKey === "function" && SearchUtils.isSearchDismissKey(event)) {
+    if (state.ui.headerPanels.active) {
+      event.preventDefault();
+      closeHeaderPanel();
+      return;
+    }
+    if (state.ui.search.open) {
+      event.preventDefault();
+      closeSearchShell();
+      return;
+    }
+    if (state.ui.drawer.open) {
+      closeDrawerShell();
+    }
+  }
+});
+
+if (systemThemeQuery) {
+  const handleSystemThemeChange = () => {
+    if (state.ui.themePreference === "system") {
+      applyResolvedTheme();
+      renderTheme();
+    }
+  };
+  if (typeof systemThemeQuery.addEventListener === "function") {
+    systemThemeQuery.addEventListener("change", handleSystemThemeChange);
+  } else if (typeof systemThemeQuery.addListener === "function") {
+    systemThemeQuery.addListener(handleSystemThemeChange);
+  }
+}
+
+[usageLogQueryFilter, usageLogDateFromFilter, usageLogDateToFilter, usageLogBackendFilter, usageLogModelFilter, usageLogClientKeyFilter, usageLogPolicyFilter, usageLogProxyFilter, usageLogStatusFilter].forEach((input) => {
+  input?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
       applyUsageLogFilters().catch(reportError);
+    }
+  });
+});
+
+[eventQueryFilter, eventActorFilter, eventBackendFilter, eventCategoryFilter, eventSeverityFilter, eventDateFromFilter, eventDateToFilter].forEach((input) => {
+  input?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      applyEventFilters().catch(reportError);
     }
   });
 });
@@ -399,1840 +1101,896 @@ policyForm.addEventListener("submit", async (event) => {
 });
 
 async function refreshAll() {
-  const proxyPage = state.pagination.proxies;
-  const backendPage = state.pagination.backends;
-  const clientPage = state.pagination.clients;
-  const policyPage = state.pagination.policies;
-  const eventPage = state.pagination.events;
-  const usageLogPage = state.pagination.usageLogs;
-  const usageLogQuery = buildUsageLogQuery();
-  const [overview, proxies, backends, clients, policies, events, usageLogs, usageLogOptions, dashboardSummary, dashboardUsage, dashboardActivity] = await Promise.all([
-    api("/admin/api/overview"),
-    api(`/admin/api/socks-proxies?page=${proxyPage.page}&limit=${proxyPage.size}`),
-    api(`/admin/api/backends?page=${backendPage.page}&limit=${backendPage.size}`),
-    api(`/admin/api/client-keys?page=${clientPage.page}&limit=${clientPage.size}`),
-    api(`/admin/api/model-policies?page=${policyPage.page}&limit=${policyPage.size}`),
-    api(`/admin/api/events?page=${eventPage.page}&limit=${eventPage.size}`),
-    api(`/admin/api/usage-logs?page=${usageLogPage.page}&limit=${usageLogPage.size}${usageLogQuery}`),
-    api("/admin/api/usage-log-options"),
-    api("/admin/api/dashboard/summary"),
-    api("/admin/api/dashboard/usage?range=7d"),
-    api("/admin/api/dashboard/activity"),
-  ]);
-
-  overview.backends = ensureArray(overview.backends);
-  overview.events = ensureArray(overview.events);
-  applyPagedResponse("proxies", proxies);
-  applyPagedResponse("backends", backends);
-  applyPagedResponse("clients", clients);
-  applyPagedResponse("policies", policies);
-  applyPagedResponse("events", events);
-  applyPagedResponse("usageLogs", usageLogs);
-  state.usageLogOptions.backends = ensureArray(usageLogOptions?.backends);
-  state.usageLogOptions.models = ensureArray(usageLogOptions?.models);
-  state.usageLogOptions.clientKeys = ensureArray(usageLogOptions?.client_keys);
-  state.dashboard.summary = dashboardSummary || null;
-  state.dashboard.usage = dashboardUsage || null;
-  state.dashboard.activity = dashboardActivity || null;
-
-  renderStats(overview);
-  renderProxyOptions();
-  renderUsageLogFilterOptions();
-  renderProxies();
-  renderBackends();
-  renderClients();
-  renderPolicies();
-  renderEvents();
-  renderUsageLogs();
-  renderDashboardPanels(overview);
-  renderSearchResults();
+  if (!buildSettingsSnapshot().adminTokenPresent) {
+    renderSettings();
+    renderHeaderPanels();
+    return null;
+  }
+  const result = await ConsoleDataRuntimeUtils.refreshAll({
+    state,
+    startDashboardLoading,
+    renderDashboardShell,
+    refreshDashboardData,
+    reportError,
+    buildUsageLogQuery,
+    buildEventQuery,
+    buildEventSummaryQuery,
+    buildUsageLogStatsQuery,
+    fetchAllCollectionPages,
+    api,
+    displayUtils: DisplayUtils,
+    paginationUtils: PaginationUtils,
+    resourceStateUtils: ResourceStateUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    renderProxyOptions,
+    renderUsageLogFilterOptions,
+    renderProxies,
+    renderBackends,
+    renderClients,
+    renderPolicies,
+    renderEvents,
+    renderUsageLogs,
+    renderDrawerShell,
+    renderSearchShell,
+    renderTheme,
+  });
+  renderHeaderPanels();
+  return result;
 }
 
 function buildUsageLogQuery() {
-  const params = new URLSearchParams();
-  if (state.usageLogFilters.backend) {
-    params.set("backend", state.usageLogFilters.backend);
-  }
-  if (state.usageLogFilters.model) {
-    params.set("model", state.usageLogFilters.model);
-  }
-  if (state.usageLogFilters.clientKey) {
-    params.set("client_key", state.usageLogFilters.clientKey);
-  }
-  const query = params.toString();
-  return query ? `&${query}` : "";
+  return ObservabilityRuntimeUtils.buildUsageLogQuery({
+    state,
+    observabilityUtils: ObservabilityUtils,
+  });
+}
+
+function buildUsageLogStatsQuery() {
+  return ObservabilityRuntimeUtils.buildUsageLogStatsQuery({
+    state,
+    observabilityUtils: ObservabilityUtils,
+  });
+}
+
+function buildEventQuery() {
+  return ObservabilityRuntimeUtils.buildEventQuery({
+    state,
+    observabilityUtils: ObservabilityUtils,
+  });
+}
+
+function buildEventSummaryQuery() {
+  return ObservabilityRuntimeUtils.buildEventSummaryQuery({
+    state,
+    observabilityUtils: ObservabilityUtils,
+  });
+}
+
+function syncEventFilterInputs() {
+  ObservabilityRuntimeUtils.syncEventFilterInputs({
+    state,
+    eventQueryFilter,
+    eventActorFilter,
+    eventBackendFilter,
+    eventCategoryFilter,
+    eventSeverityFilter,
+    eventDateFromFilter,
+    eventDateToFilter,
+  });
+}
+
+async function applyEventFilters() {
+  await ObservabilityRuntimeUtils.applyEventFilters({
+    state,
+    refreshAll,
+    eventQueryFilter,
+    eventActorFilter,
+    eventBackendFilter,
+    eventCategoryFilter,
+    eventSeverityFilter,
+    eventDateFromFilter,
+    eventDateToFilter,
+  });
+}
+
+async function resetEventFilters() {
+  await ObservabilityRuntimeUtils.resetEventFilters({
+    state,
+    refreshAll,
+    eventQueryFilter,
+    eventActorFilter,
+    eventBackendFilter,
+    eventCategoryFilter,
+    eventSeverityFilter,
+    eventDateFromFilter,
+    eventDateToFilter,
+  });
+}
+
+async function refreshEvents() {
+  await ObservabilityRuntimeUtils.refreshEvents({ refreshAll });
 }
 
 function syncUsageLogFilterInputs() {
-  usageLogBackendFilter.value = state.usageLogFilters.backend;
-  usageLogModelFilter.value = state.usageLogFilters.model;
-  usageLogClientKeyFilter.value = state.usageLogFilters.clientKey;
+  ObservabilityRuntimeUtils.syncUsageLogFilterInputs({
+    state,
+    usageLogQueryFilter,
+    usageLogDateFromFilter,
+    usageLogDateToFilter,
+    usageLogBackendFilter,
+    usageLogModelFilter,
+    usageLogClientKeyFilter,
+    usageLogPolicyFilter,
+    usageLogProxyFilter,
+    usageLogStatusFilter,
+  });
 }
 
 async function applyUsageLogFilters() {
-  state.usageLogFilters.backend = String(usageLogBackendFilter.value || "").trim();
-  state.usageLogFilters.model = String(usageLogModelFilter.value || "").trim();
-  state.usageLogFilters.clientKey = String(usageLogClientKeyFilter.value || "").trim();
-  state.pagination.usageLogs.page = 1;
-  await refreshAll();
+  await ObservabilityRuntimeUtils.applyUsageLogFilters({
+    state,
+    refreshAll,
+    usageLogQueryFilter,
+    usageLogDateFromFilter,
+    usageLogDateToFilter,
+    usageLogBackendFilter,
+    usageLogModelFilter,
+    usageLogClientKeyFilter,
+    usageLogPolicyFilter,
+    usageLogProxyFilter,
+    usageLogStatusFilter,
+  });
 }
 
 async function resetUsageLogFilters() {
-  state.usageLogFilters.backend = "";
-  state.usageLogFilters.model = "";
-  state.usageLogFilters.clientKey = "";
-  syncUsageLogFilterInputs();
-  state.pagination.usageLogs.page = 1;
-  await refreshAll();
+  await ObservabilityRuntimeUtils.resetUsageLogFilters({
+    state,
+    refreshAll,
+    usageLogQueryFilter,
+    usageLogDateFromFilter,
+    usageLogDateToFilter,
+    usageLogBackendFilter,
+    usageLogModelFilter,
+    usageLogClientKeyFilter,
+    usageLogPolicyFilter,
+    usageLogProxyFilter,
+    usageLogStatusFilter,
+  });
+}
+
+async function refreshUsageLogs() {
+  await ObservabilityRuntimeUtils.refreshUsageLogs({ refreshAll });
 }
 
 async function clearUsageLogs() {
-  if (!confirm("确认清空所有使用日志？")) {
-    return;
-  }
-  await api("/admin/api/usage-logs", "DELETE");
-  state.pagination.usageLogs.page = 1;
-  await refreshAll();
+  await ObservabilityRuntimeUtils.clearUsageLogs({
+    state,
+    confirm,
+    alert,
+    api,
+    refreshAll,
+  });
 }
 
 async function deleteFilteredUsageLogs() {
-  if (!state.usageLogFilters.backend && !state.usageLogFilters.model && !state.usageLogFilters.clientKey) {
-    throw new Error("请先设置查询条件，再删除查询结果");
-  }
-  if (!confirm("确认删除当前查询条件命中的使用日志？")) {
-    return;
-  }
-  await api(`/admin/api/usage-logs?${buildUsageLogDeleteQuery()}`, "DELETE");
-  state.pagination.usageLogs.page = 1;
-  await refreshAll();
+  await ObservabilityRuntimeUtils.deleteFilteredUsageLogs({
+    state,
+    observabilityUtils: ObservabilityUtils,
+    confirm,
+    alert,
+    api,
+    refreshAll,
+  });
 }
 
 function buildUsageLogDeleteQuery() {
-  const params = new URLSearchParams();
-  if (state.usageLogFilters.backend) {
-    params.set("backend", state.usageLogFilters.backend);
-  }
-  if (state.usageLogFilters.model) {
-    params.set("model", state.usageLogFilters.model);
-  }
-  if (state.usageLogFilters.clientKey) {
-    params.set("client_key", state.usageLogFilters.clientKey);
-  }
-  return params.toString();
+  return buildUsageLogStatsQuery();
 }
 
 function renderUsageLogFilterOptions() {
-  renderDatalist(usageLogBackendOptions, state.usageLogOptions.backends);
-  renderDatalist(usageLogModelOptions, state.usageLogOptions.models);
-  renderDatalist(usageLogClientKeyOptions, state.usageLogOptions.clientKeys);
+  ObservabilityRuntimeUtils.renderUsageLogFilterOptions({
+    state,
+    displayUtils: DisplayUtils,
+    usageLogBackendOptions,
+    usageLogModelOptions,
+    usageLogClientKeyOptions,
+    usageLogPolicyOptions,
+    usageLogProxyOptions,
+  });
 }
 
-function renderStats(overview) {
-  const dashboardCards = normalizedDashboardCards(overview);
-  const backendCard = dashboardCards.backends;
-  const clientCard = dashboardCards.client_keys;
-  const policyCard = dashboardCards.policies;
-  const proxyCard = dashboardCards.proxies;
-  stats.innerHTML = `
-    <article class="metric-card">
-      <strong>${backendCard.count}</strong>
-      <span>Backends</span>
-      <span class="metric-copy">${escapeHTML(formatBackendCardCopy(backendCard))}</span>
-    </article>
-    <article class="metric-card">
-      <strong>${clientCard.count}</strong>
-      <span>Client Keys</span>
-      <span class="metric-copy">当前可管理的客户端身份数量。</span>
-    </article>
-    <article class="metric-card">
-      <strong>${policyCard.count}</strong>
-      <span>Policies</span>
-      <span class="metric-copy">正在生效的模型调度规则数量。</span>
-    </article>
-    <article class="metric-card">
-      <strong>${proxyCard.count}</strong>
-      <span>Proxies</span>
-      <span class="metric-copy">可被 Backend 绑定的出口代理数量。</span>
-    </article>
-  `;
+async function refreshDashboardData() {
+  return ConsoleDataRuntimeUtils.refreshDashboardData({
+    state,
+    api,
+    dashboardUtils: DashboardUtils,
+    renderDashboardShell,
+  });
 }
 
-function normalizedDashboardCards(overview) {
-  const cards = state.dashboard.summary?.cards || {};
-  return {
-    backends: normalizedDashboardCard(cards.backends, {
-      count: ensureArray(overview?.backends).length,
-      enabled: ensureArray(overview?.backends).filter((backend) => backend.enabled).length,
-    }),
-    client_keys: normalizedDashboardCard(cards.client_keys, {
-      count: Number(overview?.client_keys) || 0,
-    }),
-    policies: normalizedDashboardCard(cards.policies, {
-      count: Number(overview?.model_policies) || 0,
-    }),
-    proxies: normalizedDashboardCard(cards.proxies, {
-      count: Number(overview?.socks_proxies) || 0,
-    }),
-  };
+function startDashboardLoading() {
+  DashboardRuntimeUtils.startDashboardLoading({ state });
 }
 
-function normalizedDashboardCard(card, fallback) {
-  const count = asFiniteNumber(card?.count);
-  const enabled = asFiniteNumber(card?.enabled);
-  return {
-    count: count !== null ? count : asFiniteNumber(fallback?.count) || 0,
-    enabled: enabled !== null ? enabled : asFiniteNumber(fallback?.enabled) || 0,
-    successes: asFiniteNumber(card?.successes) || 0,
-    failures: asFiniteNumber(card?.failures) || 0,
-  };
+async function handleSettingsAction(action) {
+  return ConsoleDataRuntimeUtils.handleSettingsAction({
+    action,
+    tokenInput,
+    refreshAll,
+    cycleThemePreference,
+    toggleSidebarCollapsed,
+    openSearchShell,
+    navigateToPage,
+  });
 }
 
-function formatBackendCardCopy(card) {
-  const enabledText = card.enabled > 0 ? `${card.enabled} enabled` : "0 enabled";
-  const successText = `${card.successes} ok`;
-  const failureText = `${card.failures} fail`;
-  return `${enabledText} · ${successText} / ${failureText}`;
-}
-
-function asFiniteNumber(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
-
-function pageIDFromHash() {
-  const id = window.location.hash.slice(1);
-  return pages.some((page) => page.id === id) ? id : "overview";
-}
-
-function activatePage(id) {
-  const nextID = pages.some((page) => page.id === id) ? id : "overview";
-  for (const page of pages) {
-    page.classList.toggle("active", page.id === nextID);
-  }
-  for (const link of pageLinks) {
-    link.classList.toggle("active", link.dataset.pageLink === nextID);
-  }
-
-  const activePage = pages.find((page) => page.id === nextID);
-  if (activePage) {
-    pageTitle.textContent = activePage.dataset.pageTitle || "Token Gate - AI Proxy Center";
-    pageBreadcrumb.textContent = activePage.dataset.pageBreadcrumb || "Dashboard";
-  }
-}
-
-function renderProxies() {
-  const proxies = state.proxies;
-  if (proxies.length === 0) {
-    proxyList.innerHTML = emptyState(
-      "还没有 SOCKS5 Proxy",
-      "如果某些 Backend 需要固定出口代理，先在这里添加 SOCKS5 节点，再回到 Backend 里绑定。",
-    );
+function renderDashboardShell() {
+  if (!dashboardRoot) {
     return;
   }
-  const pageData = currentPageData("proxies", proxies);
-
-  proxyList.innerHTML = `
-    <div class="table-shell">
-      <table class="resource-table">
-        <thead>
-          <tr>
-            <th>Proxy</th>
-            <th>Status</th>
-            <th>Address</th>
-            <th>Auth</th>
-            <th>Updated</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${pageData.items.map(renderProxyRow).join("")}
-        </tbody>
-      </table>
-    </div>
-    ${renderPagination("proxies", pageData)}
-  `;
-
-  proxyList.querySelectorAll("[data-toggle-proxy]").forEach((button) => {
-    button.addEventListener("click", () => {
-      toggleExpanded(state.expandedProxies, button.dataset.toggleProxy);
-      renderProxies();
-    });
+  const panels = DashboardRuntimeUtils.renderDashboardPanels({
+    dashboard: state.dashboard,
+    dashboardUtils: DashboardUtils,
+    dashboardViewUtils: DashboardViewUtils,
+    renderSparkline(values, options) {
+      return DashboardViewUtils.renderSparkline(values, options, ChartsUtils);
+    },
+    renderAreaChart(values, labels, options) {
+      return DashboardViewUtils.renderAreaChart(values, labels, options, ChartsUtils);
+    },
+    formatDateTime,
+    feedToneClass,
+    escapeHTML,
   });
-
-  proxyList.querySelectorAll("[data-edit-proxy]").forEach((button) => {
-    button.addEventListener("click", () => {
-      startEditProxy(button.dataset.editProxy);
-    });
+  DashboardRuntimeUtils.renderDashboardShell({
+    state,
+    dashboardRoot,
+    dashboardSummaryRow,
+    dashboardUsageCard,
+    dashboardEventsSummaryCard,
+    dashboardRecentEventsCard,
+    dashboardRecentUsageCard,
+    renderSummaryRow() {
+      return panels.summary;
+    },
+    renderUsageCard() {
+      return panels.usage;
+    },
+    renderEventsSummaryCard() {
+      return panels.eventsSummary;
+    },
+    renderRecentEventsCard() {
+      return panels.recentEvents;
+    },
+    renderRecentUsageCard() {
+      return panels.recentUsage;
+    },
+    bindInteractions: bindDashboardInteractions,
   });
-
-  proxyList.querySelectorAll("[data-delete-proxy]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      try {
-        if (!confirm("确认删除这个 SOCKS5 Proxy？已绑定的 Backend 会自动改为直连。")) {
-          return;
-        }
-        await api(`/admin/api/socks-proxies/${button.dataset.deleteProxy}`, "DELETE");
-        if (String(state.editingProxyID) === button.dataset.deleteProxy) {
-          resetProxyForm();
-        }
-        state.expandedProxies.delete(button.dataset.deleteProxy);
-        await refreshAll();
-      } catch (error) {
-        reportError(error);
-      }
-    });
-  });
-
-  bindPagination(proxyList, "proxies", refreshAll);
 }
 
-function renderBackends() {
-  const backends = state.backends;
-  if (backends.length === 0) {
-    backendList.innerHTML = emptyState(
-      "还没有 Backend",
-      "先配置至少一个 OpenAI 或 Claude/Anthropic 上游节点，之后模型路由和故障切换才会生效。",
-    );
+function renderDrawerShell() {
+  return DrawerRuntimeUtils.renderDrawerShell({
+    state,
+    drawerRoot,
+    drawerTitle,
+    drawerTabRoot,
+    drawerBodyRoot,
+    drawerFooterRoot,
+    drawerUtils: DrawerUtils,
+    drawerViewUtils: DrawerViewUtils,
+    escapeHTML,
+    formatDateTime,
+    openDrawerEditor,
+    deleteDrawerResource,
+    reportError,
+    rerender: renderDrawerShell,
+  });
+}
+
+function closeDrawerShell() {
+  return DrawerRuntimeUtils.closeDrawerShell({
+    state,
+    renderDrawerShell,
+    HTMLElementClass: HTMLElement,
+  });
+}
+
+function renderSearchShell() {
+  if (!searchModalRoot) {
     return;
   }
-  const pageData = currentPageData("backends", backends);
-
-  backendList.innerHTML = `
-    <div class="table-shell">
-      <table class="resource-table">
-        <thead>
-          <tr>
-            <th>Backend</th>
-            <th>Status</th>
-            <th>Protocol</th>
-            <th>Pool</th>
-            <th>Proxy</th>
-            <th>Models</th>
-            <th>Recent 30m</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${pageData.items.map(renderBackendRow).join("")}
-        </tbody>
-      </table>
-    </div>
-    ${renderPagination("backends", pageData)}
-  `;
-
-  backendList.querySelectorAll("[data-toggle-backend]").forEach((button) => {
-    button.addEventListener("click", () => {
-      toggleExpanded(state.expandedBackends, button.dataset.toggleBackend);
-      renderBackends();
-    });
+  ShellViewUtils.renderSearchShellView({
+    searchModalRoot,
+    searchOpenBtn,
+    searchInput,
+    searchResultsRoot,
+    isOpen: Boolean(state.ui.search.open),
+    query: state.ui.search.query,
+    resultsMarkup: renderSearchResults(),
   });
-
-  backendList.querySelectorAll("[data-edit-backend]").forEach((button) => {
-    button.addEventListener("click", () => {
-      startEditBackend(button.dataset.editBackend);
-    });
-  });
-
-  backendList.querySelectorAll("[data-delete-backend]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      try {
-        if (!confirm("确认删除这个 Backend？")) {
-          return;
-        }
-        await api(`/admin/api/backends/${button.dataset.deleteBackend}`, "DELETE");
-        if (String(state.editingBackendID) === button.dataset.deleteBackend) {
-          resetBackendForm();
-        }
-        state.expandedBackends.delete(button.dataset.deleteBackend);
-        await refreshAll();
-      } catch (error) {
-        reportError(error);
-      }
-    });
-  });
-
-  bindPagination(backendList, "backends", refreshAll);
 }
 
-function renderClients() {
-  const clients = state.clients;
-  if (clients.length === 0) {
-    clientList.innerHTML = emptyState(
-      "还没有 Client Key",
-      "创建一个客户端 key 后，外部 SDK 或 AI 客户端才能通过 Token Gate 访问后端模型。",
-    );
-    return;
+function currentHeaderPanelViewModel() {
+  return typeof ShellStateUtils.createHeaderPanelViewModel === "function"
+    ? ShellStateUtils.createHeaderPanelViewModel({
+      activePanel: state.ui.headerPanels.active,
+      dashboard: state.dashboard,
+      ui: {
+        ...state.ui,
+        lastRefreshAt: state.ui.lastRefreshAt ? formatDateTime(state.ui.lastRefreshAt) : "",
+      },
+    })
+    : { activePanel: state.ui.headerPanels.active };
+}
+
+function renderHeaderPanels() {
+  return ShellRuntimeUtils.renderHeaderPanels({
+    headerPanelRoot,
+    notificationMenuBtn,
+    profileMenuBtn,
+    shellViewUtils: ShellViewUtils,
+    viewModel: currentHeaderPanelViewModel(),
+  });
+}
+
+function toggleHeaderPanel(panel) {
+  return ShellRuntimeUtils.toggleHeaderPanel({
+    state,
+    panel,
+    renderHeaderPanels,
+  });
+}
+
+function closeHeaderPanel() {
+  return ShellRuntimeUtils.closeHeaderPanel({
+    state,
+    renderHeaderPanels,
+  });
+}
+
+function bindDashboardInteractions() {
+  return DashboardRuntimeUtils.bindDashboardInteractions({
+    dashboardRoot,
+    state,
+    renderDashboardShell,
+    refreshDashboardUsagePanel,
+    retryDashboardSection,
+    reportError,
+  });
+}
+
+async function refreshDashboardUsagePanel() {
+  return DashboardRuntimeUtils.refreshDashboardUsagePanel({
+    state,
+    api,
+    dashboardUtils: DashboardUtils,
+    renderDashboardShell,
+  });
+}
+
+async function retryDashboardSection(target) {
+  return DashboardRuntimeUtils.retryDashboardSection({
+    target,
+    state,
+    api,
+    dashboardUtils: DashboardUtils,
+    startDashboardLoading,
+    renderDashboardShell,
+    refreshDashboardData,
+  });
+}
+
+function feedToneClass(tone) {
+  if (tone === "danger") {
+    return "off";
   }
-  const pageData = currentPageData("clients", clients);
-
-  clientList.innerHTML = `
-    <div class="table-shell">
-      <table class="resource-table">
-        <thead>
-          <tr>
-            <th>Client</th>
-            <th>Status</th>
-            <th>Client Key</th>
-            <th>Route Mode</th>
-            <th>Route Group</th>
-            <th>Updated</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${pageData.items.map(renderClientRow).join("")}
-        </tbody>
-      </table>
-    </div>
-    ${renderPagination("clients", pageData)}
-  `;
-
-  clientList.querySelectorAll("[data-toggle-client]").forEach((button) => {
-    button.addEventListener("click", () => {
-      toggleExpanded(state.expandedClients, button.dataset.toggleClient);
-      renderClients();
-    });
-  });
-
-  clientList.querySelectorAll("[data-edit-client]").forEach((button) => {
-    button.addEventListener("click", () => {
-      startEditClient(button.dataset.editClient);
-    });
-  });
-
-  clientList.querySelectorAll("[data-delete-client]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      try {
-        if (!confirm("确认删除这个 Client Key？")) {
-          return;
-        }
-        await api(`/admin/api/client-keys/${button.dataset.deleteClient}`, "DELETE");
-        if (String(state.editingClientID) === button.dataset.deleteClient) {
-          resetClientForm();
-        }
-        state.expandedClients.delete(button.dataset.deleteClient);
-        await refreshAll();
-      } catch (error) {
-        reportError(error);
-      }
-    });
-  });
-
-  bindPagination(clientList, "clients", refreshAll);
-}
-
-function renderPolicies() {
-  const policies = state.policies;
-  if (policies.length === 0) {
-    policyList.innerHTML = emptyState(
-      "还没有 Model Policy",
-      "定义模型模式、端点和 placement 策略后，路由行为才会按业务意图收敛。",
-    );
-    return;
+  if (tone === "warning") {
+    return "";
   }
-  const pageData = currentPageData("policies", policies);
-
-  policyList.innerHTML = `
-    <div class="table-shell">
-      <table class="resource-table">
-        <thead>
-          <tr>
-            <th>Pattern</th>
-            <th>Endpoint</th>
-            <th>Placement</th>
-            <th>Pool</th>
-            <th>Priority</th>
-            <th>Failover</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${pageData.items.map(renderPolicyRow).join("")}
-        </tbody>
-      </table>
-    </div>
-    ${renderPagination("policies", pageData)}
-  `;
-
-  policyList.querySelectorAll("[data-toggle-policy]").forEach((button) => {
-    button.addEventListener("click", () => {
-      toggleExpanded(state.expandedPolicies, button.dataset.togglePolicy);
-      renderPolicies();
-    });
-  });
-
-  policyList.querySelectorAll("[data-edit-policy]").forEach((button) => {
-    button.addEventListener("click", () => {
-      startEditPolicy(button.dataset.editPolicy);
-    });
-  });
-
-  policyList.querySelectorAll("[data-delete-policy]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      try {
-        if (!confirm("确认删除这个 Model Policy？")) {
-          return;
-        }
-        await api(`/admin/api/model-policies/${button.dataset.deletePolicy}`, "DELETE");
-        if (String(state.editingPolicyID) === button.dataset.deletePolicy) {
-          resetPolicyForm();
-        }
-        state.expandedPolicies.delete(button.dataset.deletePolicy);
-        await refreshAll();
-      } catch (error) {
-        reportError(error);
-      }
-    });
-  });
-
-  bindPagination(policyList, "policies", refreshAll);
+  return "ok";
 }
 
-function renderProxyRow(proxy) {
-  const id = String(proxy.id);
-  const expanded = state.expandedProxies.has(id);
-  const editing = String(state.editingProxyID) === id;
-  return `
-    <tr class="${editing ? "is-editing" : ""}">
-      <td>
-        <button class="row-title" data-toggle-proxy="${proxy.id}" type="button">
-          <span class="chevron">${expanded ? "收起" : "展开"}</span>
-          <span>${escapeHTML(proxy.name)}</span>
-        </button>
-      </td>
-      <td>${statusPill(proxy.enabled, "enabled", "disabled")}</td>
-      <td><span class="secret-text">${escapeHTML(proxy.address)}</span></td>
-      <td>${escapeHTML(proxy.username ? `user: ${proxy.username}` : "none")}</td>
-      <td>${escapeHTML(formatDateTime(proxy.updated_at))}</td>
-      <td>${tableActions("proxy", proxy.id)}</td>
-    </tr>
-    ${expanded ? `
-      <tr class="detail-row">
-        <td colspan="6">
-          <div class="detail-panel">
-            <div class="detail-grid">
-              <div><strong>Name</strong><span>${escapeHTML(proxy.name)}</span></div>
-              <div><strong>Address</strong><span>${escapeHTML(proxy.address)}</span></div>
-              <div><strong>Username</strong><span>${escapeHTML(proxy.username || "-")}</span></div>
-              <div><strong>Password</strong><span>${escapeHTML(proxy.password || "-")}</span></div>
-              <div><strong>Created</strong><span>${escapeHTML(formatDateTime(proxy.created_at))}</span></div>
-              <div><strong>Updated</strong><span>${escapeHTML(formatDateTime(proxy.updated_at))}</span></div>
-            </div>
-          </div>
-        </td>
-      </tr>
-    ` : ""}
-  `;
-}
-
-function renderBackendRow(backend) {
-  const id = String(backend.id);
-  const expanded = state.expandedBackends.has(id);
-  const editing = String(state.editingBackendID) === id;
-  const recentStats = backend.recent_stats || {};
-  return `
-    <tr class="${editing ? "is-editing" : ""}">
-      <td>
-        <button class="row-title" data-toggle-backend="${backend.id}" type="button">
-          <span class="chevron">${expanded ? "收起" : "展开"}</span>
-          <span>${escapeHTML(backend.name)}</span>
-        </button>
-        <div class="cell-subtitle">${escapeHTML(backend.base_url)}</div>
-      </td>
-      <td>${statusPill(backend.enabled, "enabled", "disabled")}</td>
-      <td>${escapeHTML(backendProtocolLabel(backend.protocol))}</td>
-      <td>${escapeHTML(backend.pool || "-")}</td>
-      <td>${escapeHTML(proxyLabel(backend.proxy_id, backend.proxy))}</td>
-      <td>${compactList(backend.models)}</td>
-      <td>${escapeHTML(formatBackendRecentStats(recentStats))}</td>
-      <td>${tableActions("backend", backend.id)}</td>
-    </tr>
-    ${expanded ? `
-      <tr class="detail-row">
-        <td colspan="8">
-          <div class="detail-panel">
-            <div class="detail-grid">
-              <div><strong>Protocol</strong><span>${escapeHTML(backendProtocolLabel(backend.protocol))}</span></div>
-              <div><strong>Base URL</strong><span>${escapeHTML(backend.base_url)}</span></div>
-              <div><strong>API Key</strong><span>${escapeHTML(backend.api_key || "-")}</span></div>
-              <div><strong>SOCKS5 Proxy</strong><span>${escapeHTML(proxyLabel(backend.proxy_id, backend.proxy))}</span></div>
-              <div><strong>Proxy Address</strong><span>${escapeHTML(backend.proxy?.address || "-")}</span></div>
-              <div><strong>Pool</strong><span>${escapeHTML(backend.pool || "-")}</span></div>
-              <div><strong>Weight</strong><span>${backend.weight}</span></div>
-              <div><strong>Model Mapping</strong><span>${escapeHTML(formatModelMapping(backend.model_mapping))}</span></div>
-              <div><strong>Recent 30m</strong><span>${escapeHTML(formatBackendRecentStats(recentStats))}</span></div>
-              <div><strong>Created</strong><span>${escapeHTML(formatDateTime(backend.created_at))}</span></div>
-              <div><strong>Updated</strong><span>${escapeHTML(formatDateTime(backend.updated_at))}</span></div>
-            </div>
-            <div class="detail-section">
-              <strong>Models</strong>
-              <div class="chip-row">${chipList(backend.models)}</div>
-            </div>
-            <div class="detail-section">
-              <strong>Endpoints</strong>
-              <div class="chip-row">${chipList(backend.endpoints, "alt")}</div>
-            </div>
-          </div>
-        </td>
-      </tr>
-    ` : ""}
-  `;
-}
-
-function renderClientRow(client) {
-  const id = String(client.id);
-  const expanded = state.expandedClients.has(id);
-  const editing = String(state.editingClientID) === id;
-  return `
-    <tr class="${editing ? "is-editing" : ""}">
-      <td>
-        <button class="row-title" data-toggle-client="${client.id}" type="button">
-          <span class="chevron">${expanded ? "收起" : "展开"}</span>
-          <span>${escapeHTML(client.name)}</span>
-        </button>
-      </td>
-      <td>${statusPill(client.enabled, "enabled", "disabled")}</td>
-      <td><span class="secret-text">${escapeHTML(clientTokenDisplay(client))}</span></td>
-      <td>${escapeHTML(client.route_mode_override || "default")}</td>
-      <td>${escapeHTML(client.route_group || "-")}</td>
-      <td>${escapeHTML(formatDateTime(client.updated_at))}</td>
-      <td>${tableActions("client", client.id)}</td>
-    </tr>
-    ${expanded ? `
-      <tr class="detail-row">
-        <td colspan="7">
-          <div class="detail-panel">
-            <div class="detail-grid">
-              <div><strong>Name</strong><span>${escapeHTML(client.name)}</span></div>
-              <div><strong>Client Key</strong><span>${escapeHTML(clientTokenDisplay(client))}</span></div>
-              <div><strong>Token Prefix</strong><span>${escapeHTML(client.token_prefix || "-")}</span></div>
-              <div><strong>Route Override</strong><span>${escapeHTML(client.route_mode_override || "policy default")}</span></div>
-              <div><strong>Route Group</strong><span>${escapeHTML(client.route_group || "-")}</span></div>
-              <div><strong>Created</strong><span>${escapeHTML(formatDateTime(client.created_at))}</span></div>
-              <div><strong>Updated</strong><span>${escapeHTML(formatDateTime(client.updated_at))}</span></div>
-            </div>
-          </div>
-        </td>
-      </tr>
-    ` : ""}
-  `;
-}
-
-function renderPolicyRow(policy) {
-  const id = String(policy.id);
-  const expanded = state.expandedPolicies.has(id);
-  const editing = String(state.editingPolicyID) === id;
-  return `
-    <tr class="${editing ? "is-editing" : ""}">
-      <td>
-        <button class="row-title" data-toggle-policy="${policy.id}" type="button">
-          <span class="chevron">${expanded ? "收起" : "展开"}</span>
-          <span>${escapeHTML(policy.pattern)}</span>
-        </button>
-      </td>
-      <td>${escapeHTML(policy.endpoint)}</td>
-      <td><span class="chip">${escapeHTML(policy.placement_policy)}</span></td>
-      <td>${escapeHTML(policy.backend_pool || "-")}</td>
-      <td>${policy.priority}</td>
-      <td>${statusPill(policy.failover_enabled, "on", "off")}</td>
-      <td>${tableActions("policy", policy.id)}</td>
-    </tr>
-    ${expanded ? `
-      <tr class="detail-row">
-        <td colspan="7">
-          <div class="detail-panel">
-            <div class="detail-grid">
-              <div><strong>Pattern</strong><span>${escapeHTML(policy.pattern)}</span></div>
-              <div><strong>Endpoint</strong><span>${escapeHTML(policy.endpoint)}</span></div>
-              <div><strong>Placement</strong><span>${escapeHTML(policy.placement_policy)}</span></div>
-              <div><strong>Backend Pool</strong><span>${escapeHTML(policy.backend_pool || "-")}</span></div>
-              <div><strong>Priority</strong><span>${policy.priority}</span></div>
-              <div><strong>Failover</strong><span>${policy.failover_enabled ? "enabled" : "disabled"}</span></div>
-              <div><strong>Created</strong><span>${escapeHTML(formatDateTime(policy.created_at))}</span></div>
-              <div><strong>Updated</strong><span>${escapeHTML(formatDateTime(policy.updated_at))}</span></div>
-            </div>
-          </div>
-        </td>
-      </tr>
-    ` : ""}
-  `;
-}
-
-function renderEvents() {
-  const events = state.events;
-  if (events.length === 0) {
-    eventList.innerHTML = emptyState(
-      "还没有事件",
-      "配置变更、backend failover 或上游异常会出现在这里。",
-    );
-    return;
-  }
-  const pageData = currentPageData("events", events);
-
-  eventList.innerHTML = `
-    <div class="timeline-shell">
-      ${pageData.items.map(renderEventRow).join("")}
-    </div>
-    ${renderPagination("events", pageData)}
-  `;
-
-  bindPagination(eventList, "events", refreshAll);
-}
-
-function renderUsageLogs() {
-  const logs = state.usageLogs;
-  syncUsageLogFilterInputs();
-  deleteUsageLogsBtn.disabled = logs.length === 0;
-  if (logs.length === 0) {
-    usageLogList.innerHTML = emptyState(
-      "还没有使用日志",
-      "有客户端通过 Token Gate 发起请求后，这里会按请求维度记录一条 usage log。",
-    );
-    return;
-  }
-  const pageData = currentPageData("usageLogs", logs);
-
-  usageLogList.innerHTML = `
-    <div class="timeline-shell">
-      ${pageData.items.map(renderUsageLogRow).join("")}
-    </div>
-    ${renderPagination("usageLogs", pageData)}
-  `;
-
-  usageLogList.querySelectorAll("[data-toggle-usage-log]").forEach((button) => {
-    button.addEventListener("click", () => {
-      toggleExpanded(state.expandedUsageLogs, button.dataset.toggleUsageLog);
-      renderUsageLogs();
-    });
-  });
-
-  bindPagination(usageLogList, "usageLogs", refreshAll);
-}
-
-function renderDashboardPanels(overview) {
-  renderUsageChart();
-  renderEventsSummary(normalizedDashboardActivity(overview));
-  renderRecentEvents(state.dashboard.activity);
-  renderRecentUsageLogs(state.dashboard.activity);
-}
-
-function normalizedDashboardActivity(overview) {
-  if (state.dashboard.activity) {
-    return state.dashboard.activity;
-  }
-  return {
-    events: ensureArray(overview?.events),
-    usage_logs: [],
-  };
-}
-
-function renderUsageChart() {
-  if (!usageOverviewChart) {
-    return;
-  }
-  const usageSeries = ensureArray(state.dashboard.usage?.series);
-  const data = usageSeries.length > 0
-    ? buildDashboardUsageChartSeries(usageSeries, state.ui.usageChartMode)
-    : buildUsageChartSeries(state.usageLogs, state.ui.usageChartMode);
-  usageOverviewChart.innerHTML = data.points.length === 0
-    ? emptyState("暂无图表数据", "先加载几条使用日志，Usage Overview 会自动呈现趋势。")
-    : renderSparkAreaChart(data.points, data.label, data.color, data.subtitle);
-  usageChartTabs.querySelectorAll("[data-chart-mode]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.chartMode === state.ui.usageChartMode);
+function closeSearchShell() {
+  return SearchRuntimeUtils.closeSearchShell({
+    state,
+    searchUtils: SearchUtils,
+    searchDebounce,
+    renderSearchShell,
+    HTMLElementClass: HTMLElement,
   });
 }
 
-function renderEventsSummary(overview) {
-  if (!eventsSummaryCards) {
-    return;
-  }
-  const events = ensureArray(overview?.events);
-  const counts = countEventsByCategory(events);
-  eventsSummaryCards.innerHTML = [
-    ["Warnings", counts.warning, "System and upstream warnings"],
-    ["Errors", counts.error, "Backend or client failures"],
-    ["Policy Changes", counts.policy, "Policy create/update/delete"],
-    ["Key Creations", counts.client, "Client key provisioning"],
-    ["Backend Updates", counts.backend, "Backend configuration changes"],
-  ].map(([title, value, detail]) => `
-    <article class="summary-item">
-      <strong>${escapeHTML(title)}</strong>
-      <span class="metric-copy">${escapeHTML(String(value))}</span>
-      <small>${escapeHTML(detail)}</small>
-    </article>
-  `).join("");
+function openSearchShell() {
+  return SearchRuntimeUtils.openSearchShell({
+    state,
+    searchUtils: SearchUtils,
+    renderSearchShell,
+    searchInput,
+    searchModalPanel,
+    searchOpenBtn,
+    documentObject: document,
+    HTMLElementClass: HTMLElement,
+    triggerSearch,
+  });
 }
 
-function renderRecentEvents(activity) {
-  if (!recentEventsPanel) {
-    return;
-  }
-  const items = ensureArray(activity?.events).slice(0, 5);
-  recentEventsPanel.innerHTML = items.length === 0
-    ? emptyState("暂无事件", "最新的配置变更和上游事件会显示在这里。")
-    : items.map((event) => `
-        <article class="feed-item">
-          <strong>${escapeHTML(eventTitle(event))}</strong>
-          <small>${escapeHTML(event.message || "-")}</small>
-          <small>${escapeHTML(formatDateTime(event.created_at))}</small>
-        </article>
-      `).join("");
+function updateSearchQuery(value) {
+  return SearchRuntimeUtils.updateSearchQuery({
+    state,
+    value,
+    searchUtils: SearchUtils,
+    searchDebounce,
+    triggerSearch,
+  });
 }
 
-function renderRecentUsageLogs(activity) {
-  if (!recentUsageLogsPanel) {
-    return;
-  }
-  const items = ensureArray(activity?.usage_logs).slice(0, 5);
-  recentUsageLogsPanel.innerHTML = items.length === 0
-    ? emptyState("暂无使用日志", "客户端通过代理发起请求后会在这里看到最近记录。")
-    : items.map((log) => `
-        <article class="feed-item">
-          <strong>${escapeHTML(formatUsageRequest(log))}</strong>
-          <small>${escapeHTML(log.client_name || "-")} · ${escapeHTML(log.backend_name || "-")}</small>
-          <small>${escapeHTML(formatDateTime(log.created_at))}</small>
-        </article>
-      `).join("");
+function triggerSearch() {
+  return SearchRuntimeUtils.triggerSearch({
+    state,
+    searchUtils: SearchUtils,
+    searchDebounce,
+    reportError,
+    executeSearch,
+    renderSearchShell,
+  });
+}
+
+async function executeSearch(request) {
+  return SearchRuntimeUtils.executeSearch({
+    state,
+    request,
+    searchUtils: SearchUtils,
+    api,
+    searchLimit: SEARCH_LIMIT,
+    renderSearchShell,
+    currentSearchKeyboardState,
+  });
 }
 
 function renderSearchResults() {
-  if (!searchResults) {
-    return;
-  }
-  const query = String(state.ui.search.query || "").trim().toLowerCase();
-  if (!state.ui.search.open) {
-    searchResults.innerHTML = "";
-    return;
-  }
-  if (state.ui.search.loading) {
-    searchResults.innerHTML = emptyState("正在搜索", "Token Gate 正在查询资源和活动记录。");
-    return;
-  }
-
-  const results = state.ui.search.results;
-  if (!results) {
-    searchResults.innerHTML = emptyState("开始搜索", "输入 backend、client key、policy、proxy、event 或日志关键字。");
-    return;
-  }
-
-  const groups = SEARCH_GROUPS.map((group) => {
-    const items = ensureArray(results[group.key]);
-    return {
-      ...group,
-      items,
-    };
-  }).filter((group) => !query || group.items.length > 0);
-
-  const hasAny = groups.some((group) => group.items.length > 0);
-  if (!hasAny) {
-    searchResults.innerHTML = emptyState("没有匹配结果", "试试输入 backend、client key、policy、proxy、event 或日志里的任意关键词。");
-    return;
-  }
-
-  searchResults.innerHTML = groups.map((group) => `
-    <section class="search-group">
-      <div class="search-group-head">
-        <strong>${escapeHTML(group.label)}</strong>
-        <span>${group.items.length}</span>
-      </div>
-      <div class="search-group-list">
-        ${group.items.slice(0, 4).map((item) => {
-          const record = searchResultRecord(item);
-          return `
-          <button class="search-result" type="button" data-search-type="${escapeHTML(group.resourceType)}" data-search-id="${escapeHTML(record.id)}">
-            <span>${escapeHTML(record.title)}</span>
-            <strong>${escapeHTML(record.detail)}</strong>
-            <small>${escapeHTML(record.summary)}</small>
-          </button>
-        `;
-        }).join("")}
-      </div>
-    </section>
-  `).join("");
-}
-
-function searchResultRecord(item) {
-  const raw = item?.raw || item || {};
-  return {
-    id: item?.target_id ?? item?.id ?? raw.id ?? "",
-    title: item?.title || item?.name || raw.name || raw.pattern || raw.request_id || `#${item?.id ?? raw.id ?? "-"}`,
-    detail: item?.subtitle || item?.detail || item?.meta || raw.detail || raw.summary || "-",
-    summary: item?.meta || item?.summary || item?.status || raw.summary || raw.status || "-",
-  };
-}
-
-function scheduleSearch() {
-  if (searchDebounceTimer) {
-    clearTimeout(searchDebounceTimer);
-  }
-  const query = String(state.ui.search.query || "").trim();
-  if (!state.ui.search.open) {
-    return;
-  }
-  if (!query) {
-    state.ui.search.results = null;
-    state.ui.search.loading = false;
-    renderSearchResults();
-    return;
-  }
-
-  state.ui.search.loading = true;
-  renderSearchResults();
-  const requestID = ++searchRequestSeq;
-  searchDebounceTimer = window.setTimeout(async () => {
-    try {
-      const response = await api(`/admin/api/search?q=${encodeURIComponent(query)}`);
-      if (requestID !== searchRequestSeq) {
-        return;
-      }
-      state.ui.search.results = response?.results || null;
-      state.ui.search.loading = false;
-      renderSearchResults();
-    } catch (error) {
-      if (requestID !== searchRequestSeq) {
-        return;
-      }
-      state.ui.search.loading = false;
-      reportError(error);
-    }
-  }, 150);
-}
-
-function bindPagination(container, key, rerender) {
-  container.querySelector(`[data-page-size="${key}"]`)?.addEventListener("change", async (event) => {
-    state.pagination[key].size = Number(event.currentTarget.value || 10);
-    state.pagination[key].page = 1;
-    await rerender().catch(reportError);
-  });
-
-  container.querySelector(`[data-page-prev="${key}"]`)?.addEventListener("click", async () => {
-    state.pagination[key].page = Math.max(1, state.pagination[key].page - 1);
-    await rerender().catch(reportError);
-  });
-
-  container.querySelector(`[data-page-next="${key}"]`)?.addEventListener("click", async () => {
-    state.pagination[key].page += 1;
-    await rerender().catch(reportError);
-  });
-
-  container.querySelectorAll(`[data-page-number="${key}"]`).forEach((button) => {
-    button.addEventListener("click", async () => {
-      state.pagination[key].page = Number(button.dataset.pageValue || 1);
-      await rerender().catch(reportError);
-    });
+  return SearchRuntimeUtils.renderSearchResults({
+    state,
+    shellViewUtils: ShellViewUtils,
+    currentSearchKeyboardState,
+    escapeHTML,
   });
 }
 
-function currentPageData(key, items) {
-  const normalized = ensureArray(items);
-  const pageState = state.pagination[key];
-  const meta = state.paginationMeta[key];
-  const size = PAGE_SIZE_OPTIONS.includes(Number(pageState?.size)) ? Number(pageState.size) : 10;
-  const total = Number(meta?.total) || 0;
-  const page = Math.max(1, Number(meta?.page) || 1);
-  const totalPages = Math.max(1, Math.ceil(total / size));
-  return {
-    items: normalized,
-    page,
-    size,
-    total,
-    totalPages,
-  };
-}
-
-function applyPagedResponse(key, payload) {
-  const pageState = state.pagination[key];
-  const metaState = state.paginationMeta[key];
-  const items = ensureArray(payload?.items);
-  const total = Number(payload?.total) || 0;
-  const limit = PAGE_SIZE_OPTIONS.includes(Number(payload?.limit)) ? Number(payload.limit) : pageState.size;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-  const page = Math.min(Math.max(1, Number(payload?.page) || 1), totalPages);
-
-  pageState.page = page;
-  pageState.size = limit;
-  metaState.total = total;
-  metaState.page = page;
-  metaState.limit = limit;
-
-  state[key] = items;
-}
-
-function renderPagination(key, pageData) {
-  const pageState = state.pagination[key];
-  if (!pageState || pageData.total <= 0) {
-    return "";
-  }
-
-  return `
-    <div class="pagination-bar" data-pagination="${key}">
-      <div class="pagination-meta">
-        <span>共 ${pageData.total} 条</span>
-        <span>第 ${pageData.page} / ${pageData.totalPages} 页</span>
-      </div>
-      <div class="pagination-controls">
-        <label class="pagination-size">
-          <span>每页</span>
-          <select data-page-size="${key}">
-            ${PAGE_SIZE_OPTIONS.map((size) => `<option value="${size}" ${pageData.size === size ? "selected" : ""}>${size}</option>`).join("")}
-          </select>
-        </label>
-        <div class="pagination-pages">
-          <button class="small-button ghost-button pagination-arrow" data-page-prev="${key}" type="button" aria-label="上一页" ${pageData.page <= 1 ? "disabled" : ""}>&lsaquo;</button>
-          ${paginationPageNumbers(pageData).map((page) => {
-            if (page === "...") {
-              return `<span class="pagination-ellipsis">...</span>`;
-            }
-            return `<button class="small-button ${page === pageData.page ? "pagination-number active" : "ghost-button pagination-number"}" data-page-number="${key}" data-page-value="${page}" type="button">${page}</button>`;
-          }).join("")}
-          <button class="small-button ghost-button pagination-arrow" data-page-next="${key}" type="button" aria-label="下一页" ${pageData.page >= pageData.totalPages ? "disabled" : ""}>&rsaquo;</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function paginationPageNumbers(pageData) {
-  const totalPages = Math.max(1, Number(pageData.totalPages) || 1);
-  const current = Math.max(1, Number(pageData.page) || 1);
-  if (totalPages <= 7) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
-  }
-
-  if (current <= 4) {
-    return [1, 2, 3, 4, 5, "...", totalPages];
-  }
-  if (current >= totalPages - 3) {
-    return [1, "...", totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
-  }
-  return [1, "...", current - 1, current, current + 1, "...", totalPages];
-}
-
-function formatUsageRequest(log) {
-  const method = String(log.method || "").toUpperCase();
-  const path = log.path || "-";
-  const requestID = log.request_id || "-";
-  return `${method} ${path} · ${requestID}`;
-}
-
-function formatUsageStatus(log) {
-  const status = Number(log.status_code) || 0;
-  const attempts = Number(log.attempts) || 0;
-  const duration = Number(log.duration_ms) || 0;
-  const statusText = status > 0 ? String(status) : "failed";
-  return `${statusText} · ${attempts} try · ${duration} ms`;
-}
-
-function formatUsageDetail(log) {
-  const parts = [];
-  if (log.error_message) {
-    parts.push(`err ${log.error_message}`);
-  }
-  return parts.join(" · ") || "-";
-}
-
-function buildUsageChartSeries(logs, mode) {
-  const buckets = new Map();
-  for (const log of ensureArray(logs)) {
-    const key = formatDayBucket(log.created_at);
-    const bucket = buckets.get(key) || { key, requests: 0, failures: 0, latency: 0, count: 0 };
-    bucket.requests += 1;
-    bucket.failures += isUsageFailure(log) ? 1 : 0;
-    bucket.latency += Number(log.duration_ms) || 0;
-    bucket.count += 1;
-    buckets.set(key, bucket);
-  }
-  const points = Array.from(buckets.values()).sort((a, b) => a.key.localeCompare(b.key)).slice(-14);
-  const selected = mode === "failures" ? "failures" : mode === "latency" ? "latency" : "requests";
-  const color = selected === "failures" ? "#ef4444" : selected === "latency" ? "#f59e0b" : "#3b82f6";
-  const subtitle = selected === "failures" ? "Failure rate over time" : selected === "latency" ? "Average latency over time" : "Request volume over time";
-  return {
-    label: selected,
-    color,
-    subtitle,
-    points: points.map((bucket) => ({
-      x: bucket.key.slice(5),
-      y: selected === "failures" ? bucket.failures : selected === "latency" ? Math.round(bucket.latency / Math.max(1, bucket.count)) : bucket.requests,
-    })),
-  };
-}
-
-function buildDashboardUsageChartSeries(series, mode) {
-  const points = ensureArray(series);
-  const selected = mode === "failures" ? "failures" : mode === "latency" ? "latency" : "requests";
-  const color = selected === "failures" ? "#ef4444" : selected === "latency" ? "#f59e0b" : "#3b82f6";
-  const subtitle = selected === "failures" ? "Failure rate over time" : selected === "latency" ? "Average latency over time" : "Request volume over time";
-  return {
-    label: selected,
-    color,
-    subtitle,
-    points: points.map((point) => ({
-      x: String(point.label || "-").slice(5),
-      y: selected === "failures" ? Number(point.failures) || 0 : selected === "latency" ? Math.round(Number(point.latency_ms) / Math.max(1, Number(point.requests) || 1)) : Number(point.requests) || 0,
-    })),
-  };
-}
-
-function renderSparkAreaChart(points, label, color, subtitle) {
-  const width = 640;
-  const height = 240;
-  const values = points.map((point) => Number(point.y) || 0);
-  const max = Math.max(1, ...values);
-  const step = points.length > 1 ? width / (points.length - 1) : width;
-  const coords = points.map((point, index) => {
-    const x = Math.round(index * step);
-    const y = Math.round(height - ((Number(point.y) || 0) / max) * (height - 26) - 10);
-    return { ...point, x, y };
+async function fetchAllCollectionPages(basePath) {
+  return ResourceDataRuntimeUtils.fetchAllCollectionPages({
+    basePath,
+    api,
+    displayUtils: DisplayUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
   });
-  const linePath = coords.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
-  const areaPath = `${linePath} L ${width} ${height} L 0 ${height} Z`;
-
-  return `
-    <div class="chart-wrap">
-      <div class="chart-copy">
-        <strong>${escapeHTML(subtitle)}</strong>
-        <small>${escapeHTML(label)}</small>
-      </div>
-      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(subtitle)}" style="color: ${color};">
-        <defs>
-          <linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stop-color="currentColor" stop-opacity="0.28" />
-            <stop offset="100%" stop-color="currentColor" stop-opacity="0.02" />
-          </linearGradient>
-        </defs>
-        <path d="${areaPath}" fill="url(#chartFill)"></path>
-        <path d="${linePath}" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
-        ${coords.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="4" fill="currentColor"></circle>`).join("")}
-      </svg>
-      <div class="chart-foot">
-        ${points.map((point) => `<span>${escapeHTML(point.x)} · ${escapeHTML(String(point.y))}</span>`).join("")}
-      </div>
-    </div>
-  `;
 }
 
-function countEventsByCategory(events) {
-  const counts = { warning: 0, error: 0, policy: 0, client: 0, backend: 0 };
-  for (const event of ensureArray(events)) {
-    const type = String(event.type || "").toLowerCase();
-    const level = String(event.level || "").toLowerCase();
-    if (level.includes("warn") || type.includes("warn")) counts.warning += 1;
-    if (level.includes("error") || type.includes("error")) counts.error += 1;
-    if (type.includes("policy")) counts.policy += 1;
-    if (type.includes("client")) counts.client += 1;
-    if (type.includes("backend")) counts.backend += 1;
-  }
-  return counts;
-}
-
-function formatDayBucket(value) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) {
-    return "unknown";
-  }
-  return date.toISOString().slice(0, 10);
-}
-
-function isUsageFailure(log) {
-  const status = Number(log.status_code) || 0;
-  return status >= 500 || (status >= 401 && status !== 400);
-}
-
-function resolveInitialTheme() {
-  const stored = localStorage.getItem(THEME_KEY);
-  if (stored === "dark" || stored === "light") {
-    return stored;
-  }
-  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function applyTheme(theme) {
-  const nextTheme = theme === "dark" ? "dark" : "light";
-  document.documentElement.dataset.theme = nextTheme;
-  state.ui.theme = nextTheme;
-  localStorage.setItem(THEME_KEY, nextTheme);
-  themeToggleBtn.textContent = nextTheme === "dark" ? "Dark" : "Light";
-}
-
-function openSearchModal() {
-  state.ui.search.open = true;
-  searchModal.classList.remove("hidden");
-  searchInput.value = state.ui.search.query || "";
-  searchInput.focus();
-  scheduleSearch();
-}
-
-function closeSearchModal() {
-  if (!state.ui.search.open) {
-    return;
-  }
-  state.ui.search.open = false;
-  searchModal.classList.add("hidden");
-}
-
-function openDrawer(title, content) {
-  state.ui.drawer.open = true;
-  state.ui.drawer.title = title;
-  state.ui.drawer.content = content;
-  drawerTitle.textContent = title;
-  drawerBody.innerHTML = content;
-  drawer.classList.remove("hidden");
-  drawer.setAttribute("aria-hidden", "false");
-}
-
-function closeDrawer() {
-  if (!state.ui.drawer.open) {
-    return;
-  }
-  state.ui.drawer.open = false;
-  drawer.classList.add("hidden");
-  drawer.setAttribute("aria-hidden", "true");
-}
-
-async function openSearchResultDetail(type, id) {
-  const endpointFactory = RESOURCE_DETAIL_ENDPOINTS[type];
-  if (!endpointFactory) {
-    const record = findSearchResultRecord(type, id);
-    if (!record) {
-      return;
-    }
-    const payload = searchResultDrawerPayload(type, record);
-    openDrawer(payload.title, renderDrawerPayload(payload));
-    return;
-  }
-  const response = await api(endpointFactory(id));
-  const title = response?.overview?.find?.((item) => item.label === "Name")?.value || response?.raw?.name || response?.raw?.pattern || response?.raw?.request_id || `${type} #${id}`;
-  openDrawer(title, renderDrawerPayload(response));
-}
-
-function findSearchResultRecord(type, id) {
-  const group = SEARCH_GROUPS.find((entry) => entry.resourceType === type);
-  if (!group || !state.ui.search.results) {
-    return null;
-  }
-  return ensureArray(state.ui.search.results[group.key]).find((item) => {
-    const record = searchResultRecord(item);
-    return String(record.id) === String(id);
-  }) || null;
-}
-
-function searchResultDrawerPayload(type, record) {
-  const raw = record?.raw || record || {};
-  if (type === "event") {
-    return {
-      title: record?.title || record?.name || raw.type || "Event",
-      overview: [
-        { label: "Type", value: raw.type || "-" },
-        { label: "Level", value: raw.level || "-" },
-        { label: "Actor", value: raw.client_name || raw.backend_name || "system" },
-        { label: "Message", value: raw.message || "-" },
-      ],
-      configuration: [
-        { label: "Client", value: raw.client_name || "-" },
-        { label: "Backend", value: raw.backend_name || "-" },
-        { label: "Model", value: raw.model || "-" },
-        { label: "Endpoint", value: raw.endpoint || "-" },
-      ],
-      metadata: [
-        { label: "ID", value: String(raw.id || "-") },
-        { label: "Timestamp", value: formatDateTime(raw.created_at) },
-      ],
-      activity: { events: [], usage_logs: [] },
-      raw,
-    };
-  }
-  return {
-    title: record?.title || record?.name || raw.request_id || "Usage Log",
-    overview: [
-      { label: "Request", value: formatUsageRequest(raw) },
-      { label: "Status", value: formatUsageStatus(raw) },
-      { label: "Client", value: raw.client_name || "-" },
-      { label: "Backend", value: raw.backend_name || "-" },
-    ],
-    configuration: [
-      { label: "Model", value: raw.model || "-" },
-      { label: "Route Override", value: raw.route_mode_override || "-" },
-      { label: "Route Group", value: raw.route_group || "-" },
-      { label: "Path", value: (raw.path || "-") + (raw.query ? `?${raw.query}` : "") },
-    ],
-    metadata: [
-      { label: "Request ID", value: raw.request_id || "-" },
-      { label: "Attempts", value: String(raw.attempts || 0) },
-      { label: "Duration", value: `${Number(raw.duration_ms) || 0} ms` },
-      { label: "Timestamp", value: formatDateTime(raw.created_at) },
-    ],
-    activity: { events: [], usage_logs: [] },
-    raw,
-  };
-}
-
-function renderDrawerPayload(payload) {
-  const overview = ensureArray(payload?.overview);
-  const configuration = ensureArray(payload?.configuration);
-  const metadata = ensureArray(payload?.metadata);
-  const raw = payload?.raw || {};
-  const activityEvents = ensureArray(payload?.activity?.events);
-  const activityLogs = ensureArray(payload?.activity?.usage_logs);
-  return `
-    <div class="drawer-section">
-      <strong>Overview</strong>
-      <div class="detail-grid">
-        ${overview.map(renderDetailEntry).join("")}
-      </div>
-    </div>
-    <div class="drawer-section">
-      <strong>Configuration</strong>
-      <div class="detail-grid">
-        ${configuration.map(renderDetailEntry).join("")}
-      </div>
-    </div>
-    <div class="drawer-section">
-      <strong>Metadata</strong>
-      <div class="detail-grid">
-        ${metadata.map(renderDetailEntry).join("")}
-      </div>
-    </div>
-    <div class="drawer-section">
-      <strong>Activity</strong>
-      ${activityEvents.length === 0 && activityLogs.length === 0 ? emptyState("暂无活动", "当前没有关联事件或日志。") : `
-        <div class="drawer-activity-grid">
-          ${activityEvents.slice(0, 4).map((event) => `
-            <article class="feed-item">
-              <strong>${escapeHTML(eventTitle(event))}</strong>
-              <small>${escapeHTML(event.message || "-")}</small>
-              <small>${escapeHTML(formatDateTime(event.created_at))}</small>
-            </article>
-          `).join("")}
-          ${activityLogs.slice(0, 4).map((log) => `
-            <article class="feed-item">
-              <strong>${escapeHTML(formatUsageRequest(log))}</strong>
-              <small>${escapeHTML(log.backend_name || "-")} · ${escapeHTML(log.model || "-")}</small>
-              <small>${escapeHTML(formatDateTime(log.created_at))}</small>
-            </article>
-          `).join("")}
-        </div>
-      `}
-    </div>
-    <div class="drawer-section">
-      <strong>Raw JSON</strong>
-      <pre class="json-preview">${escapeHTML(JSON.stringify(raw, null, 2))}</pre>
-    </div>
-  `;
-}
-
-function renderDetailEntry(entry) {
-  return `
-    <div>
-      <strong>${escapeHTML(entry.label || "-")}</strong>
-      <span>${escapeHTML(entry.value || "-")}</span>
-    </div>
-  `;
-}
-
-function renderEventRow(event) {
-  const level = String(event.level || "info").toLowerCase();
-  const category = eventCategoryLabel(event.type);
-  return `
-    <article class="timeline-row event-card level-${escapeHTML(level)}">
-      <div class="timeline-icon">
-        <span class="timeline-dot"></span>
-      </div>
-      <div class="timeline-content">
-        <div class="timeline-grid">
-          <div>
-            <strong>${escapeHTML(eventTitle(event))}</strong>
-            <p>${escapeHTML(event.message || "-")}</p>
-          </div>
-          <div>
-            <span class="timeline-label">Actor</span>
-            <span>${escapeHTML(event.client_name || event.backend_name || "system")}</span>
-          </div>
-          <div>
-            <span class="timeline-label">Timestamp</span>
-            <span>${escapeHTML(formatDateTime(event.created_at))}</span>
-          </div>
-          <div>
-            <span class="timeline-label">Category</span>
-            <span>${escapeHTML(category)}</span>
-          </div>
-          <div>
-            <span class="timeline-label">Client</span>
-            <span>${escapeHTML(event.client_name || "-")}</span>
-          </div>
-          <div>
-            <span class="timeline-label">Backend</span>
-            <span>${escapeHTML(event.backend_name || "-")}</span>
-          </div>
-        </div>
-      </div>
-    </article>
-  `;
-}
-
-function renderUsageLogRow(log) {
-  const id = String(log.id);
-  const expanded = state.expandedUsageLogs.has(id);
-  return `
-    <article class="timeline-row usage-log-row-card ${expanded ? "is-open" : ""}">
-      <button class="timeline-icon toggle-row" data-toggle-usage-log="${log.id}" type="button" aria-expanded="${expanded ? "true" : "false"}">
-        <span class="timeline-dot"></span>
-        <span class="toggle-indicator">${expanded ? "收起" : "展开"}</span>
-      </button>
-      <div class="timeline-content">
-        <div class="timeline-grid usage-grid">
-          <div>
-            <strong>${escapeHTML(formatUsageRequest(log))}</strong>
-            <p>${escapeHTML(formatUsageDetail(log))}</p>
-          </div>
-          <div>
-            <span class="timeline-label">Client Key</span>
-            <span>${escapeHTML(log.client_name || "-")}</span>
-          </div>
-          <div>
-            <span class="timeline-label">Client</span>
-            <span>${escapeHTML(log.client_ip || "-")}</span>
-          </div>
-          <div>
-            <span class="timeline-label">Model</span>
-            <span>${escapeHTML(log.model || "-")}</span>
-          </div>
-          <div>
-            <span class="timeline-label">Backend</span>
-            <span>${escapeHTML(log.backend_name || "-")}</span>
-          </div>
-          <div>
-            <span class="timeline-label">Status</span>
-            <span>${escapeHTML(formatUsageStatus(log))}</span>
-          </div>
-          <div>
-            <span class="timeline-label">Timestamp</span>
-            <span>${escapeHTML(formatDateTime(log.created_at))}</span>
-          </div>
-          <div>
-            <span class="timeline-label">Trace</span>
-            <span>${escapeHTML(log.request_id || "-")}</span>
-          </div>
-        </div>
-        ${expanded ? renderUsageLogDetail(log) : ""}
-      </div>
-    </article>
-  `;
-}
-
-function renderUsageLogDetail(log) {
-  return `
-    <div class="timeline-detail">
-      <div class="detail-grid usage-detail-grid">
-        <div><strong>Request ID</strong><span>${escapeHTML(log.request_id || "-")}</span></div>
-        <div><strong>Client ID</strong><span>${escapeHTML(log.client_id || "-")}</span></div>
-        <div><strong>Route Override</strong><span>${escapeHTML(log.route_mode_override || "-")}</span></div>
-        <div><strong>Route Group</strong><span>${escapeHTML(log.route_group || "-")}</span></div>
-        <div><strong>Method</strong><span>${escapeHTML(log.method || "-")}</span></div>
-        <div><strong>Path</strong><span>${escapeHTML((log.path || "-") + (log.query ? `?${log.query}` : ""))}</span></div>
-        <div><strong>Attempts</strong><span>${escapeHTML(log.attempts || 0)}</span></div>
-        <div><strong>Status Code</strong><span>${escapeHTML(log.status_code || 0)}</span></div>
-        <div><strong>Duration</strong><span>${escapeHTML(`${Number(log.duration_ms) || 0} ms`)}</span></div>
-        <div><strong>Client IP</strong><span>${escapeHTML(log.client_ip || "-")}</span></div>
-        <div><strong>User Agent</strong><span>${escapeHTML(log.user_agent || "-")}</span></div>
-        <div><strong>Error</strong><span>${escapeHTML(log.error_message || "-")}</span></div>
-      </div>
-      <div class="detail-section">
-        <strong>Raw JSON</strong>
-        <pre class="json-preview">${escapeHTML(JSON.stringify(log, null, 2))}</pre>
-      </div>
-    </div>
-  `;
-}
-
-function eventCategoryLabel(type) {
-  const normalized = String(type || "").toLowerCase();
-  if (normalized.includes("backend")) {
-    return "Backend";
-  }
-  if (normalized.includes("client")) {
-    return "Client Key";
-  }
-  if (normalized.includes("proxy")) {
-    return "Proxy";
-  }
-  if (normalized.includes("security") || normalized.includes("auth")) {
-    return "Security";
-  }
-  if (normalized.includes("policy")) {
-    return "Policy";
-  }
-  return "System";
-}
-
-function eventTitle(event) {
-  return String(event.type || "event")
-    .split("_")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function parseModelMapping(value) {
-  const raw = String(value || "").trim();
-  if (!raw) {
-    return {};
-  }
-  const mapping = {};
-  raw.split(",").forEach((item) => {
-    const [from, to] = item.split("=").map((part) => String(part || "").trim());
-    if (from && to) {
-      mapping[from] = to;
-    }
+async function refreshResourceList(resourceKey) {
+  return ResourceDataRuntimeUtils.refreshResourceList({
+    resourceKey,
+    state,
+    fetchAllCollectionPages,
+    renderProxies,
+    renderBackends,
+    renderClients,
+    renderPolicies,
   });
-  return mapping;
 }
 
-function formatModelMapping(mapping) {
-  if (!mapping || typeof mapping !== "object") {
-    return "-";
-  }
-  const items = Object.entries(mapping).map(([from, to]) => `${from} -> ${to}`);
-  return items.length === 0 ? "-" : items.join(", ");
+function navigateToSearchResult(payload) {
+  return SearchRuntimeUtils.navigateToSearchResult({
+    payload,
+    searchUtils: SearchUtils,
+    windowObject: window,
+    activatePage,
+    closeSearchShell,
+    openResourceDrawer,
+    reportError,
+  });
 }
 
-function formatModelMappingInput(mapping) {
-  if (!mapping || typeof mapping !== "object") {
-    return "";
-  }
-  return Object.entries(mapping).map(([from, to]) => `${from}=${to}`).join(", ");
+function currentSearchKeyboardState() {
+  return SearchRuntimeUtils.currentSearchKeyboardState({
+    state,
+    searchUtils: SearchUtils,
+  });
 }
 
-function startEditProxy(id) {
-  const proxy = state.proxies.find((item) => String(item.id) === String(id));
-  if (!proxy) {
-    return;
-  }
-
-  state.editingProxyID = proxy.id;
-  proxyForm.elements.name.value = proxy.name || "";
-  proxyForm.elements.address.value = proxy.address || "";
-  proxyForm.elements.username.value = proxy.username || "";
-  proxyForm.elements.password.value = proxy.password || "";
-  proxyForm.elements.enabled.checked = Boolean(proxy.enabled);
-
-  proxySubmitBtn.textContent = "保存 Proxy";
-  proxyCancelBtn.classList.remove("hidden");
-  proxyEditBanner.textContent = `正在编辑 SOCKS5 Proxy: ${proxy.name}`;
-  proxyEditBanner.classList.remove("hidden");
-  proxyModalTitle.textContent = "编辑 Proxy";
-  showProxyModal();
-  renderProxies();
+function moveSearchSelection(delta) {
+  return SearchRuntimeUtils.moveSearchSelection({
+    state,
+    delta,
+    searchUtils: SearchUtils,
+    currentSearchKeyboardState,
+    renderSearchShell,
+  });
 }
 
-function startCreateProxy() {
-  state.editingProxyID = null;
-  proxyForm.reset();
-  proxyForm.elements.enabled.checked = true;
-  proxySubmitBtn.textContent = "新增 Proxy";
-  proxyCancelBtn.classList.remove("hidden");
-  proxyEditBanner.classList.add("hidden");
-  proxyModalTitle.textContent = "新增 Proxy";
-  showProxyModal();
-  renderProxies();
+async function openResourceDrawer(target) {
+  return DrawerRuntimeUtils.openResourceDrawer({
+    target,
+    state,
+    drawerUtils: DrawerUtils,
+    api,
+    renderDrawerShell,
+    drawerPanel,
+    documentObject: document,
+    HTMLElementClass: HTMLElement,
+  });
 }
 
-function startCreateBackend() {
-  state.editingBackendID = null;
-  backendForm.reset();
-  backendForm.elements.protocol.value = "openai";
-  backendForm.elements.api_key.placeholder = "Backend API key";
-  backendForm.elements.proxy_id.value = "0";
-  backendForm.elements.model_mapping.value = "";
-  backendForm.elements.weight.value = 1;
-  backendForm.elements.enabled.checked = true;
-  backendSubmitBtn.textContent = "新增 Backend";
-  backendCancelBtn.classList.remove("hidden");
-  backendEditBanner.classList.add("hidden");
-  backendModalTitle.textContent = "新增 Backend";
-  showBackendModal();
-  renderBackends();
+function openDrawerEditor() {
+  return DrawerRuntimeUtils.openDrawerEditor({
+    state,
+    closeDrawerShell,
+    startEditBackend,
+    startEditClient,
+    startEditPolicy,
+    startEditProxy,
+  });
 }
 
-function startEditBackend(id) {
-  const backend = state.backends.find((item) => String(item.id) === String(id));
-  if (!backend) {
-    return;
+async function deleteDrawerResource() {
+  return DrawerRuntimeUtils.deleteDrawerResource({
+    state,
+    drawerUtils: DrawerUtils,
+    drawerViewUtils: DrawerViewUtils,
+    confirm,
+    api,
+    closeDrawerShell,
+    refreshAll,
+  });
+}
+
+function trapFocusWithin(container, event) {
+  if (!container || event.key !== "Tab") {
+    return false;
   }
 
-  state.editingBackendID = backend.id;
-  backendForm.elements.name.value = backend.name || "";
-  backendForm.elements.pool.value = backend.pool || "";
-  backendForm.elements.protocol.value = backend.protocol || "openai";
-  backendForm.elements.base_url.value = backend.base_url || "";
-  backendForm.elements.api_key.value = backend.api_key || "";
-  backendForm.elements.api_key.placeholder = "Backend API key";
-  backendForm.elements.proxy_id.value = String(backend.proxy_id || 0);
-  backendForm.elements.models.value = (backend.models || []).join(", ");
-  backendForm.elements.model_mapping.value = formatModelMappingInput(backend.model_mapping);
-  backendForm.elements.endpoints.value = (backend.endpoints || []).join(", ");
-  backendForm.elements.weight.value = backend.weight || 1;
-  backendForm.elements.enabled.checked = Boolean(backend.enabled);
+  const focusable = Array.from(
+    container.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((element) => !element.hasAttribute("hidden") && !element.closest(".hidden"));
 
-  backendSubmitBtn.textContent = "保存 Backend";
-  backendCancelBtn.classList.remove("hidden");
-  backendEditBanner.textContent = `正在编辑 Backend: ${backend.name}`;
-  backendEditBanner.classList.remove("hidden");
-  backendModalTitle.textContent = "编辑 Backend";
-  showBackendModal();
-  renderBackends();
-}
-
-function startCreateClient() {
-  state.editingClientID = null;
-  clientForm.reset();
-  clientForm.elements.token.placeholder = "Leave blank to auto-generate";
-  clientForm.elements.enabled.checked = true;
-  clientSubmitBtn.textContent = "新增 Client Key";
-  clientCancelBtn.classList.remove("hidden");
-  clientEditBanner.classList.add("hidden");
-  clientModalTitle.textContent = "新增 Client Key";
-  showClientModal();
-  renderClients();
-}
-
-function startEditClient(id) {
-  const client = state.clients.find((item) => String(item.id) === String(id));
-  if (!client) {
-    return;
+  if (focusable.length === 0) {
+    return false;
   }
 
-  state.editingClientID = client.id;
-  clientForm.elements.name.value = client.name || "";
-  clientForm.elements.token.value = client.token || "";
-  clientForm.elements.token.placeholder = client.token ? "Client token" : "历史 key 仅保存了 hash；重新填写后可显示";
-  clientForm.elements.route_mode_override.value = client.route_mode_override || "";
-  clientForm.elements.route_group.value = client.route_group || "";
-  clientForm.elements.enabled.checked = Boolean(client.enabled);
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
 
-  clientSubmitBtn.textContent = "保存 Client Key";
-  clientCancelBtn.classList.remove("hidden");
-  clientEditBanner.textContent = `正在编辑 Client Key: ${client.name}`;
-  clientEditBanner.classList.remove("hidden");
-  clientModalTitle.textContent = "编辑 Client Key";
-  showClientModal();
-  renderClients();
-}
-
-function showBackendModal() {
-  backendModal.classList.remove("hidden");
-  backendForm.elements.name.focus();
-}
-
-function showProxyModal() {
-  proxyModal.classList.remove("hidden");
-  proxyForm.elements.name.focus();
-}
-
-function hideProxyModal() {
-  proxyModal.classList.add("hidden");
-}
-
-function hideBackendModal() {
-  backendModal.classList.add("hidden");
-}
-
-function showClientModal() {
-  clientModal.classList.remove("hidden");
-  clientForm.elements.name.focus();
-}
-
-function hideClientModal() {
-  clientModal.classList.add("hidden");
-}
-
-function startCreatePolicy() {
-  state.editingPolicyID = null;
-  policyForm.reset();
-  policyForm.elements.endpoint.value = "chat";
-  policyForm.elements.placement_policy.value = "sticky";
-  policyForm.elements.priority.value = 100;
-  policyForm.elements.failover_enabled.checked = true;
-  policySubmitBtn.textContent = "新增 Policy";
-  policyCancelBtn.classList.remove("hidden");
-  policyEditBanner.classList.add("hidden");
-  policyModalTitle.textContent = "新增 Policy";
-  showPolicyModal();
-  renderPolicies();
-}
-
-function startEditPolicy(id) {
-  const policy = state.policies.find((item) => String(item.id) === String(id));
-  if (!policy) {
-    return;
+  if (event.shiftKey && active === first) {
+    event.preventDefault();
+    last.focus();
+    return true;
   }
 
-  state.editingPolicyID = policy.id;
-  policyForm.elements.pattern.value = policy.pattern || "";
-  policyForm.elements.endpoint.value = policy.endpoint || "chat";
-  policyForm.elements.placement_policy.value = policy.placement_policy || "sticky";
-  policyForm.elements.backend_pool.value = policy.backend_pool || "";
-  policyForm.elements.priority.value = policy.priority || 100;
-  policyForm.elements.failover_enabled.checked = Boolean(policy.failover_enabled);
-
-  policySubmitBtn.textContent = "保存 Policy";
-  policyCancelBtn.classList.remove("hidden");
-  policyEditBanner.textContent = `正在编辑 Model Policy: ${policy.pattern}`;
-  policyEditBanner.classList.remove("hidden");
-  policyModalTitle.textContent = "编辑 Policy";
-  showPolicyModal();
-  renderPolicies();
-}
-
-function resetProxyForm() {
-  state.editingProxyID = null;
-  proxyForm.reset();
-  proxyForm.elements.enabled.checked = true;
-  proxySubmitBtn.textContent = "新增 Proxy";
-  proxyCancelBtn.classList.add("hidden");
-  proxyEditBanner.classList.add("hidden");
-  proxyModalTitle.textContent = "新增 Proxy";
-  hideProxyModal();
-  renderProxies();
-}
-
-function resetBackendForm() {
-  state.editingBackendID = null;
-  backendForm.reset();
-  backendForm.elements.protocol.value = "openai";
-  backendForm.elements.api_key.placeholder = "Backend API key";
-  backendForm.elements.proxy_id.value = "0";
-  backendForm.elements.model_mapping.value = "";
-  backendForm.elements.weight.value = 1;
-  backendForm.elements.enabled.checked = true;
-  backendSubmitBtn.textContent = "新增 Backend";
-  backendCancelBtn.classList.add("hidden");
-  backendEditBanner.classList.add("hidden");
-  backendModalTitle.textContent = "新增 Backend";
-  hideBackendModal();
-  renderBackends();
-}
-
-function resetClientForm() {
-  state.editingClientID = null;
-  clientForm.reset();
-  clientForm.elements.token.placeholder = "Leave blank to auto-generate";
-  clientForm.elements.enabled.checked = true;
-  clientSubmitBtn.textContent = "新增 Client Key";
-  clientCancelBtn.classList.add("hidden");
-  clientEditBanner.classList.add("hidden");
-  clientModalTitle.textContent = "新增 Client Key";
-  hideClientModal();
-  renderClients();
-}
-
-function resetPolicyForm() {
-  state.editingPolicyID = null;
-  policyForm.reset();
-  policyForm.elements.endpoint.value = "chat";
-  policyForm.elements.placement_policy.value = "sticky";
-  policyForm.elements.priority.value = 100;
-  policyForm.elements.failover_enabled.checked = true;
-  policySubmitBtn.textContent = "新增 Policy";
-  policyCancelBtn.classList.add("hidden");
-  policyEditBanner.classList.add("hidden");
-  policyModalTitle.textContent = "新增 Policy";
-  hidePolicyModal();
-  renderPolicies();
-}
-
-function showPolicyModal() {
-  policyModal.classList.remove("hidden");
-  policyForm.elements.pattern.focus();
-}
-
-function hidePolicyModal() {
-  policyModal.classList.add("hidden");
-}
-
-function readForm(form) {
-  const formData = new FormData(form);
-  const payload = {};
-  for (const [key, value] of formData.entries()) {
-    payload[key] = value;
-  }
-  for (const input of form.querySelectorAll("input[type=checkbox]")) {
-    payload[input.name] = input.checked;
-  }
-  return payload;
-}
-
-function splitList(value) {
-  return String(value || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function ensureArray(value) {
-  return Array.isArray(value) ? value : [];
-}
-
-function renderProxyOptions() {
-  const selected = backendForm.elements.proxy_id?.value || "0";
-  backendForm.elements.proxy_id.innerHTML = `
-    <option value="0">Direct connection</option>
-    ${state.proxies.map((proxy) => `
-      <option value="${proxy.id}">${escapeHTML(proxy.name)} (${escapeHTML(proxy.address)})${proxy.enabled ? "" : " - disabled"}</option>
-    `).join("")}
-  `;
-  backendForm.elements.proxy_id.value = state.proxies.some((proxy) => String(proxy.id) === selected) ? selected : "0";
-}
-
-function formatBackendRecentStats(stats = {}) {
-  const windowMinutes = Number(stats.window_minutes) || 30;
-  const successes = Number(stats.successes) || 0;
-  const failures = Number(stats.failures) || 0;
-  return `${windowMinutes}m ${successes} ok / ${failures} fail`;
-}
-
-function formatDateTime(value) {
-  const raw = String(value || "").trim();
-  if (!raw) {
-    return "-";
+  if (!event.shiftKey && active === last) {
+    event.preventDefault();
+    first.focus();
+    return true;
   }
 
-  const date = new Date(raw);
-  if (!Number.isFinite(date.getTime())) {
-    return raw;
-  }
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  const seconds = String(date.getSeconds()).padStart(2, "0");
-  const milliseconds = String(date.getMilliseconds()).padStart(3, "0");
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${milliseconds}`;
+  return false;
 }
 
-function clientTokenDisplay(client) {
-  if (client.token) {
-    return client.token;
-  }
-  if (client.token_prefix) {
-    return `${client.token_prefix} (历史记录仅保存 prefix)`;
-  }
-  return "-";
+function renderProxies() {
+  ResourceListRuntimeUtils.renderManagedResourceSection({
+    resourceKey: "proxies",
+    kind: "proxy",
+    items: state.proxies,
+    state,
+    container: proxyList,
+    searchPlaceholder: "Search proxies",
+    emptyTitle: "还没有 SOCKS5 Proxy",
+    emptyDescription: "如果某些 Backend 需要固定出口代理，先在这里添加 SOCKS5 节点，再回到 Backend 里绑定。",
+    headers: ["Proxy", "Status", "Bindings", "Traffic", "Latency", "Last Used", "Updated", "Actions"],
+    rowRenderer: renderProxyRow,
+    resourceViewConfig: RESOURCE_VIEW_CONFIG,
+    rendererUtils: RendererUtils,
+    resourceViewUtils: ResourceViewUtils,
+    resourceStateUtils: ResourceStateUtils,
+    paginationUtils: PaginationUtils,
+    displayUtils: DisplayUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    getExpandedSet() {
+      return state.expandedProxies;
+    },
+    getEditingID() {
+      return state.editingProxyID;
+    },
+    renderList: renderProxies,
+    startEdit: startEditProxy,
+    resetForm: resetProxyForm,
+    refreshAll,
+    confirm,
+    deleteMessage: "确认删除这个 SOCKS5 Proxy？已绑定的 Backend 会自动改为直连。",
+    deletePath(id) {
+      return `/admin/api/socks-proxies/${id}`;
+    },
+    toggleExpanded,
+    api,
+    drawerUtils: DrawerUtils,
+    drawerViewUtils: DrawerViewUtils,
+    openResourceDrawer,
+    renderResourceListByKey,
+    refreshResourceList,
+    reportError,
+    onCreate: startCreateProxy,
+  });
 }
 
-function proxyLabel(proxyID, proxy) {
-  if (!proxyID || Number(proxyID) === 0) {
-    return "direct";
-  }
-  if (!proxy) {
-    return `missing proxy #${proxyID}`;
-  }
-  return `${proxy.name}${proxy.enabled ? "" : " (disabled)"}`;
+function renderBackends() {
+  ResourceListRuntimeUtils.renderManagedResourceSection({
+    resourceKey: "backends",
+    kind: "backend",
+    items: state.backends,
+    state,
+    container: backendList,
+    searchPlaceholder: "Search backends",
+    emptyTitle: "还没有 Backend",
+    emptyDescription: "先配置至少一个 OpenAI 或 Claude/Anthropic 上游节点，之后模型路由和故障切换才会生效。",
+    headers: ["Backend", "Routing", "Coverage", "Requests", "Avg Latency", "Last Used", "Recent 30m", "Actions"],
+    rowRenderer: renderBackendRow,
+    resourceViewConfig: RESOURCE_VIEW_CONFIG,
+    rendererUtils: RendererUtils,
+    resourceViewUtils: ResourceViewUtils,
+    resourceStateUtils: ResourceStateUtils,
+    paginationUtils: PaginationUtils,
+    displayUtils: DisplayUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    getExpandedSet() {
+      return state.expandedBackends;
+    },
+    getEditingID() {
+      return state.editingBackendID;
+    },
+    renderList: renderBackends,
+    startEdit: startEditBackend,
+    resetForm: resetBackendForm,
+    refreshAll,
+    confirm,
+    deleteMessage: "确认删除这个 Backend？",
+    deletePath(id) {
+      return `/admin/api/backends/${id}`;
+    },
+    toggleExpanded,
+    api,
+    drawerUtils: DrawerUtils,
+    drawerViewUtils: DrawerViewUtils,
+    openResourceDrawer,
+    renderResourceListByKey,
+    refreshResourceList,
+    reportError,
+    onCreate: startCreateBackend,
+  });
 }
 
-function backendProtocolLabel(protocol) {
-  return protocol === "anthropic" ? "Claude / Anthropic" : "OpenAI";
+function renderClients() {
+  ResourceListRuntimeUtils.renderManagedResourceSection({
+    resourceKey: "clients",
+    kind: "client",
+    items: state.clients,
+    state,
+    container: clientList,
+    searchPlaceholder: "Search client keys",
+    emptyTitle: "还没有 Client Key",
+    emptyDescription: "创建一个客户端 key 后，外部 SDK 或 AI 客户端才能通过 Token Gate 访问后端模型。",
+    headers: ["Client Key", "Status", "Routing", "Usage", "Last Used", "Updated", "Actions"],
+    rowRenderer: renderClientRow,
+    resourceViewConfig: RESOURCE_VIEW_CONFIG,
+    rendererUtils: RendererUtils,
+    resourceViewUtils: ResourceViewUtils,
+    resourceStateUtils: ResourceStateUtils,
+    paginationUtils: PaginationUtils,
+    displayUtils: DisplayUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    getExpandedSet() {
+      return state.expandedClients;
+    },
+    getEditingID() {
+      return state.editingClientID;
+    },
+    renderList: renderClients,
+    startEdit: startEditClient,
+    resetForm: resetClientForm,
+    refreshAll,
+    confirm,
+    deleteMessage: "确认删除这个 Client Key？",
+    deletePath(id) {
+      return `/admin/api/client-keys/${id}`;
+    },
+    toggleExpanded,
+    api,
+    drawerUtils: DrawerUtils,
+    drawerViewUtils: DrawerViewUtils,
+    openResourceDrawer,
+    renderResourceListByKey,
+    refreshResourceList,
+    reportError,
+    onCreate: startCreateClient,
+  });
+}
+
+function renderPolicies() {
+  ResourceListRuntimeUtils.renderManagedResourceSection({
+    resourceKey: "policies",
+    kind: "policy",
+    items: state.policies,
+    state,
+    container: policyList,
+    searchPlaceholder: "Search policies",
+    emptyTitle: "还没有 Model Policy",
+    emptyDescription: "定义模型模式、端点和 placement 策略后，路由行为才会按业务意图收敛。",
+    headers: ["Pattern", "Routing", "Usage", "Coverage", "Last Used", "Updated", "Actions"],
+    rowRenderer: renderPolicyRow,
+    resourceViewConfig: RESOURCE_VIEW_CONFIG,
+    rendererUtils: RendererUtils,
+    resourceViewUtils: ResourceViewUtils,
+    resourceStateUtils: ResourceStateUtils,
+    paginationUtils: PaginationUtils,
+    displayUtils: DisplayUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    getExpandedSet() {
+      return state.expandedPolicies;
+    },
+    getEditingID() {
+      return state.editingPolicyID;
+    },
+    renderList: renderPolicies,
+    startEdit: startEditPolicy,
+    resetForm: resetPolicyForm,
+    refreshAll,
+    confirm,
+    deleteMessage: "确认删除这个 Model Policy？",
+    deletePath(id) {
+      return `/admin/api/model-policies/${id}`;
+    },
+    toggleExpanded,
+    api,
+    drawerUtils: DrawerUtils,
+    drawerViewUtils: DrawerViewUtils,
+    openResourceDrawer,
+    renderResourceListByKey,
+    refreshResourceList,
+    reportError,
+    onCreate: startCreatePolicy,
+  });
+}
+
+function renderProxyRow(proxy) {
+  return ResourceRenderRuntimeUtils.renderProxyRow({
+    proxy,
+    state,
+    buildQuickDetailMarkup,
+    resourceViewUtils: ResourceViewUtils,
+    displayUtils: DisplayUtils,
+  });
+}
+
+function renderBackendRow(backend) {
+  return ResourceRenderRuntimeUtils.renderBackendRow({
+    backend,
+    state,
+    buildQuickDetailMarkup,
+    resourceViewUtils: ResourceViewUtils,
+    displayUtils: DisplayUtils,
+  });
+}
+
+function renderClientRow(client) {
+  return ResourceRenderRuntimeUtils.renderClientRow({
+    client,
+    state,
+    buildQuickDetailMarkup,
+    resourceViewUtils: ResourceViewUtils,
+    displayUtils: DisplayUtils,
+  });
+}
+
+function renderPolicyRow(policy) {
+  return ResourceRenderRuntimeUtils.renderPolicyRow({
+    policy,
+    state,
+    buildQuickDetailMarkup,
+    resourceViewUtils: ResourceViewUtils,
+    displayUtils: DisplayUtils,
+  });
+}
+
+function renderResourceListByKey(resourceKey) {
+  return ResourceRenderRuntimeUtils.renderResourceListByKey({
+    resourceKey,
+    renderProxies,
+    renderBackends,
+    renderClients,
+    renderPolicies,
+  });
+}
+
+function buildQuickDetailMarkup(resourceKey, record) {
+  return ResourceRenderRuntimeUtils.buildQuickDetailMarkup({
+    resourceKey,
+    record,
+    rendererUtils: RendererUtils,
+    resourceViewUtils: ResourceViewUtils,
+    displayUtils: DisplayUtils,
+  });
+}
+
+function renderEvents() {
+  ObservabilityRuntimeUtils.renderEvents({
+    state,
+    eventList,
+    observabilityUtils: ObservabilityUtils,
+    observabilityViewUtils: ObservabilityViewUtils,
+    paginationUtils: PaginationUtils,
+    resourceStateUtils: ResourceStateUtils,
+    displayUtils: DisplayUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    refreshAll,
+    reportError,
+    feedToneClass,
+    openResourceDrawer,
+    eventQueryFilter,
+    eventActorFilter,
+    eventBackendFilter,
+    eventCategoryFilter,
+    eventSeverityFilter,
+    eventDateFromFilter,
+    eventDateToFilter,
+  });
+}
+
+function renderUsageLogs() {
+  ObservabilityRuntimeUtils.renderUsageLogs({
+    state,
+    usageLogList,
+    deleteUsageLogsBtn,
+    observabilityUtils: ObservabilityUtils,
+    observabilityViewUtils: ObservabilityViewUtils,
+    paginationUtils: PaginationUtils,
+    resourceStateUtils: ResourceStateUtils,
+    displayUtils: DisplayUtils,
+    pageSizeOptions: PAGE_SIZE_OPTIONS,
+    refreshAll,
+    reportError,
+    openResourceDrawer,
+    renderUsageLogInlineDetail,
+    toggleExpanded,
+    usageLogQueryFilter,
+    usageLogDateFromFilter,
+    usageLogDateToFilter,
+    usageLogBackendFilter,
+    usageLogModelFilter,
+    usageLogClientKeyFilter,
+    usageLogPolicyFilter,
+    usageLogProxyFilter,
+    usageLogStatusFilter,
+  });
+}
+
+function renderUsageLogInlineDetail(row) {
+  return ObservabilityRuntimeUtils.renderUsageLogInlineDetail({
+    row,
+    state,
+    observabilityUtils: ObservabilityUtils,
+    observabilityViewUtils: ObservabilityViewUtils,
+    displayUtils: DisplayUtils,
+    primeUsageLogDetail,
+  });
+}
+
+async function primeUsageLogDetail(id) {
+  await ObservabilityRuntimeUtils.primeUsageLogDetail({
+    id,
+    state,
+    api,
+    renderUsageLogs,
+  });
 }
 
 function toggleExpanded(set, id) {
@@ -2242,75 +2000,6 @@ function toggleExpanded(set, id) {
     return;
   }
   set.add(normalizedID);
-}
-
-function statusPill(enabled, onText, offText) {
-  const active = Boolean(enabled);
-  return `<span class="status-pill ${active ? "ok" : "off"}">${escapeHTML(active ? onText : offText)}</span>`;
-}
-
-function compactList(values) {
-  const items = ensureArray(values).filter(Boolean);
-  if (items.length === 0) {
-    return `<span class="muted-text">-</span>`;
-  }
-
-  const visible = items.slice(0, 2);
-  const rest = items.length - visible.length;
-  return `
-    <div class="compact-list">
-      ${visible.map((item) => `<span>${escapeHTML(item)}</span>`).join("")}
-      ${rest > 0 ? `<span class="more-count">+${rest}</span>` : ""}
-    </div>
-  `;
-}
-
-function chipList(values, className = "") {
-  const items = ensureArray(values).filter(Boolean);
-  if (items.length === 0) {
-    return `<span class="muted-text">-</span>`;
-  }
-
-  const modifier = className ? ` ${escapeHTML(className)}` : "";
-  return items.map((item) => `<span class="chip${modifier}">${escapeHTML(item)}</span>`).join("");
-}
-
-function tableActions(type, id) {
-  const normalizedID = escapeHTML(id);
-  const attributes = {
-    proxy: ["data-edit-proxy", "data-delete-proxy"],
-    backend: ["data-edit-backend", "data-delete-backend"],
-    client: ["data-edit-client", "data-delete-client"],
-    policy: ["data-edit-policy", "data-delete-policy"],
-  }[type];
-
-  if (!attributes) {
-    return "";
-  }
-
-  const [editAttribute, deleteAttribute] = attributes;
-  return `
-    <div class="table-actions">
-      <button class="small-button" ${editAttribute}="${normalizedID}" type="button">编辑</button>
-      <button class="small-button danger-button" ${deleteAttribute}="${normalizedID}" type="button">删除</button>
-    </div>
-  `;
-}
-
-function emptyState(title, description) {
-  return `
-    <article class="empty-state">
-      <strong>${escapeHTML(title)}</strong>
-      <p class="empty-copy">${escapeHTML(description)}</p>
-    </article>
-  `;
-}
-
-function renderDatalist(element, values) {
-  element.innerHTML = ensureArray(values)
-    .filter(Boolean)
-    .map((value) => `<option value="${escapeHTML(value)}"></option>`)
-    .join("");
 }
 
 async function api(path, method = "GET", body) {
@@ -2334,15 +2023,6 @@ async function api(path, method = "GET", body) {
 function reportError(error) {
   console.error(error);
   alert(error?.message || "操作失败");
-}
-
-function escapeHTML(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 activatePage(pageIDFromHash());

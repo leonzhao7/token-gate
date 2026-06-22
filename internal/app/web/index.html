@@ -3,138 +3,262 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Token Gate Console</title>
+    <title>Token Gate - AI Proxy Center</title>
+    <script>
+      (() => {
+        const storageKey = "token-gate-theme-preference";
+        const saved = String(localStorage.getItem(storageKey) || "").trim().toLowerCase();
+        const preference = saved === "light" || saved === "dark" ? saved : "system";
+        const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const theme = preference === "system" ? (prefersDark ? "dark" : "light") : preference;
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.dataset.themePreference = preference;
+      })();
+    </script>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="app-shell">
-      <aside class="sidebar">
-        <a class="brand" href="#overview" aria-label="Token Gate Dashboard">
-          <span class="brand-mark">TG</span>
-          <span class="brand-copy">
-            <strong>Token Gate</strong>
-            <small>AI Proxy Center</small>
-          </span>
-        </a>
+    <div class="app-shell premium-shell">
+      <aside class="sidebar shell-sidebar" id="sidebarRoot">
+        <div class="sidebar-frame">
+          <div class="sidebar-top">
+            <a class="brand" href="#overview" aria-label="Token Gate Overview">
+              <span class="brand-mark">TG</span>
+              <span class="brand-copy">
+                <strong>Token Gate</strong>
+                <small>AI Proxy Center</small>
+              </span>
+            </a>
+            <button class="icon-button sidebar-toggle" id="sidebarToggleBtn" type="button" aria-label="切换侧边栏">
+              <svg class="shell-icon" data-shell-icon="sidebar-toggle" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 6h16"></path>
+                <path d="M4 12h16"></path>
+                <path d="M4 18h16"></path>
+              </svg>
+            </button>
+          </div>
 
-        <nav class="nav-list" aria-label="Console sections">
-          <a href="#overview" class="nav-item" data-page-link="overview">
-            <span class="nav-dot"></span>
-            Dashboard
-          </a>
-          <a href="#socks-proxies" class="nav-item" data-page-link="socks-proxies">
-            <span class="nav-dot"></span>
-            SOCKS5 Proxies
-          </a>
-          <a href="#backends" class="nav-item" data-page-link="backends">
-            <span class="nav-dot"></span>
-            Backends
-          </a>
-          <a href="#client-keys" class="nav-item" data-page-link="client-keys">
-            <span class="nav-dot"></span>
-            Client Keys
-          </a>
-          <a href="#model-policies" class="nav-item" data-page-link="model-policies">
-            <span class="nav-dot"></span>
-            Model Policies
-          </a>
-          <a href="#events" class="nav-item" data-page-link="events">
-            <span class="nav-dot"></span>
-            Events
-          </a>
-          <a href="#usage-logs" class="nav-item" data-page-link="usage-logs">
-            <span class="nav-dot"></span>
-            Usage Logs
-          </a>
-          <a href="#settings" class="nav-item" data-page-link="settings">
-            <span class="nav-dot"></span>
-            Settings
-          </a>
-        </nav>
+          <nav class="sidebar-nav" aria-label="Console sections">
+            <section class="nav-group">
+              <span class="nav-group-label">Overview</span>
+              <div class="nav-list">
+                <a href="#overview" class="nav-item" data-page-link="overview" data-nav-label="Dashboard" aria-label="Dashboard" title="Dashboard">
+                  <svg class="nav-icon" data-nav-icon="dashboard" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+                    <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+                    <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+                    <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+                  </svg>
+                  <span>Dashboard</span>
+                </a>
+              </div>
+            </section>
+
+            <section class="nav-group">
+              <span class="nav-group-label">Resources</span>
+              <div class="nav-list">
+                <a href="#socks-proxies" class="nav-item" data-page-link="socks-proxies" data-nav-label="Proxies" aria-label="Proxies" title="Proxies">
+                  <svg class="nav-icon" data-nav-icon="proxies" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"></path>
+                    <path d="M18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"></path>
+                    <path d="M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"></path>
+                    <path d="M8.6 6.5h6.8"></path>
+                    <path d="M8.5 7.5 15.5 16"></path>
+                  </svg>
+                  <span>Proxies</span>
+                </a>
+                <a href="#backends" class="nav-item" data-page-link="backends" data-nav-label="Backends" aria-label="Backends" title="Backends">
+                  <svg class="nav-icon" data-nav-icon="backends" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="4" width="16" height="6" rx="2"></rect>
+                    <rect x="4" y="14" width="16" height="6" rx="2"></rect>
+                    <path d="M8 7h.01"></path>
+                    <path d="M8 17h.01"></path>
+                  </svg>
+                  <span>Backends</span>
+                </a>
+                <a href="#client-keys" class="nav-item" data-page-link="client-keys" data-nav-label="Client Keys" aria-label="Client Keys" title="Client Keys">
+                  <svg class="nav-icon" data-nav-icon="client-keys" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="8" cy="15" r="4"></circle>
+                    <path d="m11 12 8-8"></path>
+                    <path d="m15 8 3 3"></path>
+                    <path d="m17 6 3 3"></path>
+                  </svg>
+                  <span>Client Keys</span>
+                </a>
+                <a href="#model-policies" class="nav-item" data-page-link="model-policies" data-nav-label="Policies" aria-label="Policies" title="Policies">
+                  <svg class="nav-icon" data-nav-icon="policies" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 7h10"></path>
+                    <path d="M4 17h10"></path>
+                    <circle cx="17" cy="7" r="3"></circle>
+                    <circle cx="17" cy="17" r="3"></circle>
+                  </svg>
+                  <span>Policies</span>
+                </a>
+              </div>
+            </section>
+
+            <section class="nav-group">
+              <span class="nav-group-label">Observability</span>
+              <div class="nav-list">
+                <a href="#usage-logs" class="nav-item" data-page-link="usage-logs" data-nav-label="Usage Logs" aria-label="Usage Logs" title="Usage Logs">
+                  <svg class="nav-icon" data-nav-icon="usage-logs" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 5h14"></path>
+                    <path d="M5 12h14"></path>
+                    <path d="M5 19h8"></path>
+                    <path d="M17 17l2 2 3-4"></path>
+                  </svg>
+                  <span>Usage Logs</span>
+                </a>
+                <a href="#events" class="nav-item" data-page-link="events" data-nav-label="Events" aria-label="Events" title="Events">
+                  <svg class="nav-icon" data-nav-icon="events" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+                    <path d="M10 21h4"></path>
+                    <path d="M12 3v2"></path>
+                  </svg>
+                  <span>Events</span>
+                </a>
+              </div>
+            </section>
+
+            <section class="nav-group">
+              <span class="nav-group-label">Settings</span>
+              <div class="nav-list">
+                <a href="#settings" class="nav-item" data-page-link="settings" data-nav-label="Settings" aria-label="Settings" title="Settings">
+                  <svg class="nav-icon" data-nav-icon="settings" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M12 2v3"></path>
+                    <path d="M12 19v3"></path>
+                    <path d="M2 12h3"></path>
+                    <path d="M19 12h3"></path>
+                    <path d="m4.9 4.9 2.2 2.2"></path>
+                    <path d="m16.9 16.9 2.2 2.2"></path>
+                    <path d="m4.9 19.1 2.2-2.2"></path>
+                    <path d="m16.9 7.1 2.2-2.2"></path>
+                  </svg>
+                  <span>Settings</span>
+                </a>
+              </div>
+            </section>
+          </nav>
+
+          <section class="sidebar-card sidebar-control-card">
+            <div class="section-heading compact">
+              <span class="section-label">Console Access</span>
+              <h3>Admin Session</h3>
+              <p>保存管理 Token，并按需刷新当前控制台数据。</p>
+            </div>
+            <div class="admin-access">
+              <label class="field" for="adminToken">
+                <span>Admin Token</span>
+                <input id="adminToken" type="password" placeholder="输入 TG_ADMIN_TOKEN" />
+              </label>
+              <div class="button-row compact">
+                <button id="saveTokenBtn" type="button">保存</button>
+                <button class="ghost-button" id="refreshBtn" type="button">刷新数据</button>
+              </div>
+            </div>
+          </section>
+        </div>
       </aside>
 
-      <div class="main-area">
-        <header class="topbar">
-          <div class="topbar-title">
-            <span class="breadcrumb" id="pageBreadcrumb">Dashboard</span>
-            <h1 id="pageTitle">Token Gate - AI Proxy Center</h1>
+      <div class="main-area shell-main">
+        <header class="topbar shell-header">
+          <div class="topbar-title shell-breadcrumbs">
+            <span class="eyebrow">AI Proxy Center</span>
+            <span class="breadcrumb" id="pageBreadcrumb">Dashboard / Overview</span>
+            <h1 id="pageTitle">Dashboard</h1>
           </div>
-          <button id="globalSearchBtn" class="global-search-trigger" type="button" aria-haspopup="dialog" aria-controls="searchModal">
-            <span>Search backends, keys, policies...</span>
-            <kbd>Ctrl K</kbd>
-          </button>
-          <div class="admin-access" id="adminAccess">
-            <label for="adminToken" class="field-label">Admin Token</label>
-            <input id="adminToken" type="password" placeholder="输入 TG_ADMIN_TOKEN" />
-            <button id="saveTokenBtn" type="button">保存</button>
-            <button class="ghost-button" id="refreshBtn" type="button">刷新数据</button>
-            <button class="ghost-button" id="themeToggleBtn" type="button">Theme</button>
+          <div class="shell-searchbar shell-searchbar-center">
+            <label class="shell-search-trigger shell-search-field" for="searchOpenBtn">
+              <svg class="shell-icon shell-search-icon" data-shell-icon="search" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="7"></circle>
+                <path d="m20 20-4-4"></path>
+              </svg>
+              <input
+                id="searchOpenBtn"
+                class="shell-search-launcher"
+                type="search"
+                placeholder="Search backends, keys, policies..."
+                autocomplete="off"
+                aria-haspopup="dialog"
+                aria-controls="searchModalRoot"
+              />
+              <span class="search-shortcut">⌘ / Ctrl + K</span>
+            </label>
+          </div>
+          <div class="shell-utilities">
+            <button class="icon-button theme-toggle" id="themeToggleBtn" type="button" aria-label="切换主题">
+              <svg class="shell-icon theme-toggle-icon" data-shell-icon="theme" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9Z"></path>
+              </svg>
+              <span id="themeToggleLabel">Auto</span>
+            </button>
+            <button class="icon-button utility-pill" id="notificationMenuBtn" type="button" aria-label="通知" aria-expanded="false" aria-controls="headerPanelRoot">
+              <svg class="shell-icon" data-shell-icon="notifications" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path>
+                <path d="M10 21h4"></path>
+              </svg>
+            </button>
+            <button class="profile-chip" id="profileMenuBtn" type="button" aria-label="当前用户" aria-expanded="false" aria-controls="headerPanelRoot">
+              <span class="profile-avatar" aria-hidden="true">AP</span>
+              <span class="profile-copy">
+                <strong>Admin</strong>
+                <small>Proxy Ops</small>
+              </span>
+              <svg class="shell-icon profile-menu-icon" data-shell-icon="profile-menu" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m6 9 6 6 6-6"></path>
+              </svg>
+            </button>
+            <div class="header-panel-root" id="headerPanelRoot"></div>
           </div>
         </header>
 
-        <main class="workspace">
-          <section class="page overview-page" id="overview" data-page-title="Dashboard" data-page-breadcrumb="Dashboard">
+        <main class="workspace shell-workspace">
+          <section class="page overview-page" id="overview" data-page-title="Dashboard" data-page-breadcrumb="Dashboard / Overview">
             <div class="page-head">
               <div>
                 <span class="section-label">Transparent LLM Gateway</span>
-                <h2>运行概览</h2>
-                <p>
-                  Token Gate 暴露统一 base_url 和 client key，后端节点、SOCKS5 出口、模型策略都在这里集中管理。
-                </p>
+                <h2>Dashboard</h2>
+                <p>Monitor infrastructure, access credentials, routing policies, and traffic usage.</p>
               </div>
               <div class="page-actions">
-                <a href="#backends">配置 Backend</a>
-                <a href="#client-keys">管理 Client Key</a>
-                <a href="#model-policies">调整策略</a>
+                <a class="page-action-pill" href="#backends">
+                  <svg class="shell-icon" data-shell-icon="action-backends" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="4" width="16" height="6" rx="2"></rect>
+                    <rect x="4" y="14" width="16" height="6" rx="2"></rect>
+                  </svg>
+                  <span>Configure Backends</span>
+                </a>
+                <a class="page-action-pill" href="#client-keys">
+                  <svg class="shell-icon" data-shell-icon="action-client-keys" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="8" cy="15" r="4"></circle>
+                    <path d="m11 12 8-8"></path>
+                    <path d="m15 8 3 3"></path>
+                  </svg>
+                  <span>Manage Client Keys</span>
+                </a>
+                <a class="page-action-pill" href="#model-policies">
+                  <svg class="shell-icon" data-shell-icon="action-policies" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 7h10"></path>
+                    <path d="M4 17h10"></path>
+                    <circle cx="17" cy="7" r="3"></circle>
+                    <circle cx="17" cy="17" r="3"></circle>
+                  </svg>
+                  <span>Edit Policies</span>
+                </a>
               </div>
             </div>
-            <div class="stats-grid" id="stats"></div>
-            <div class="dashboard-grid">
-              <section class="dashboard-panel dashboard-panel-wide">
-                <div class="panel-head">
-                  <div>
-                    <span class="section-label">Usage Overview</span>
-                    <h3>Usage Overview</h3>
-                    <p>基于最近已加载的使用日志，展示请求、失败和延迟趋势。</p>
-                  </div>
-                  <div class="chart-tabs" id="usageChartTabs">
-                    <button class="chip-button active" type="button" data-chart-mode="requests">Requests</button>
-                    <button class="chip-button" type="button" data-chart-mode="failures">Failures</button>
-                    <button class="chip-button" type="button" data-chart-mode="latency">Latency</button>
-                  </div>
-                </div>
-                <div id="usageOverviewChart" class="chart-frame"></div>
-              </section>
-              <section class="dashboard-panel dashboard-panel-narrow">
-                <div class="panel-head compact">
-                  <div>
-                    <span class="section-label">Events Summary</span>
-                    <h3>Events Summary</h3>
-                  </div>
-                </div>
-                <div id="eventsSummaryCards" class="summary-stack"></div>
-              </section>
-            </div>
-            <div class="dashboard-grid dashboard-grid-lower">
-              <section class="dashboard-panel">
-                <div class="panel-head compact">
-                  <div>
-                    <span class="section-label">Recent Events</span>
-                    <h3>Recent Events</h3>
-                  </div>
-                </div>
-                <div id="recentEventsPanel" class="feed-list"></div>
-              </section>
-              <section class="dashboard-panel">
-                <div class="panel-head compact">
-                  <div>
-                    <span class="section-label">Recent Usage Logs</span>
-                    <h3>Recent Usage Logs</h3>
-                  </div>
-                </div>
-                <div id="recentUsageLogsPanel" class="feed-list"></div>
-              </section>
-            </div>
+            <section class="dashboard-root" id="dashboardRoot" aria-label="Dashboard overview panels">
+              <div class="dashboard-summary-row" id="dashboardSummaryRow" aria-label="Summary cards"></div>
+              <div class="dashboard-main-grid">
+                <article class="dashboard-panel dashboard-panel-usage" id="dashboardUsageCard" aria-label="Usage overview chart"></article>
+                <article class="dashboard-panel dashboard-panel-events" id="dashboardEventsSummaryCard" aria-label="Events summary"></article>
+              </div>
+              <div class="dashboard-detail-grid">
+                <article class="dashboard-panel dashboard-panel-feed" id="dashboardRecentEventsCard" aria-label="Recent events"></article>
+                <article class="dashboard-panel dashboard-panel-feed" id="dashboardRecentUsageCard" aria-label="Recent usage logs"></article>
+              </div>
+            </section>
           </section>
 
           <section class="page resource-page" id="socks-proxies" data-page-title="SOCKS5 Proxies" data-page-breadcrumb="Dashboard / SOCKS5 Proxies">
@@ -156,7 +280,12 @@
                     <span class="section-label">SOCKS5 Proxy</span>
                     <h3 id="proxyModalTitle">新增 Proxy</h3>
                   </div>
-                  <button class="icon-button" id="proxyModalCloseBtn" type="button" aria-label="关闭 Proxy 弹窗">×</button>
+                  <button class="icon-button" id="proxyModalCloseBtn" type="button" aria-label="关闭 Proxy 弹窗">
+                    <svg class="shell-icon" data-shell-icon="close" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M6 6l12 12"></path>
+                      <path d="M18 6 6 18"></path>
+                    </svg>
+                  </button>
                 </div>
                 <form id="proxyForm" class="editor-card modal-form">
                   <p class="edit-banner hidden" id="proxyEditBanner">正在编辑 SOCKS5 Proxy</p>
@@ -215,7 +344,12 @@
                     <span class="section-label">Backend</span>
                     <h3 id="backendModalTitle">新增 Backend</h3>
                   </div>
-                  <button class="icon-button" id="backendModalCloseBtn" type="button" aria-label="关闭 Backend 弹窗">×</button>
+                  <button class="icon-button" id="backendModalCloseBtn" type="button" aria-label="关闭 Backend 弹窗">
+                    <svg class="shell-icon" data-shell-icon="close" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M6 6l12 12"></path>
+                      <path d="M18 6 6 18"></path>
+                    </svg>
+                  </button>
                 </div>
                 <form id="backendForm" class="editor-card modal-form">
                   <p class="edit-banner hidden" id="backendEditBanner">正在编辑 Backend</p>
@@ -305,7 +439,12 @@
                     <span class="section-label">Client Key</span>
                     <h3 id="clientModalTitle">新增 Client Key</h3>
                   </div>
-                  <button class="icon-button" id="clientModalCloseBtn" type="button" aria-label="关闭 Client Key 弹窗">×</button>
+                  <button class="icon-button" id="clientModalCloseBtn" type="button" aria-label="关闭 Client Key 弹窗">
+                    <svg class="shell-icon" data-shell-icon="close" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M6 6l12 12"></path>
+                      <path d="M18 6 6 18"></path>
+                    </svg>
+                  </button>
                 </div>
                 <form id="clientForm" class="editor-card modal-form">
                   <p class="edit-banner hidden" id="clientEditBanner">正在编辑 Client Key</p>
@@ -367,7 +506,12 @@
                     <span class="section-label">Model Policy</span>
                     <h3 id="policyModalTitle">新增 Policy</h3>
                   </div>
-                  <button class="icon-button" id="policyModalCloseBtn" type="button" aria-label="关闭 Policy 弹窗">×</button>
+                  <button class="icon-button" id="policyModalCloseBtn" type="button" aria-label="关闭 Policy 弹窗">
+                    <svg class="shell-icon" data-shell-icon="close" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M6 6l12 12"></path>
+                      <path d="M18 6 6 18"></path>
+                    </svg>
+                  </button>
                 </div>
                 <form id="policyForm" class="editor-card modal-form">
                   <p class="edit-banner hidden" id="policyEditBanner">正在编辑 Model Policy</p>
@@ -432,6 +576,72 @@
                 <p>展示最近的配置变更、failover 记录和上游异常事件。</p>
               </div>
             </div>
+            <div class="observability-toolbar" data-observability-toolbar="events">
+              <div class="observability-toolbar-main">
+                <div class="observability-toolbar-copy">
+                  <span class="section-label">Events timeline filters</span>
+                  <strong>Refine the events timeline</strong>
+                  <p>按 actor、backend、category 和时间窗口收窄最近事件流，快速定位 failover 与异常记录。</p>
+                </div>
+              </div>
+              <div class="observability-toolbar-grid">
+                <label class="field">
+                  <span>Search</span>
+                  <input id="eventQueryFilter" placeholder="search message / model / request id" />
+                </label>
+                <label class="field">
+                  <span>Actor</span>
+                  <input id="eventActorFilter" placeholder="system / admin" />
+                </label>
+                <label class="field">
+                  <span>Backend</span>
+                  <input id="eventBackendFilter" placeholder="backend name" />
+                </label>
+                <label class="field">
+                  <span>Category</span>
+                  <input id="eventCategoryFilter" placeholder="backend / policy / security" />
+                </label>
+                <label class="field">
+                  <span>Severity</span>
+                  <input id="eventSeverityFilter" placeholder="info / warning / error" />
+                </label>
+                <label class="field">
+                  <span>Date From</span>
+                  <input id="eventDateFromFilter" type="date" />
+                </label>
+                <label class="field">
+                  <span>Date To</span>
+                  <input id="eventDateToFilter" type="date" />
+                </label>
+              </div>
+              <div class="observability-toolbar-actions">
+                <button class="ghost-button observability-toolbar-button" id="refreshEventsBtn" type="button" aria-label="刷新事件" title="刷新事件">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-refresh" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6v6h-6"></path>
+                    <path d="M4 18v-6h6"></path>
+                    <path d="M18 12a6 6 0 0 0-10-4.5"></path>
+                    <path d="M6 12a6 6 0 0 0 10 4.5"></path>
+                  </svg>
+                  <span>刷新</span>
+                </button>
+                <button class="observability-toolbar-button" id="applyEventFiltersBtn" type="button" aria-label="查询事件" title="查询事件">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-query" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <path d="m20 20-4-4"></path>
+                  </svg>
+                  <span>查询</span>
+                </button>
+                <button class="ghost-button observability-toolbar-button" id="resetEventFiltersBtn" type="button" aria-label="重置事件过滤器" title="重置事件过滤器">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-reset" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4v6h6"></path>
+                    <path d="M20 20v-6h-6"></path>
+                    <path d="M5 15a7 7 0 0 0 11 4"></path>
+                    <path d="M19 9A7 7 0 0 0 8 5"></path>
+                  </svg>
+                  <span>重置</span>
+                </button>
+              </div>
+            </div>
             <div class="resource-layout list-only">
               <div id="eventList" class="resource-list"></div>
             </div>
@@ -444,163 +654,209 @@
                 <h3>Usage Logs</h3>
                 <p>每个 Client Key 的每次代理请求都会记录一条日志，便于追踪模型、后端、状态和耗时。</p>
               </div>
-              <div class="page-actions">
-                <button class="danger-button" id="deleteUsageLogsBtn" type="button">删除查询结果</button>
-                <button class="ghost-button" id="clearUsageLogsBtn" type="button">清空</button>
-              </div>
             </div>
-            <div class="filter-bar">
-              <label class="field">
-                <span>Backend</span>
-                <input id="usageLogBackendFilter" list="usageLogBackendOptions" placeholder="backend name" />
-              </label>
-              <label class="field">
-                <span>Model</span>
-                <input id="usageLogModelFilter" list="usageLogModelOptions" placeholder="model name" />
-              </label>
-              <label class="field">
-                <span>Client Key</span>
-                <input id="usageLogClientKeyFilter" list="usageLogClientKeyOptions" placeholder="client key name" />
-              </label>
-              <div class="button-row compact">
-                <button id="applyUsageLogFiltersBtn" type="button">查询</button>
-                <button class="ghost-button" id="resetUsageLogFiltersBtn" type="button">重置</button>
+            <div class="observability-toolbar" data-observability-toolbar="usage-logs">
+              <div class="observability-toolbar-main">
+                <div class="observability-toolbar-copy">
+                  <span class="section-label">Usage request filters</span>
+                  <strong>Slice usage requests by route, backend, and client</strong>
+                  <p>组合请求维度过滤器，审查代理流量、状态分布和高延迟调用，同时保留批量清理操作。</p>
+                </div>
+              </div>
+              <div class="observability-toolbar-grid">
+                <label class="field">
+                  <span>Search</span>
+                  <input id="usageLogQueryFilter" placeholder="search request / trace / path" />
+                </label>
+                <label class="field">
+                  <span>Date From</span>
+                  <input id="usageLogDateFromFilter" type="date" />
+                </label>
+                <label class="field">
+                  <span>Date To</span>
+                  <input id="usageLogDateToFilter" type="date" />
+                </label>
+                <label class="field">
+                  <span>Backend</span>
+                  <input id="usageLogBackendFilter" list="usageLogBackendOptions" placeholder="backend name" />
+                </label>
+                <label class="field">
+                  <span>Model</span>
+                  <input id="usageLogModelFilter" list="usageLogModelOptions" placeholder="model name" />
+                </label>
+                <label class="field">
+                  <span>Client Key</span>
+                  <input id="usageLogClientKeyFilter" list="usageLogClientKeyOptions" placeholder="client key name" />
+                </label>
+                <label class="field">
+                  <span>Policy</span>
+                  <input id="usageLogPolicyFilter" list="usageLogPolicyOptions" placeholder="policy pattern" />
+                </label>
+                <label class="field">
+                  <span>Proxy</span>
+                  <input id="usageLogProxyFilter" list="usageLogProxyOptions" placeholder="proxy name" />
+                </label>
+                <label class="field">
+                  <span>Status</span>
+                  <select id="usageLogStatusFilter">
+                    <option value="">All status</option>
+                    <option value="2xx">2xx</option>
+                    <option value="3xx">3xx</option>
+                    <option value="4xx">4xx</option>
+                    <option value="5xx">5xx</option>
+                  </select>
+                </label>
+              </div>
+              <div class="observability-toolbar-actions">
+                <button class="ghost-button observability-toolbar-button" id="refreshUsageLogsBtn" type="button" aria-label="刷新使用日志" title="刷新使用日志">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-refresh" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6v6h-6"></path>
+                    <path d="M4 18v-6h6"></path>
+                    <path d="M18 12a6 6 0 0 0-10-4.5"></path>
+                    <path d="M6 12a6 6 0 0 0 10 4.5"></path>
+                  </svg>
+                  <span>刷新</span>
+                </button>
+                <button class="observability-toolbar-button" id="applyUsageLogFiltersBtn" type="button" aria-label="查询使用日志" title="查询使用日志">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-query" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <path d="m20 20-4-4"></path>
+                  </svg>
+                  <span>查询</span>
+                </button>
+                <button class="ghost-button observability-toolbar-button" id="resetUsageLogFiltersBtn" type="button" aria-label="重置使用日志过滤器" title="重置使用日志过滤器">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-reset" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4v6h6"></path>
+                    <path d="M20 20v-6h-6"></path>
+                    <path d="M5 15a7 7 0 0 0 11 4"></path>
+                    <path d="M19 9A7 7 0 0 0 8 5"></path>
+                  </svg>
+                  <span>重置</span>
+                </button>
+                <button class="danger-button observability-toolbar-button" id="deleteUsageLogsBtn" type="button" aria-label="删除查询结果" title="删除查询结果">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-delete" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 7h14"></path>
+                    <path d="M10 11v6"></path>
+                    <path d="M14 11v6"></path>
+                    <path d="M7 7l1-3h8l1 3"></path>
+                    <path d="M6 7l1 12h10l1-12"></path>
+                  </svg>
+                  <span>删除</span>
+                </button>
+                <button class="ghost-button observability-toolbar-button" id="clearUsageLogsBtn" type="button" aria-label="清空使用日志" title="清空使用日志">
+                  <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-clear" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 5v14"></path>
+                    <path d="M5 12h14"></path>
+                  </svg>
+                  <span>清空</span>
+                </button>
               </div>
             </div>
             <datalist id="usageLogBackendOptions"></datalist>
             <datalist id="usageLogModelOptions"></datalist>
             <datalist id="usageLogClientKeyOptions"></datalist>
+            <datalist id="usageLogPolicyOptions"></datalist>
+            <datalist id="usageLogProxyOptions"></datalist>
             <div class="resource-layout list-only">
               <div id="usageLogList" class="resource-list"></div>
             </div>
           </section>
 
-          <section class="page resource-page" id="settings" data-page-title="Settings" data-page-breadcrumb="Dashboard / Settings">
-            <div class="resource-header">
-              <div class="section-heading">
-                <span class="section-label">Preferences</span>
-                <h3>Settings</h3>
-                <p>管理本地访问凭据、主题偏好和平台运行约束。</p>
+          <section class="page resource-page" id="settings" data-page-title="Settings" data-page-breadcrumb="Settings / Console">
+            <div class="page-head">
+              <div>
+                <span class="section-label">Control Plane</span>
+                <h2>Settings</h2>
+                <p>Manage console access, appearance, and operator shortcuts without leaving the control center.</p>
               </div>
-              <a class="ghost-button" href="#adminAccess">Edit header controls</a>
+              <div class="page-actions">
+                <a href="#overview">返回 Dashboard</a>
+              </div>
             </div>
-            <div class="settings-grid">
-              <article class="dashboard-panel settings-panel">
-                <div class="panel-head compact">
-                  <div>
-                    <span class="section-label">Access</span>
-                    <h3>Admin Access</h3>
-                  </div>
-                </div>
-                <div class="settings-list">
-                  <div class="setting-row">
-                    <div>
-                      <strong>Admin token</strong>
-                      <small>保存在浏览器本地，只在当前设备生效。</small>
-                    </div>
-                    <span class="status-pill ok">Local only</span>
-                  </div>
-                  <div class="setting-row">
-                    <div>
-                      <strong>Global search</strong>
-                      <small>Ctrl K 可快速查找 backend、client key、policy、proxy、event 和 usage log。</small>
-                    </div>
-                    <span class="status-pill ok">Enabled</span>
-                  </div>
-                </div>
-              </article>
-              <article class="dashboard-panel settings-panel">
-                <div class="panel-head compact">
-                  <div>
-                    <span class="section-label">Routing</span>
-                    <h3>Operational Defaults</h3>
-                  </div>
-                </div>
-                <div class="settings-list">
-                  <div class="setting-row">
-                    <div>
-                      <strong>Failover</strong>
-                      <small>Backend 连续失败后进入 cooling，候选耗尽时直接返回失败。</small>
-                    </div>
-                  </div>
-                  <div class="setting-row">
-                    <div>
-                      <strong>Model mapping</strong>
-                      <small>客户端看到的是映射后的模型名，上游请求会自动改写。</small>
-                    </div>
-                  </div>
-                  <div class="setting-row">
-                    <div>
-                      <strong>Health checks</strong>
-                      <small>不会自动探测健康状态，调度仅依赖真实请求和失败统计。</small>
-                    </div>
-                  </div>
-                </div>
-              </article>
-              <article class="dashboard-panel settings-panel">
-                <div class="panel-head compact">
-                  <div>
-                    <span class="section-label">Storage</span>
-                    <h3>Data & Retention</h3>
-                  </div>
-                </div>
-                <div class="settings-list">
-                  <div class="setting-row">
-                    <div>
-                      <strong>Usage logs</strong>
-                      <small>每个 client key 的请求都会落一条日志，支持按 backend、model 和 client key 查询。</small>
-                    </div>
-                  </div>
-                  <div class="setting-row">
-                    <div>
-                      <strong>Events</strong>
-                      <small>配置变更、failover、错误和访问行为会进入事件流。</small>
-                    </div>
-                  </div>
-                  <div class="setting-row">
-                    <div>
-                      <strong>Database</strong>
-                      <small>使用轻量 SQLite，适合当前规模和本地管理场景。</small>
-                    </div>
-                  </div>
-                </div>
-              </article>
-            </div>
+            <div class="settings-dynamic-root" id="settingsRoot"></div>
           </section>
         </main>
       </div>
     </div>
 
-    <div id="searchModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="searchModalTitle">
-      <div class="modal-panel search-panel">
-        <div class="modal-header">
+    <div class="search-modal hidden" id="searchModalRoot" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="searchDialogTitle">
+      <div class="search-modal-panel" tabindex="-1">
+        <div class="search-modal-head">
           <div>
-            <span class="section-label">Global Search</span>
-            <h3 id="searchModalTitle">Search resources</h3>
+            <span class="section-label">Command Menu</span>
+            <strong id="searchDialogTitle">Global Search</strong>
           </div>
-          <button class="icon-button" id="searchModalCloseBtn" type="button" aria-label="关闭搜索弹窗">×</button>
+          <button class="icon-button" id="searchCloseBtn" type="button" aria-label="关闭搜索">
+            <svg class="shell-icon" data-shell-icon="close" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 6l12 12"></path>
+              <path d="M18 6 6 18"></path>
+            </svg>
+          </button>
         </div>
-        <div class="search-body">
-          <label class="field search-field">
-            <span>Search</span>
-            <input id="searchInput" type="search" placeholder="backend, client key, policy, proxy, log, event..." />
-          </label>
-          <div id="searchResults" class="search-results"></div>
+        <label class="field search-shell-field">
+          <span>Search</span>
+          <input id="searchInput" type="search" placeholder="搜索 backend、client key、policy、proxy、log、event…" />
+        </label>
+        <div class="search-modal-results" id="searchResultsRoot">
+          <p class="muted-text">输入关键字后会按分组返回结果，支持键盘快捷键打开。</p>
         </div>
       </div>
     </div>
 
-    <aside id="detailDrawer" class="drawer hidden" aria-hidden="true">
-      <div class="drawer-header">
-        <div>
-          <span class="section-label">Detail Drawer</span>
-          <h3 id="drawerTitle">Resource detail</h3>
+    <aside class="drawer-shell hidden" id="drawerRoot" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+      <div class="drawer-shell-panel" tabindex="-1">
+        <div class="drawer-shell-head">
+          <div>
+            <span class="section-label">Drawer</span>
+            <h3 id="drawerTitle">Detail Drawer</h3>
+          </div>
+          <button class="icon-button" id="drawerCloseBtn" type="button" aria-label="关闭详情抽屉">
+            <svg class="shell-icon" data-shell-icon="close" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 6l12 12"></path>
+              <path d="M18 6 6 18"></path>
+            </svg>
+          </button>
         </div>
-        <button class="icon-button" id="drawerCloseBtn" type="button" aria-label="关闭详情面板">×</button>
+        <div class="drawer-shell-tabs" id="drawerTabRoot">
+          <button class="ghost-button active" type="button" data-drawer-tab="overview">Overview</button>
+          <button class="ghost-button" type="button" data-drawer-tab="activity">Activity</button>
+          <button class="ghost-button" type="button" data-drawer-tab="raw">Raw</button>
+        </div>
+        <div class="drawer-shell-body" id="drawerBodyRoot">
+          <p class="muted-text">Select a resource row to inspect live configuration, activity, and raw payloads.</p>
+        </div>
+        <div class="drawer-shell-footer" id="drawerFooterRoot"></div>
       </div>
-      <div id="drawerBody" class="drawer-body"></div>
     </aside>
 
+    <script src="./theme.js"></script>
+    <script src="./search.js"></script>
+    <script src="./charts.js"></script>
+    <script src="./dashboard.js"></script>
+    <script src="./dashboard-view.js"></script>
+    <script src="./drawer.js"></script>
+    <script src="./observability.js"></script>
+    <script src="./observability-view.js"></script>
+    <script src="./shell-state.js"></script>
+    <script src="./shell-view.js"></script>
+    <script src="./shell-runtime.js"></script>
+    <script src="./resource-view.js"></script>
+    <script src="./resource-runtime.js"></script>
+    <script src="./resource-state.js"></script>
+    <script src="./resource-crud.js"></script>
+    <script src="./drawer-view.js"></script>
+    <script src="./drawer-runtime.js"></script>
+    <script src="./pagination.js"></script>
+    <script src="./display-utils.js"></script>
+    <script src="./dashboard-runtime.js"></script>
+    <script src="./search-runtime.js"></script>
+    <script src="./observability-runtime.js"></script>
+    <script src="./resource-list-runtime.js"></script>
+    <script src="./resource-render-runtime.js"></script>
+    <script src="./resource-data-runtime.js"></script>
+    <script src="./console-data-runtime.js"></script>
+    <script src="./renderers.js"></script>
+    <script src="./settings.js"></script>
     <script src="./app.js" type="module"></script>
   </body>
 </html>
