@@ -2422,6 +2422,18 @@ button:hover {
   min-width: 124px;
 }
 
+.resource-toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.resource-toolbar-button .shell-icon {
+  width: 14px;
+  height: 14px;
+  flex-basis: 14px;
+}
+
 .observability-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 2fr) auto;

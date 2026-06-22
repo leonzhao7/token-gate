@@ -35,6 +35,10 @@ test("renderResourceToolbar renders search, count, status and complete admin con
   assert.match(html, /data-toolbar-create="backends"/);
   assert.match(html, /新增 Backend/);
   assert.match(html, /data-toolbar-refresh="backends"/);
+  assert.match(html, /resource-toolbar-button/);
+  assert.match(html, /data-shell-icon="toolbar-reset"/);
+  assert.match(html, /data-shell-icon="toolbar-refresh"/);
+  assert.match(html, /data-shell-icon="toolbar-create"/);
 });
 
 test("createQuickDetailMarkup renders structured quick detail cards", () => {

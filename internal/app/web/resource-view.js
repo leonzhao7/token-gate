@@ -41,11 +41,37 @@
               </select>
             </label>
           ` : ""}
-          <button class="ghost-button small-button" type="button" data-toolbar-reset="${escapeHTML(resourceKey)}" ${hasChanges ? "" : "disabled"}>Reset</button>
-          <button class="ghost-button small-button" type="button" data-toolbar-refresh="${escapeHTML(resourceKey)}">Refresh</button>
-          <button class="small-button" type="button" data-toolbar-create="${escapeHTML(resourceKey)}">${escapeHTML(createLabel)}</button>
+          <button class="ghost-button small-button resource-toolbar-button" type="button" data-toolbar-reset="${escapeHTML(resourceKey)}" ${hasChanges ? "" : "disabled"}>${renderToolbarIcon("reset")}<span>Reset</span></button>
+          <button class="ghost-button small-button resource-toolbar-button" type="button" data-toolbar-refresh="${escapeHTML(resourceKey)}">${renderToolbarIcon("refresh")}<span>Refresh</span></button>
+          <button class="small-button resource-toolbar-button" type="button" data-toolbar-create="${escapeHTML(resourceKey)}">${renderToolbarIcon("create")}<span>${escapeHTML(createLabel)}</span></button>
         </div>
       </div>
+    `;
+  }
+
+  function renderToolbarIcon(name) {
+    const paths = {
+      reset: [
+        "M4 4v6h6",
+        "M20 20v-6h-6",
+        "M5 15a7 7 0 0 0 11 4",
+        "M19 9A7 7 0 0 0 8 5",
+      ],
+      refresh: [
+        "M20 6v6h-6",
+        "M4 18v-6h6",
+        "M18 12a6 6 0 0 0-10-4.5",
+        "M6 12a6 6 0 0 0 10 4.5",
+      ],
+      create: [
+        "M12 5v14",
+        "M5 12h14",
+      ],
+    };
+    return `
+      <svg class="shell-icon toolbar-button-icon" data-shell-icon="toolbar-${name}" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        ${(paths[name] || paths.create).map((path) => `<path d="${path}"></path>`).join("")}
+      </svg>
     `;
   }
 
