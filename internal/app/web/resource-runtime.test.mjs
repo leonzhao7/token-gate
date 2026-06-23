@@ -44,6 +44,14 @@ const ThemeUtils = require("./theme.js");
 const SettingsUtils = require("./settings.js");
 const DashboardViewUtils = require("./dashboard-view.js");
 
+test("app.js no longer references removed usage log policy filter controls", () => {
+  const source = fs.readFileSync(new URL("./app.js", import.meta.url), "utf8");
+  const html = fs.readFileSync(new URL("./index.html", import.meta.url), "utf8");
+
+  assert.doesNotMatch(source, /\busageLogPolicy(?:Filter|Options)\b/);
+  assert.doesNotMatch(html, /\busageLogPolicy(?:Filter|Options)\b/);
+});
+
 test("requireResourceViewUtils returns the resource view api when all required functions exist", () => {
   const resourceView = requireResourceViewUtils(ResourceViewUtils);
   const html = resourceView.renderResourceTablePage({

@@ -223,7 +223,6 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);`,
-		`CREATE INDEX IF NOT EXISTS idx_backends_status ON backends(status);`,
 		`CREATE TABLE IF NOT EXISTS audit_events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			level TEXT NOT NULL,
@@ -312,6 +311,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err := ensureColumn(ctx, db, "backends", "recover_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate backends recover_at: %w", err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_backends_status ON backends(status);`); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate backends status index: %w", err)
 	}
 	if err := ensureColumn(ctx, db, "audit_events", "category", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		_ = db.Close()

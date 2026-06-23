@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -43,6 +44,54 @@ func TestCreateBackendDefaultsToNormalStatus(t *testing.T) {
 	}
 	if backend.RecoverAt != nil {
 		t.Fatalf("expected nil recover_at, got %v", backend.RecoverAt)
+	}
+}
+
+func TestOpenMigratesLegacyBackendsBeforeCreatingStatusIndex(t *testing.T) {
+	dbPath := t.TempDir() + "/legacy.db"
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("open legacy sqlite: %v", err)
+	}
+	_, err = db.Exec(`
+		CREATE TABLE backends (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL UNIQUE,
+			base_url TEXT NOT NULL,
+			api_key TEXT NOT NULL,
+			weight INTEGER NOT NULL DEFAULT 1,
+			model_list TEXT NOT NULL,
+			endpoint_list TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+	`)
+	if closeErr := db.Close(); closeErr != nil {
+		t.Fatalf("close legacy sqlite: %v", closeErr)
+	}
+	if err != nil {
+		t.Fatalf("create legacy backends table: %v", err)
+	}
+
+	st, err := Open(context.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("Open should migrate legacy backend table before indexing status: %v", err)
+	}
+	defer st.Close()
+
+	backend, err := st.CreateBackend(context.Background(), domain.Backend{
+		Name:      "edge-legacy",
+		Protocol:  domain.BackendProtocolOpenAI,
+		BaseURL:   "https://edge-legacy.local/v1",
+		APIKey:    "edge-key",
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+	if err != nil {
+		t.Fatalf("CreateBackend after migration returned error: %v", err)
+	}
+	if backend.Status != domain.BackendStatusNormal {
+		t.Fatalf("expected migrated backend status support, got %q", backend.Status)
 	}
 }
 

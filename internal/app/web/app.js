@@ -1110,7 +1110,6 @@ function syncUsageLogFilterInputs() {
     usageLogBackendFilter,
     usageLogModelFilter,
     usageLogClientKeyFilter,
-    usageLogPolicyFilter,
     usageLogProxyFilter,
     usageLogStatusFilter,
   });
@@ -1126,7 +1125,6 @@ async function applyUsageLogFilters() {
     usageLogBackendFilter,
     usageLogModelFilter,
     usageLogClientKeyFilter,
-    usageLogPolicyFilter,
     usageLogProxyFilter,
     usageLogStatusFilter,
   });
@@ -1142,7 +1140,6 @@ async function resetUsageLogFilters() {
     usageLogBackendFilter,
     usageLogModelFilter,
     usageLogClientKeyFilter,
-    usageLogPolicyFilter,
     usageLogProxyFilter,
     usageLogStatusFilter,
   });
@@ -1184,7 +1181,6 @@ function renderUsageLogFilterOptions() {
     usageLogBackendOptions,
     usageLogModelOptions,
     usageLogClientKeyOptions,
-    usageLogPolicyOptions,
     usageLogProxyOptions,
   });
 }
@@ -1799,7 +1795,6 @@ function renderUsageLogs() {
     usageLogBackendFilter,
     usageLogModelFilter,
     usageLogClientKeyFilter,
-    usageLogPolicyFilter,
     usageLogProxyFilter,
     usageLogStatusFilter,
   });
