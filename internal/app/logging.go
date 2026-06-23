@@ -64,14 +64,17 @@ func (a *App) accessLog(next http.Handler) http.Handler {
 
 		startedAt := time.Now()
 		recorder := &loggingResponseWriter{ResponseWriter: w, status: http.StatusOK}
-
-		a.logEvent(ctx, slog.LevelInfo, "client_request_started", requestAttrs(r)...)
-		next.ServeHTTP(recorder, r)
-		a.logEvent(ctx, slog.LevelInfo, "client_request_finished", append(requestAttrs(r),
-			slog.Int("status", recorder.status),
-			slog.Int64("response_bytes", recorder.bytes),
-			slog.Duration("duration", time.Since(startedAt)),
-		)...)
+		if strings.HasPrefix(r.URL.Path, "/v1") {
+			a.logEvent(ctx, slog.LevelInfo, "client_request_started", requestAttrs(r)...)
+			next.ServeHTTP(recorder, r)
+			a.logEvent(ctx, slog.LevelInfo, "client_request_finished", append(requestAttrs(r),
+				slog.Int("status", recorder.status),
+				slog.Int64("response_bytes", recorder.bytes),
+				slog.Duration("duration", time.Since(startedAt)),
+			)...)
+		} else {
+			next.ServeHTTP(recorder, r)
+		}
 	})
 }
 
