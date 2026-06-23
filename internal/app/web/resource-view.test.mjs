@@ -9,7 +9,6 @@ const {
   renderProxyRow,
   renderBackendRow,
   renderClientRow,
-  renderPolicyRow,
   renderResourceTablePage,
 } = require("./resource-view.js");
 
@@ -98,7 +97,7 @@ test("resource row renderers output expandable rows with actions", () => {
       id: 2,
       name: "edge-a",
       base_url: "https://edge-a.example/v1",
-      enabled: true,
+      status: "normal",
       protocol: "openai",
       request_count: 19,
       avg_latency_ms: 41,
@@ -112,7 +111,7 @@ test("resource row renderers output expandable rows with actions", () => {
       return "<span>enabled</span>";
     },
     formatBackendRouting() {
-      return "pool premium | direct";
+      return "direct";
     },
     formatBackendCoverage() {
       return "2 models / 2 endpoints";
@@ -142,8 +141,6 @@ test("resource row renderers output expandable rows with actions", () => {
       id: 3,
       name: "client-a",
       enabled: true,
-      route_mode_override: "sticky",
-      route_group: "frontend-a",
       usage_count: 7,
       last_used_at: "2026-06-19T00:00:00Z",
       updated_at: "2026-06-19T00:10:00Z",
@@ -166,36 +163,6 @@ test("resource row renderers output expandable rows with actions", () => {
     },
   });
 
-  const policyRow = renderPolicyRow({
-    policy: {
-      id: 4,
-      pattern: "gpt-*",
-      endpoint: "chat",
-      placement_policy: "sticky",
-      request_count: 12,
-      last_used_at: "2026-06-19T00:00:00Z",
-      updated_at: "2026-06-19T00:10:00Z",
-    },
-    expanded: true,
-    editing: false,
-    quickDetails: "<div>policy-detail</div>",
-    formatPolicyRouting() {
-      return "pool premium | priority 10 | failover on";
-    },
-    formatUsageCount() {
-      return "12 requests";
-    },
-    formatPolicyCoverage() {
-      return "4 backends / 7 models";
-    },
-    formatDateTime(value) {
-      return `dt:${value}`;
-    },
-    tableActions() {
-      return "<div>actions</div>";
-    },
-  });
-
   assert.match(proxyRow, /tokyo-proxy/);
   assert.match(proxyRow, /proxy-detail/);
   assert.match(proxyRow, /aria-expanded="true"/);
@@ -207,7 +174,6 @@ test("resource row renderers output expandable rows with actions", () => {
   assert.match(backendRow, /data-shell-icon="row-expand"/);
   assert.doesNotMatch(backendRow, />展开</);
   assert.match(clientRow, /client-v\.\.\.-key/);
-  assert.match(policyRow, /policy-detail/);
 });
 
 test("renderResourceTablePage renders empty and table states", () => {

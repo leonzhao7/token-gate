@@ -20,7 +20,6 @@ test("observability runtime builds event and usage log queries with real observa
         backend: "edge-a",
         model: "gpt-4.1",
         clientKey: "client-a",
-        policy: "default",
         proxy: "tokyo",
         status: "5xx",
       },
@@ -88,7 +87,6 @@ test("observability runtime applies and resets filters through state and refresh
       backend: "",
       model: "",
       clientKey: "",
-      policy: "",
       proxy: "",
       status: "",
     },
@@ -111,7 +109,6 @@ test("observability runtime applies and resets filters through state and refresh
     usageLogBackendFilter: { value: " edge-a " },
     usageLogModelFilter: { value: " gpt-4.1 " },
     usageLogClientKeyFilter: { value: " client-a " },
-    usageLogPolicyFilter: { value: " default " },
     usageLogProxyFilter: { value: " tokyo " },
     usageLogStatusFilter: { value: " 5xx " },
   };
@@ -148,7 +145,6 @@ test("observability runtime applies and resets filters through state and refresh
     backend: "edge-a",
     model: "gpt-4.1",
     clientKey: "client-a",
-    policy: "default",
     proxy: "tokyo",
     status: "5xx",
   });
@@ -187,7 +183,6 @@ test("observability runtime applies and resets filters through state and refresh
     backend: "",
     model: "",
     clientKey: "",
-    policy: "",
     proxy: "",
     status: "",
   });
@@ -248,7 +243,6 @@ test("observability runtime renders event and usage log pages with real view hel
       backends: ["edge-a"],
       models: ["gpt-4.1"],
       clientKeys: ["client-a"],
-      policies: ["default"],
       proxies: ["tokyo"],
     },
     usageLogFilters: {
@@ -258,7 +252,6 @@ test("observability runtime renders event and usage log pages with real view hel
       backend: "edge-a",
       model: "",
       clientKey: "",
-      policy: "",
       proxy: "",
       status: "",
     },
@@ -294,7 +287,6 @@ test("observability runtime renders event and usage log pages with real view hel
     usageLogBackendFilter: { value: "" },
     usageLogModelFilter: { value: "" },
     usageLogClientKeyFilter: { value: "" },
-    usageLogPolicyFilter: { value: "" },
     usageLogProxyFilter: { value: "" },
     usageLogStatusFilter: { value: "" },
   };
@@ -362,7 +354,6 @@ test("observability runtime renders event and usage log pages with real view hel
     usageLogBackendOptions: { innerHTML: "" },
     usageLogModelOptions: { innerHTML: "" },
     usageLogClientKeyOptions: { innerHTML: "" },
-    usageLogPolicyOptions: { innerHTML: "" },
     usageLogProxyOptions: { innerHTML: "" },
   });
 
@@ -384,7 +375,6 @@ test("observability runtime primes and deletes usage log details with real query
       backend: "",
       model: "",
       clientKey: "",
-      policy: "",
       proxy: "",
       status: "",
     },

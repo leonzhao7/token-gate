@@ -12,12 +12,6 @@
       deletePath: (id) => `/admin/api/client-keys/${id}`,
       page: "client-keys",
     },
-    policies: {
-      title: "Policy",
-      detailPath: (id) => `/admin/api/model-policies/${id}/detail`,
-      deletePath: (id) => `/admin/api/model-policies/${id}`,
-      page: "model-policies",
-    },
     proxies: {
       title: "Proxy",
       detailPath: (id) => `/admin/api/socks-proxies/${id}/detail`,
@@ -46,11 +40,6 @@
     client_key: "clients",
     "client-key": "clients",
     "client-keys": "clients",
-    policy: "policies",
-    policies: "policies",
-    model_policy: "policies",
-    "model-policy": "policies",
-    "model-policies": "policies",
     proxy: "proxies",
     proxies: "proxies",
     socks_proxy: "proxies",
@@ -234,20 +223,18 @@
   function normalizeBackendActivityItem(backend) {
     const name = stringValue(backend?.name);
     const baseURL = stringValue(backend?.base_url || backend?.baseURL);
-    const pool = stringValue(backend?.pool);
     const protocol = stringValue(backend?.protocol);
-    const enabled = typeof backend?.enabled === "boolean" ? backend.enabled : null;
+    const status = stringValue(backend?.status || "normal");
     const proxyName = stringValue(backend?.socks_proxy?.name || backend?.proxy?.name || backend?.proxy_name || backend?.proxyName);
     const models = ensureArray(backend?.models);
     const endpoints = ensureArray(backend?.endpoints);
     return {
       title: name || baseURL || "Backend",
       summary: baseURL || "-",
-      tone: enabled === true ? "success" : enabled === false ? "danger" : "neutral",
+      tone: status === "normal" ? "success" : status === "abnormal" ? "warning" : status === "disabled" ? "danger" : "neutral",
       chips: compactStrings([
-        pool,
         protocol,
-        enabled === true ? "enabled" : enabled === false ? "disabled" : "",
+        status,
       ]),
       meta: compactMeta([
         { label: "Proxy", value: proxyName },

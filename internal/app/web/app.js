@@ -34,7 +34,6 @@ const searchResultsRoot = document.querySelector("#searchResultsRoot");
 const proxyList = document.querySelector("#proxyList");
 const backendList = document.querySelector("#backendList");
 const clientList = document.querySelector("#clientList");
-const policyList = document.querySelector("#policyList");
 const eventList = document.querySelector("#eventList");
 const eventQueryFilter = document.querySelector("#eventQueryFilter");
 const eventActorFilter = document.querySelector("#eventActorFilter");
@@ -55,13 +54,11 @@ const usageLogDateToFilter = document.querySelector("#usageLogDateToFilter");
 const usageLogBackendFilter = document.querySelector("#usageLogBackendFilter");
 const usageLogModelFilter = document.querySelector("#usageLogModelFilter");
 const usageLogClientKeyFilter = document.querySelector("#usageLogClientKeyFilter");
-const usageLogPolicyFilter = document.querySelector("#usageLogPolicyFilter");
 const usageLogProxyFilter = document.querySelector("#usageLogProxyFilter");
 const usageLogStatusFilter = document.querySelector("#usageLogStatusFilter");
 const usageLogBackendOptions = document.querySelector("#usageLogBackendOptions");
 const usageLogModelOptions = document.querySelector("#usageLogModelOptions");
 const usageLogClientKeyOptions = document.querySelector("#usageLogClientKeyOptions");
-const usageLogPolicyOptions = document.querySelector("#usageLogPolicyOptions");
 const usageLogProxyOptions = document.querySelector("#usageLogProxyOptions");
 const refreshUsageLogsBtn = document.querySelector("#refreshUsageLogsBtn");
 const applyUsageLogFiltersBtn = document.querySelector("#applyUsageLogFiltersBtn");
@@ -73,12 +70,10 @@ const pageLinks = Array.from(document.querySelectorAll("[data-page-link]"));
 const proxyForm = document.querySelector("#proxyForm");
 const backendForm = document.querySelector("#backendForm");
 const clientForm = document.querySelector("#clientForm");
-const policyForm = document.querySelector("#policyForm");
 
 const addProxyBtn = document.querySelector("#addProxyBtn");
 const addBackendBtn = document.querySelector("#addBackendBtn");
 const addClientBtn = document.querySelector("#addClientBtn");
-const addPolicyBtn = document.querySelector("#addPolicyBtn");
 const proxyModal = document.querySelector("#proxyModal");
 const proxyModalCloseBtn = document.querySelector("#proxyModalCloseBtn");
 const proxyModalTitle = document.querySelector("#proxyModalTitle");
@@ -97,12 +92,6 @@ const clientModalTitle = document.querySelector("#clientModalTitle");
 const clientSubmitBtn = document.querySelector("#clientSubmitBtn");
 const clientCancelBtn = document.querySelector("#clientCancelBtn");
 const clientEditBanner = document.querySelector("#clientEditBanner");
-const policyModal = document.querySelector("#policyModal");
-const policyModalCloseBtn = document.querySelector("#policyModalCloseBtn");
-const policyModalTitle = document.querySelector("#policyModalTitle");
-const policySubmitBtn = document.querySelector("#policySubmitBtn");
-const policyCancelBtn = document.querySelector("#policyCancelBtn");
-const policyEditBanner = document.querySelector("#policyEditBanner");
 
 const ADMIN_TOKEN_KEY = "token-gate-admin-token";
 const THEME_PREFERENCE_KEY = "token-gate-theme-preference";
@@ -127,7 +116,8 @@ const RESOURCE_VIEW_CONFIG = {
     searchPlaceholder: "Search backends, base URL, models",
     filterOptions: [
       { value: "all", label: "All status" },
-      { value: "enabled", label: "Enabled" },
+      { value: "normal", label: "Normal" },
+      { value: "abnormal", label: "Abnormal" },
       { value: "disabled", label: "Disabled" },
     ],
     sortOptions: [
@@ -137,7 +127,7 @@ const RESOURCE_VIEW_CONFIG = {
     ],
   },
   clients: {
-    searchPlaceholder: "Search client keys, groups, routes",
+    searchPlaceholder: "Search client keys",
     filterOptions: [
       { value: "all", label: "All status" },
       { value: "enabled", label: "Enabled" },
@@ -146,20 +136,6 @@ const RESOURCE_VIEW_CONFIG = {
     sortOptions: [
       { value: "updated_desc", label: "Updated" },
       { value: "name_asc", label: "Name" },
-      { value: "group_asc", label: "Route group" },
-    ],
-  },
-  policies: {
-    searchPlaceholder: "Search patterns, endpoints, pools",
-    filterOptions: [
-      { value: "all", label: "All failover" },
-      { value: "enabled", label: "Failover on" },
-      { value: "disabled", label: "Failover off" },
-    ],
-    sortOptions: [
-      { value: "priority_asc", label: "Priority" },
-      { value: "updated_desc", label: "Updated" },
-      { value: "pattern_asc", label: "Pattern" },
     ],
   },
 };
@@ -277,7 +253,6 @@ const initialDashboardState = typeof DashboardUtils.createDashboardState === "fu
     summaryCards: {
       backends: { status: "loading", data: null, error: "" },
       client_keys: { status: "loading", data: null, error: "" },
-      policies: { status: "loading", data: null, error: "" },
       proxies: { status: "loading", data: null, error: "" },
     },
     usage: { status: "loading", data: null, error: "", metric: "requests", range: "7d" },
@@ -289,14 +264,12 @@ const resourceViewDefaults = {
   proxies: ResourceStateUtils.defaultResourceView("proxies"),
   backends: ResourceStateUtils.defaultResourceView("backends"),
   clients: ResourceStateUtils.defaultResourceView("clients"),
-  policies: ResourceStateUtils.defaultResourceView("policies"),
 };
 const state = {
   dashboard: initialDashboardState,
   proxies: [],
   backends: [],
   clients: [],
-  policies: [],
   events: [],
   usageLogs: [],
   usageLogStats: null,
@@ -306,25 +279,21 @@ const state = {
     backends: [],
     models: [],
     clientKeys: [],
-    policies: [],
     proxies: [],
   },
   paginationMeta: {
     proxies: { total: 0, page: 1, limit: 10 },
     backends: { total: 0, page: 1, limit: 10 },
     clients: { total: 0, page: 1, limit: 10 },
-    policies: { total: 0, page: 1, limit: 10 },
     events: { total: 0, page: 1, limit: 10 },
     usageLogs: { total: 0, page: 1, limit: 10 },
   },
   editingProxyID: null,
   editingBackendID: null,
   editingClientID: null,
-  editingPolicyID: null,
   expandedProxies: new Set(),
   expandedBackends: new Set(),
   expandedClients: new Set(),
-  expandedPolicies: new Set(),
   expandedUsageLogs: new Set(),
   usageLogFilters: {
     q: "",
@@ -333,7 +302,6 @@ const state = {
     backend: "",
     model: "",
     clientKey: "",
-    policy: "",
     proxy: "",
     status: "",
   },
@@ -351,7 +319,6 @@ const state = {
     proxies: { page: 1, size: 10 },
     backends: { page: 1, size: 10 },
     clients: { page: 1, size: 10 },
-    policies: { page: 1, size: 10 },
     events: { page: 1, size: 10 },
     usageLogs: { page: 1, size: 10 },
   },
@@ -431,11 +398,11 @@ const resourceCrud = ResourceCrudUtils.createResourceCrud({
         proxy_id: "0",
         model_mapping: "",
         weight: 1,
-        enabled: true,
+        status: "normal",
       },
       assignEditValues(form, backend, helpers) {
         form.elements.name.value = backend.name || "";
-        form.elements.pool.value = backend.pool || "";
+        form.elements.status.value = backend.status || "normal";
         form.elements.protocol.value = backend.protocol || "openai";
         form.elements.base_url.value = backend.base_url || "";
         form.elements.api_key.value = backend.api_key || "";
@@ -445,7 +412,6 @@ const resourceCrud = ResourceCrudUtils.createResourceCrud({
         form.elements.model_mapping.value = helpers.formatModelMappingInput(backend.model_mapping);
         form.elements.endpoints.value = (backend.endpoints || []).join(", ");
         form.elements.weight.value = backend.weight || 1;
-        form.elements.enabled.checked = Boolean(backend.enabled);
       },
     },
     clients: {
@@ -474,42 +440,7 @@ const resourceCrud = ResourceCrudUtils.createResourceCrud({
         form.elements.name.value = client.name || "";
         form.elements.token.value = client.token || "";
         form.elements.token.placeholder = client.token ? "Client token" : "历史 key 仅保存了 hash；重新填写后可显示";
-        form.elements.route_mode_override.value = client.route_mode_override || "";
-        form.elements.route_group.value = client.route_group || "";
         form.elements.enabled.checked = Boolean(client.enabled);
-      },
-    },
-    policies: {
-      form: policyForm,
-      modal: policyModal,
-      title: policyModalTitle,
-      submitButton: policySubmitBtn,
-      cancelButton: policyCancelBtn,
-      editBanner: policyEditBanner,
-      editingStateKey: "editingPolicyID",
-      collectionStateKey: "policies",
-      render: renderPolicies,
-      createTitle: "新增 Policy",
-      editTitle: "编辑 Policy",
-      createSubmitLabel: "新增 Policy",
-      editSubmitLabel: "保存 Policy",
-      editBannerText(policy) {
-        return `正在编辑 Model Policy: ${policy.pattern}`;
-      },
-      focusField: "pattern",
-      defaults: {
-        endpoint: "chat",
-        placement_policy: "sticky",
-        priority: 100,
-        failover_enabled: true,
-      },
-      assignEditValues(form, policy) {
-        form.elements.pattern.value = policy.pattern || "";
-        form.elements.endpoint.value = policy.endpoint || "chat";
-        form.elements.placement_policy.value = policy.placement_policy || "sticky";
-        form.elements.backend_pool.value = policy.backend_pool || "";
-        form.elements.priority.value = policy.priority || 100;
-        form.elements.failover_enabled.checked = Boolean(policy.failover_enabled);
       },
     },
   },
@@ -536,9 +467,6 @@ function resetBackendForm() {
 const startCreateClient = () => resourceCrud.startCreate("clients");
 const startEditClient = (id) => resourceCrud.startEdit("clients", id);
 const resetClientForm = () => resourceCrud.reset("clients");
-const startCreatePolicy = () => resourceCrud.startCreate("policies");
-const startEditPolicy = (id) => resourceCrud.startEdit("policies", id);
-const resetPolicyForm = () => resourceCrud.reset("policies");
 
 function renderProxyOptions() {
   return ResourceDataRuntimeUtils.renderProxyOptions({
@@ -631,7 +559,6 @@ function buildSettingsSnapshot() {
     formatDateTime,
     backends: state.backends,
     clients: state.clients,
-    policies: state.policies,
     proxies: state.proxies,
     usageLogStats: state.usageLogStats,
     usageLogMeta: state.paginationMeta.usageLogs,
@@ -903,24 +830,6 @@ clientCancelBtn.addEventListener("click", () => {
   resetClientForm();
 });
 
-addPolicyBtn.addEventListener("click", () => {
-  startCreatePolicy();
-});
-
-policyModalCloseBtn.addEventListener("click", () => {
-  resetPolicyForm();
-});
-
-policyModal.addEventListener("click", (event) => {
-  if (event.target === policyModal) {
-    resetPolicyForm();
-  }
-});
-
-policyCancelBtn.addEventListener("click", () => {
-  resetPolicyForm();
-});
-
 applyUsageLogFiltersBtn.addEventListener("click", () => {
   applyUsageLogFilters().catch(reportError);
 });
@@ -1000,7 +909,7 @@ if (systemThemeQuery) {
   }
 }
 
-[usageLogQueryFilter, usageLogDateFromFilter, usageLogDateToFilter, usageLogBackendFilter, usageLogModelFilter, usageLogClientKeyFilter, usageLogPolicyFilter, usageLogProxyFilter, usageLogStatusFilter].forEach((input) => {
+[usageLogQueryFilter, usageLogDateFromFilter, usageLogDateToFilter, usageLogBackendFilter, usageLogModelFilter, usageLogClientKeyFilter, usageLogProxyFilter, usageLogStatusFilter].forEach((input) => {
   input?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -1045,7 +954,7 @@ backendForm.addEventListener("submit", async (event) => {
     data.endpoints = splitList(data.endpoints);
     data.weight = Number(data.weight || 1);
     data.proxy_id = Number(data.proxy_id || 0);
-    data.enabled = Boolean(data.enabled);
+    data.status = data.status || "normal";
 
     if (!editing && !String(data.api_key || "").trim()) {
       throw new Error("新增 Backend 必须填写 API key");
@@ -1082,24 +991,6 @@ clientForm.addEventListener("submit", async (event) => {
   }
 });
 
-policyForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  try {
-    const editing = state.editingPolicyID !== null;
-    const data = readForm(event.currentTarget);
-    data.priority = Number(data.priority || 100);
-    data.failover_enabled = Boolean(data.failover_enabled);
-
-    const path = editing ? `/admin/api/model-policies/${state.editingPolicyID}` : "/admin/api/model-policies";
-    const method = editing ? "PUT" : "POST";
-    await api(path, method, data);
-    resetPolicyForm();
-    await refreshAll();
-  } catch (error) {
-    reportError(error);
-  }
-});
-
 async function refreshAll() {
   if (!buildSettingsSnapshot().adminTokenPresent) {
     renderSettings();
@@ -1127,7 +1018,6 @@ async function refreshAll() {
     renderProxies,
     renderBackends,
     renderClients,
-    renderPolicies,
     renderEvents,
     renderUsageLogs,
     renderDrawerShell,
@@ -1574,7 +1464,6 @@ async function refreshResourceList(resourceKey) {
     renderProxies,
     renderBackends,
     renderClients,
-    renderPolicies,
   });
 }
 
@@ -1815,52 +1704,6 @@ function renderClients() {
   });
 }
 
-function renderPolicies() {
-  ResourceListRuntimeUtils.renderManagedResourceSection({
-    resourceKey: "policies",
-    kind: "policy",
-    items: state.policies,
-    state,
-    container: policyList,
-    searchPlaceholder: "Search policies",
-    emptyTitle: "还没有 Model Policy",
-    emptyDescription: "定义模型模式、端点和 placement 策略后，路由行为才会按业务意图收敛。",
-    headers: ["Pattern", "Routing", "Usage", "Coverage", "Last Used", "Updated", "Actions"],
-    rowRenderer: renderPolicyRow,
-    resourceViewConfig: RESOURCE_VIEW_CONFIG,
-    rendererUtils: RendererUtils,
-    resourceViewUtils: ResourceViewUtils,
-    resourceStateUtils: ResourceStateUtils,
-    paginationUtils: PaginationUtils,
-    displayUtils: DisplayUtils,
-    pageSizeOptions: PAGE_SIZE_OPTIONS,
-    getExpandedSet() {
-      return state.expandedPolicies;
-    },
-    getEditingID() {
-      return state.editingPolicyID;
-    },
-    renderList: renderPolicies,
-    startEdit: startEditPolicy,
-    resetForm: resetPolicyForm,
-    refreshAll,
-    confirm,
-    deleteMessage: "确认删除这个 Model Policy？",
-    deletePath(id) {
-      return `/admin/api/model-policies/${id}`;
-    },
-    toggleExpanded,
-    api,
-    drawerUtils: DrawerUtils,
-    drawerViewUtils: DrawerViewUtils,
-    openResourceDrawer,
-    renderResourceListByKey,
-    refreshResourceList,
-    reportError,
-    onCreate: startCreatePolicy,
-  });
-}
-
 function renderProxyRow(proxy) {
   return ResourceRenderRuntimeUtils.renderProxyRow({
     proxy,
@@ -1891,23 +1734,12 @@ function renderClientRow(client) {
   });
 }
 
-function renderPolicyRow(policy) {
-  return ResourceRenderRuntimeUtils.renderPolicyRow({
-    policy,
-    state,
-    buildQuickDetailMarkup,
-    resourceViewUtils: ResourceViewUtils,
-    displayUtils: DisplayUtils,
-  });
-}
-
 function renderResourceListByKey(resourceKey) {
   return ResourceRenderRuntimeUtils.renderResourceListByKey({
     resourceKey,
     renderProxies,
     renderBackends,
     renderClients,
-    renderPolicies,
   });
 }
 

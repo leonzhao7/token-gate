@@ -17,7 +17,6 @@ test("defaultResourceView uses the legacy defaults for each resource list", () =
   assert.deepEqual(defaultResourceView("proxies"), { query: "", filter: "all", sort: "updated_desc" });
   assert.deepEqual(defaultResourceView("backends"), { query: "", filter: "all", sort: "updated_desc" });
   assert.deepEqual(defaultResourceView("clients"), { query: "", filter: "all", sort: "updated_desc" });
-  assert.deepEqual(defaultResourceView("policies"), { query: "", filter: "all", sort: "priority_asc" });
 });
 
 test("toolbarStatusLabel preserves default and pluralized active-control copy", () => {
@@ -40,66 +39,48 @@ test("applyResourceView filters, searches, and sorts proxies with the shared vie
   assert.deepEqual(filtered.map((item) => item.id), [3, 1]);
 });
 
-test("applyResourceView preserves policy failover filtering and priority sorting", () => {
-  const items = [
-    { id: 7, pattern: "gpt-4*", endpoint: "chat", placement_policy: "sticky", backend_pool: "premium", failover_enabled: false, priority: 30, updated_at: "2026-06-19T12:00:00Z" },
-    { id: 8, pattern: "gpt-*", endpoint: "responses", placement_policy: "round_robin", backend_pool: "shared", failover_enabled: true, priority: 20, updated_at: "2026-06-18T12:00:00Z" },
-    { id: 9, pattern: "claude-*", endpoint: "chat", placement_policy: "sticky", backend_pool: "premium", failover_enabled: true, priority: 10, updated_at: "2026-06-17T12:00:00Z" },
-  ];
-
-  const filtered = applyResourceView("policies", items, {
-    policies: { query: "chat", filter: "enabled", sort: "priority_asc" },
-  });
-
-  assert.deepEqual(filtered.map((item) => item.id), [9]);
-});
-
-test("applyResourceView searches backend fields across base url, pool, models, and endpoints", () => {
+test("applyResourceView searches backend fields across base url, status, models, and endpoints", () => {
   const items = [
     {
       id: 11,
       name: "edge-east",
       base_url: "https://east.example/v1",
-      pool: "premium",
+      status: "normal",
       models: ["gpt-5.4"],
       endpoints: ["responses"],
-      enabled: true,
       updated_at: "2026-06-18T12:00:00Z",
     },
     {
       id: 12,
       name: "edge-west",
       base_url: "https://west.example/v1",
-      pool: "shared",
+      status: "disabled",
       models: ["claude-sonnet-4"],
       endpoints: ["messages"],
-      enabled: true,
       updated_at: "2026-06-19T12:00:00Z",
     },
   ];
 
   assert.deepEqual(
     applyResourceView("backends", items, {
-      backends: { query: "shared", filter: "enabled", sort: "updated_desc" },
+      backends: { query: "disabled", filter: "disabled", sort: "updated_desc" },
     }).map((item) => item.id),
     [12],
   );
 
   assert.deepEqual(
     applyResourceView("backends", items, {
-      backends: { query: "responses", filter: "enabled", sort: "updated_desc" },
+      backends: { query: "responses", filter: "normal", sort: "updated_desc" },
     }).map((item) => item.id),
     [11],
   );
 });
 
-test("applyResourceView preserves client search and route-group sorting behavior", () => {
+test("applyResourceView preserves client search and name sorting behavior", () => {
   const items = [
     {
       id: 21,
       name: "web-prod",
-      route_group: "beta",
-      route_mode_override: "sticky",
       token_prefix: "prod-ab",
       enabled: true,
       updated_at: "2026-06-18T12:00:00Z",
@@ -107,8 +88,6 @@ test("applyResourceView preserves client search and route-group sorting behavior
     {
       id: 22,
       name: "web-stage",
-      route_group: "alpha",
-      route_mode_override: "random",
       token_prefix: "stage-cd",
       enabled: true,
       updated_at: "2026-06-19T12:00:00Z",
@@ -117,16 +96,16 @@ test("applyResourceView preserves client search and route-group sorting behavior
 
   assert.deepEqual(
     applyResourceView("clients", items, {
-      clients: { query: "stage-cd", filter: "enabled", sort: "group_asc" },
+      clients: { query: "stage-cd", filter: "enabled", sort: "name_asc" },
     }).map((item) => item.id),
     [22],
   );
 
   assert.deepEqual(
     applyResourceView("clients", items, {
-      clients: { query: "web", filter: "enabled", sort: "group_asc" },
+      clients: { query: "web", filter: "enabled", sort: "name_asc" },
     }).map((item) => item.id),
-    [22, 21],
+    [21, 22],
   );
 });
 

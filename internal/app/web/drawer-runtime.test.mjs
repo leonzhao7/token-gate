@@ -354,7 +354,7 @@ test("openDrawerEditor closes the drawer and routes to the matching editor", () 
   const state = {
     ui: {
       drawer: {
-        kind: "policies",
+        kind: "backends",
         id: "12",
       },
     },
@@ -371,9 +371,6 @@ test("openDrawerEditor closes the drawer and routes to the matching editor", () 
     startEditClient(id) {
       calls.push(["client", id]);
     },
-    startEditPolicy(id) {
-      calls.push(["policy", id]);
-    },
     startEditProxy(id) {
       calls.push(["proxy", id]);
     },
@@ -381,7 +378,7 @@ test("openDrawerEditor closes the drawer and routes to the matching editor", () 
 
   assert.deepEqual(calls, [
     "close",
-    ["policy", "12"],
+    ["backend", "12"],
   ]);
 });
 

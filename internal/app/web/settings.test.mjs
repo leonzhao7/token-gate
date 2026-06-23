@@ -16,17 +16,13 @@ test("createSettingsViewModel summarizes inventory, observability, and workspace
     sidebarCollapsed: true,
     lastRefreshLabel: "2026-06-19 09:08:07.123",
     backends: [
-      { enabled: true, proxy_id: 2, model_mapping: { "gpt-5.4": "gpt-5.4-test" } },
-      { enabled: false, proxy_id: 0, model_mapping: { "gpt-4.1": "gpt-4.1-mini" } },
+      { status: "normal", proxy_id: 2, model_mapping: { "gpt-5.4": "gpt-5.4-test" } },
+      { status: "disabled", proxy_id: 0, model_mapping: { "gpt-4.1": "gpt-4.1-mini" } },
     ],
     clients: [
       { enabled: true },
       { enabled: true },
       { enabled: false },
-    ],
-    policies: [
-      { enabled: true, failover_enabled: true },
-      { enabled: true, failover_enabled: false },
     ],
     proxies: [
       { enabled: true },
@@ -60,18 +56,17 @@ test("createSettingsViewModel summarizes inventory, observability, and workspace
     value: card.value,
     detail: card.detail,
   })), [
-    { key: "backends", value: 2, detail: "1 enabled / 1 disabled" },
+    { key: "backends", value: 2, detail: "1 normal / 0 abnormal / 1 disabled" },
     { key: "clients", value: 3, detail: "2 enabled / 1 disabled" },
-    { key: "policies", value: 2, detail: "1 failover on / 1 off" },
     { key: "proxies", value: 2, detail: "1 enabled / 1 disabled" },
   ]);
 
   const routingPanel = model.panels.find((panel) => panel.key === "routing");
   assert.deepEqual(routingPanel.metrics, [
-    { label: "Enabled backends", value: "1" },
+    { label: "Normal backends", value: "1" },
+    { label: "Abnormal backends", value: "0" },
     { label: "Backends with proxy", value: "1" },
     { label: "Model mappings", value: "2" },
-    { label: "Failover ready", value: "1" },
   ]);
 
   const observabilityPanel = model.panels.find((panel) => panel.key === "observability");
@@ -93,7 +88,6 @@ test("createSettingsViewModel raises setup alerts when core configuration is mis
     lastRefreshLabel: "",
     backends: [],
     clients: [],
-    policies: [],
     proxies: [],
     usageLogStats: {
       totals: { requests: 0, successes: 0, failures: 0 },
@@ -107,9 +101,8 @@ test("createSettingsViewModel raises setup alerts when core configuration is mis
   assert.equal(model.hero.title, "Configuration attention required");
   assert.deepEqual(model.alerts.map((alert) => alert.title), [
     "Save an admin token",
-    "Add an enabled backend",
+    "Add a normal backend",
     "Create a client key",
-    "Create a routing policy",
   ]);
   assert.equal(model.hero.badges[0].value, "Missing");
   assert.equal(model.hero.badges[3].value, "Not synced yet");
@@ -124,7 +117,6 @@ test("renderSettingsPage outputs hero, summary cards, alerts, and control panels
     lastRefreshLabel: "",
     backends: [],
     clients: [],
-    policies: [],
     proxies: [],
     usageLogStats: {
       totals: { requests: 0, successes: 0, failures: 0 },

@@ -19,7 +19,6 @@ test("renderDashboardSummaryRow renders ready cards from dashboard state", () =>
       summaryCards: {
         backends: { status: "ready", data: { label: "Backends", value: 4, trend: "+12.0%", tone: "positive", detail: "3 healthy / 1 attention", sparkline: [1, 3, 2] } },
         client_keys: { status: "ready", data: { label: "Client Keys", value: 8, trend: "+12.0%", tone: "positive", detail: "6 active clients", sparkline: [1, 3, 2] } },
-        policies: { status: "ready", data: { label: "Policies", value: 5, trend: "-3.0%", tone: "warning", detail: "2 recent errors", sparkline: [1, 3, 2] } },
         proxies: { status: "ready", data: { label: "Proxies", value: 2, trend: "-3.0%", tone: "warning", detail: "6 active clients", sparkline: [1, 3, 2] } },
       },
     },
@@ -72,7 +71,7 @@ test("renderDashboardRecent feed cards render formatted items", () => {
       recentEvents: {
         status: "ready",
         data: [
-          { title: "policy.changed", message: "Policy updated", createdAt: "2026-06-19T00:00:00Z", tone: "warning" },
+          { title: "backend.abnormal", message: "Backend marked abnormal", createdAt: "2026-06-19T00:00:00Z", tone: "warning" },
         ],
       },
     },
@@ -90,7 +89,7 @@ test("renderDashboardRecent feed cards render formatted items", () => {
     formatDateTime,
   });
 
-  assert.match(eventsHTML, /policy\.changed/);
+  assert.match(eventsHTML, /backend\.abnormal/);
   assert.match(eventsHTML, /dt:2026-06-19T00:00:00Z/);
   assert.match(usageHTML, /alpha/);
   assert.match(usageHTML, /req-1/);

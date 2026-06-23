@@ -41,7 +41,6 @@ test("index.html renders structured usage log observability toolbar", () => {
     "usageLogBackendFilter",
     "usageLogModelFilter",
     "usageLogClientKeyFilter",
-    "usageLogPolicyFilter",
     "usageLogProxyFilter",
     "usageLogStatusFilter",
     "refreshUsageLogsBtn",

@@ -104,8 +104,8 @@
     if (filter === "all" || !filter) {
       return true;
     }
-    if (resourceKey === "policies") {
-      return filter === "enabled" ? Boolean(item?.failover_enabled) : !item?.failover_enabled;
+    if (resourceKey === "backends") {
+      return String(item?.status || "").toLowerCase() === filter;
     }
     return filter === "enabled" ? Boolean(item?.enabled) : !item?.enabled;
   }
@@ -117,13 +117,10 @@
       parts.push(source.name, source.address, source.username);
     }
     if (resourceKey === "backends") {
-      parts.push(source.name, source.base_url, source.pool, ...ensureArray(source.models), ...ensureArray(source.endpoints));
+      parts.push(source.name, source.base_url, source.status, ...ensureArray(source.models), ...ensureArray(source.endpoints));
     }
     if (resourceKey === "clients") {
-      parts.push(source.name, source.route_group, source.route_mode_override, source.token_prefix);
-    }
-    if (resourceKey === "policies") {
-      parts.push(source.pattern, source.endpoint, source.placement_policy, source.backend_pool);
+      parts.push(source.name, source.token_prefix);
     }
     return parts.filter(Boolean).join(" ").toLowerCase();
   }
@@ -133,24 +130,15 @@
       if (sortKey === "name_asc") {
         return String(left?.name || "").localeCompare(String(right?.name || ""));
       }
-      if (sortKey === "group_asc") {
-        return String(left?.route_group || "").localeCompare(String(right?.route_group || ""));
-      }
       if (sortKey === "weight_desc") {
         return Number(right?.weight || 0) - Number(left?.weight || 0);
-      }
-      if (sortKey === "pattern_asc") {
-        return String(left?.pattern || "").localeCompare(String(right?.pattern || ""));
-      }
-      if (sortKey === "priority_asc") {
-        return Number(left?.priority || 0) - Number(right?.priority || 0);
       }
       return String(right?.updated_at || "").localeCompare(String(left?.updated_at || ""));
     };
   }
 
   function defaultSortForResource(resourceKey) {
-    return resourceKey === "policies" ? "priority_asc" : "updated_desc";
+    return "updated_desc";
   }
 
   function paginateResourceRows(items, pagination, pageSizeOptions) {

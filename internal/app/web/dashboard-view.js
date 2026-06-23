@@ -1,5 +1,5 @@
 (function initDashboardViewModule(globalScope) {
-  const SUMMARY_ORDER = ["backends", "client_keys", "policies", "proxies"];
+  const SUMMARY_ORDER = ["backends", "client_keys", "proxies"];
 
   function renderDashboardSummaryRow({ dashboard, renderSparkline, escapeHTML = defaultEscapeHTML }) {
     return SUMMARY_ORDER.map((key, index) => {

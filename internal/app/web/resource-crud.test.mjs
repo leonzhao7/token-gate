@@ -61,7 +61,7 @@ test("readForm collects form data and checkbox states", () => {
   const form = {
     __entries: [
       ["name", "edge-a"],
-      ["pool", "premium"],
+      ["status", "normal"],
     ],
     querySelectorAll(selector) {
       assert.equal(selector, "input[type=checkbox]");
@@ -71,7 +71,7 @@ test("readForm collects form data and checkbox states", () => {
 
   assert.deepEqual(readForm(form), {
     name: "edge-a",
-    pool: "premium",
+    status: "normal",
     enabled: true,
     failover_enabled: false,
   });
@@ -87,7 +87,6 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
     backends: [{
       id: 3,
       name: "edge-a",
-      pool: "premium",
       protocol: "anthropic",
       base_url: "https://edge-a.example",
       api_key: "secret",
@@ -96,10 +95,9 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
       model_mapping: { "gpt-4": "gpt-4.1" },
       endpoints: ["responses", "messages"],
       weight: 9,
-      enabled: false,
+      status: "disabled",
     }],
     clients: [],
-    policies: [],
     editingBackendID: null,
   };
 
@@ -145,7 +143,7 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
     },
     elements: {
       name: createInput(),
-      pool: createInput(),
+      status: createInput(),
       protocol: createInput(),
       base_url: createInput(),
       api_key: createInput(),
@@ -154,7 +152,6 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
       model_mapping: createInput(),
       endpoints: createInput(),
       weight: createInput(),
-      enabled: createInput(),
     },
   };
 
@@ -193,11 +190,11 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
           proxy_id: "0",
           model_mapping: "",
           weight: 1,
-          enabled: true,
+          status: "normal",
         },
         assignEditValues(form, item, helpers) {
           form.elements.name.value = item.name || "";
-          form.elements.pool.value = item.pool || "";
+          form.elements.status.value = item.status || "normal";
           form.elements.protocol.value = item.protocol || "openai";
           form.elements.base_url.value = item.base_url || "";
           form.elements.api_key.value = item.api_key || "";
@@ -207,7 +204,6 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
           form.elements.model_mapping.value = helpers.formatModelMappingInput(item.model_mapping);
           form.elements.endpoints.value = (item.endpoints || []).join(", ");
           form.elements.weight.value = item.weight || 1;
-          form.elements.enabled.checked = Boolean(item.enabled);
         },
       },
     },
@@ -221,7 +217,7 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
   assert.equal(backendForm.elements.api_key.placeholder, "Backend API key");
   assert.equal(backendForm.elements.proxy_id.value, "0");
   assert.equal(backendForm.elements.weight.value, 1);
-  assert.equal(backendForm.elements.enabled.checked, true);
+  assert.equal(backendForm.elements.status.value, "normal");
   assert.equal(backendSubmitBtn.textContent, "新增 Backend");
   assert.equal(backendModalTitle.textContent, "新增 Backend");
   assert.equal(backendCancelBtn.classList.contains("hidden"), false);
@@ -232,6 +228,7 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
   assert.equal(state.editingBackendID, 3);
   assert.equal(backendForm.elements.name.value, "edge-a");
   assert.equal(backendForm.elements.protocol.value, "anthropic");
+  assert.equal(backendForm.elements.status.value, "disabled");
   assert.equal(backendForm.elements.models.value, "gpt-4.1, claude-sonnet-4");
   assert.equal(backendForm.elements.model_mapping.value, "gpt-4=gpt-4.1");
   assert.equal(backendForm.elements.endpoints.value, "responses, messages");
@@ -246,7 +243,7 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
   crud.reset("backends");
   assert.equal(state.editingBackendID, null);
   assert.equal(backendForm.elements.protocol.value, "openai");
-  assert.equal(backendForm.elements.enabled.checked, true);
+  assert.equal(backendForm.elements.status.value, "normal");
   assert.equal(backendSubmitBtn.textContent, "新增 Backend");
   assert.equal(backendCancelBtn.classList.contains("hidden"), true);
   assert.equal(backendEditBanner.classList.contains("hidden"), true);
@@ -359,13 +356,11 @@ test("createResourceCrud sets client token placeholder for create and edit state
       token: { placeholder: "Leave blank to auto-generate" },
       enabled: true,
     },
-    fields: ["name", "token", "route_mode_override", "route_group", "enabled"],
+    fields: ["name", "token", "enabled"],
     assignEditValues(form, client) {
       form.elements.name.value = client.name || "";
       form.elements.token.value = client.token || "";
       form.elements.token.placeholder = client.token ? "Client token" : "历史 key 仅保存了 hash；重新填写后可显示";
-      form.elements.route_mode_override.value = client.route_mode_override || "";
-      form.elements.route_group.value = client.route_group || "";
       form.elements.enabled.checked = Boolean(client.enabled);
     },
     createTitle: "新增 Client Key",
@@ -402,95 +397,6 @@ test("createResourceCrud sets client token placeholder for create and edit state
   crud.reset("clients");
   assert.equal(resource.form.elements.token.value, "");
   assert.equal(resource.form.elements.token.placeholder, "Leave blank to auto-generate");
-});
-
-test("createResourceCrud drives policy create, edit, and reset defaults with banner visibility", () => {
-  const events = [];
-  const state = {
-    policies: [{
-      id: 31,
-      pattern: "gpt-*",
-      endpoint: "responses",
-      placement_policy: "round_robin",
-      backend_pool: "premium",
-      priority: 7,
-      failover_enabled: false,
-    }],
-    editingPolicyID: null,
-  };
-  const resource = createCrudResourceHarness({
-    focusEvent: "focus:policy",
-    renderEvent: "render:policies",
-    focusField: "pattern",
-    defaults: {
-      endpoint: "chat",
-      placement_policy: "sticky",
-      priority: 100,
-      failover_enabled: true,
-    },
-    fields: ["pattern", "endpoint", "placement_policy", "backend_pool", "priority", "failover_enabled"],
-    assignEditValues(form, policy) {
-      form.elements.pattern.value = policy.pattern || "";
-      form.elements.endpoint.value = policy.endpoint || "chat";
-      form.elements.placement_policy.value = policy.placement_policy || "sticky";
-      form.elements.backend_pool.value = policy.backend_pool || "";
-      form.elements.priority.value = policy.priority || 100;
-      form.elements.failover_enabled.checked = Boolean(policy.failover_enabled);
-    },
-    createTitle: "新增 Policy",
-    editTitle: "编辑 Policy",
-    createSubmitLabel: "新增 Policy",
-    editSubmitLabel: "保存 Policy",
-    editBannerText(policy) {
-      return `正在编辑 Model Policy: ${policy.pattern}`;
-    },
-    events,
-  });
-  const crud = createResourceCrud({
-    state,
-    resources: {
-      policies: {
-        ...resource,
-        editingStateKey: "editingPolicyID",
-        collectionStateKey: "policies",
-      },
-    },
-  });
-
-  crud.startCreate("policies");
-  assert.equal(resource.form.elements.endpoint.value, "chat");
-  assert.equal(resource.form.elements.placement_policy.value, "sticky");
-  assert.equal(resource.form.elements.priority.value, 100);
-  assert.equal(resource.form.elements.failover_enabled.checked, true);
-  assert.equal(resource.editBanner.classList.contains("hidden"), true);
-
-  crud.startEdit("policies", 31);
-  assert.equal(state.editingPolicyID, 31);
-  assert.equal(resource.form.elements.pattern.value, "gpt-*");
-  assert.equal(resource.form.elements.endpoint.value, "responses");
-  assert.equal(resource.form.elements.placement_policy.value, "round_robin");
-  assert.equal(resource.form.elements.priority.value, 7);
-  assert.equal(resource.form.elements.failover_enabled.checked, false);
-  assert.equal(resource.editBanner.textContent, "正在编辑 Model Policy: gpt-*");
-  assert.equal(resource.editBanner.classList.contains("hidden"), false);
-
-  crud.reset("policies");
-  assert.equal(state.editingPolicyID, null);
-  assert.equal(resource.form.elements.pattern.value, "");
-  assert.equal(resource.form.elements.endpoint.value, "chat");
-  assert.equal(resource.form.elements.placement_policy.value, "sticky");
-  assert.equal(resource.form.elements.priority.value, 100);
-  assert.equal(resource.form.elements.failover_enabled.checked, true);
-  assert.equal(resource.cancelButton.classList.contains("hidden"), true);
-  assert.equal(resource.editBanner.classList.contains("hidden"), true);
-  assert.equal(resource.modal.classList.contains("hidden"), true);
-  assert.deepEqual(events, [
-    "focus:policy",
-    "render:policies",
-    "focus:policy",
-    "render:policies",
-    "render:policies",
-  ]);
 });
 
 function createClassList(initial = []) {

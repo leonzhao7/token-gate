@@ -80,14 +80,12 @@ test("refreshAll hydrates resources, pagination state, usage options, and rerend
     proxies: [],
     backends: [],
     clients: [],
-    policies: [],
     eventSummary: null,
     usageLogStats: null,
     usageLogOptions: {
       backends: [],
       models: [],
       clientKeys: [],
-      policies: [],
       proxies: [],
     },
     paginationMeta: {
@@ -140,7 +138,6 @@ test("refreshAll hydrates resources, pagination state, usage options, and rerend
         "/admin/api/socks-proxies": [{ id: 1, name: "proxy-a" }],
         "/admin/api/backends": [{ id: 2, name: "edge-a" }],
         "/admin/api/client-keys": [{ id: 3, name: "sdk-a" }],
-        "/admin/api/model-policies": [{ id: 4, pattern: "gpt-*" }],
       };
       return Promise.resolve(payloads[basePath]);
     },
@@ -155,7 +152,6 @@ test("refreshAll hydrates resources, pagination state, usage options, and rerend
           backends: ["edge-a"],
           models: ["gpt-4.1"],
           client_keys: ["sdk-a"],
-          policies: ["gpt-*"],
           proxies: ["proxy-a"],
         },
       };
@@ -194,9 +190,6 @@ test("refreshAll hydrates resources, pagination state, usage options, and rerend
     renderClients() {
       calls.push(["renderClients"]);
     },
-    renderPolicies() {
-      calls.push(["renderPolicies"]);
-    },
     renderEvents() {
       calls.push(["renderEvents"]);
     },
@@ -217,14 +210,12 @@ test("refreshAll hydrates resources, pagination state, usage options, and rerend
   assert.deepEqual(state.proxies, [{ id: 1, name: "proxy-a" }]);
   assert.deepEqual(state.backends, [{ id: 2, name: "edge-a" }]);
   assert.deepEqual(state.clients, [{ id: 3, name: "sdk-a" }]);
-  assert.deepEqual(state.policies, [{ id: 4, pattern: "gpt-*" }]);
   assert.deepEqual(state.eventSummary, { counters: [1] });
   assert.deepEqual(state.usageLogStats, { totals: { ok: 10, fail: 1 } });
   assert.deepEqual(state.usageLogOptions, {
     backends: ["edge-a"],
     models: ["gpt-4.1"],
     clientKeys: ["sdk-a"],
-    policies: ["gpt-*"],
     proxies: ["proxy-a"],
   });
   assert.equal(typeof state.ui.lastRefreshAt, "string");
@@ -276,23 +267,8 @@ test("handleSettingsAction dispatches supported actions to the matching handlers
     openSearchShell() {},
     navigateToPage() {},
   });
-  await ConsoleDataRuntimeUtils.handleSettingsAction({
-    action: "open-policies",
-    tokenInput,
-    refreshAll() {
-      return Promise.resolve();
-    },
-    cycleThemePreference() {},
-    toggleSidebarCollapsed() {},
-    openSearchShell() {},
-    navigateToPage(page) {
-      calls.push(["navigateToPage", page]);
-    },
-  });
-
   assert.deepEqual(calls, [
     ["focus"],
     ["refreshAll"],
-    ["navigateToPage", "model-policies"],
   ]);
 });

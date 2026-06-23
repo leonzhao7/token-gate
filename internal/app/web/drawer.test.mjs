@@ -17,8 +17,6 @@ test("normalizeResourceKind maps aliases and page ids to canonical resource keys
   assert.equal(normalizeResourceKind("backend"), "backends");
   assert.equal(normalizeResourceKind("client_key"), "clients");
   assert.equal(normalizeResourceKind("client-keys"), "clients");
-  assert.equal(normalizeResourceKind("policy"), "policies");
-  assert.equal(normalizeResourceKind("model-policies"), "policies");
   assert.equal(normalizeResourceKind("proxy"), "proxies");
   assert.equal(normalizeResourceKind("socks-proxies"), "proxies");
   assert.equal(normalizeResourceKind("usage_log"), "usage_logs");
@@ -66,7 +64,6 @@ test("buildDrawerTarget returns detail and delete endpoints for supported resour
 test("drawerDisplayTitle uses canonical resource titles for all supported drawer resources", () => {
   assert.equal(drawerDisplayTitle("backends"), "Backend");
   assert.equal(drawerDisplayTitle("clients"), "Client Key");
-  assert.equal(drawerDisplayTitle("policies"), "Policy");
   assert.equal(drawerDisplayTitle("proxies"), "Proxy");
   assert.equal(drawerDisplayTitle("events"), "Event");
   assert.equal(drawerDisplayTitle("usage_logs"), "Usage Log");
@@ -150,11 +147,11 @@ test("drawerFooterActions keeps save disabled for read-only drawer detail", () =
 test("buildDrawerActivitySections normalizes event usage and backend activity cards", () => {
   const sections = buildDrawerActivitySections({
     events: [{
-      message: "policy updated",
+      message: "backend recovered",
       severity: "warning",
-      category: "policy",
+      category: "backend",
       actor: "admin",
-      type: "policy.changed",
+      type: "backend.recovered",
       created_at: "2026-06-19T08:00:00Z",
     }],
     usage: [{
@@ -171,10 +168,9 @@ test("buildDrawerActivitySections normalizes event usage and backend activity ca
     }],
     backends: [{
       name: "edge-a",
-      pool: "premium",
       protocol: "openai",
       base_url: "https://edge-a.example/v1",
-      enabled: true,
+      status: "normal",
       models: ["gpt-5.4", "gpt-image-2"],
       endpoints: ["chat", "images"],
       socks_proxy: { name: "proxy-a" },
@@ -188,10 +184,10 @@ test("buildDrawerActivitySections normalizes event usage and backend activity ca
     title: "Events",
     count: 1,
     items: [{
-      title: "policy updated",
-      summary: "policy.changed",
+      title: "backend recovered",
+      summary: "backend.recovered",
       tone: "warning",
-      chips: ["warning", "policy"],
+      chips: ["warning", "backend"],
       meta: [
         { label: "Actor", value: "admin" },
         { label: "Time", value: "2026-06-19T08:00:00Z", format: "datetime" },
@@ -226,7 +222,7 @@ test("buildDrawerActivitySections normalizes event usage and backend activity ca
       title: "edge-a",
       summary: "https://edge-a.example/v1",
       tone: "success",
-      chips: ["premium", "openai", "enabled"],
+      chips: ["openai", "normal"],
       meta: [
         { label: "Proxy", value: "proxy-a" },
         { label: "Models", value: "2" },

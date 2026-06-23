@@ -12,14 +12,13 @@ test("sidebar navigation uses product SVG icons instead of letter placeholders",
     "proxies",
     "backends",
     "client-keys",
-    "policies",
     "usage-logs",
     "events",
     "settings",
   ]);
-  assert.equal((nav.match(/<svg\b[^>]*class="nav-icon"/g) || []).length, 8);
-  assert.equal((nav.match(/aria-hidden="true"/g) || []).length, 8);
-  assert.equal((nav.match(/viewBox="0 0 24 24"/g) || []).length, 8);
+  assert.equal((nav.match(/<svg\b[^>]*class="nav-icon"/g) || []).length, 7);
+  assert.equal((nav.match(/aria-hidden="true"/g) || []).length, 7);
+  assert.equal((nav.match(/viewBox="0 0 24 24"/g) || []).length, 7);
   assert.doesNotMatch(nav, /<span class="nav-icon"/);
 });
 
@@ -62,7 +61,6 @@ test("modal and drawer close controls use shell SVG icons", () => {
     "proxyModalCloseBtn",
     "backendModalCloseBtn",
     "clientModalCloseBtn",
-    "policyModalCloseBtn",
     "searchCloseBtn",
     "drawerCloseBtn",
   ];
@@ -80,7 +78,6 @@ test("dashboard quick actions render as icon action pills", () => {
   const actions = [
     ["#backends", "action-backends", "Configure Backends"],
     ["#client-keys", "action-client-keys", "Manage Client Keys"],
-    ["#model-policies", "action-policies", "Edit Policies"],
   ];
 
   for (const [href, icon, label] of actions) {

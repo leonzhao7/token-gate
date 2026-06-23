@@ -1,7 +1,7 @@
 (function initDrawerViewModule(globalScope) {
   const OVERVIEW_TITLE_KEYS = ["name", "pattern", "message", "request_id", "type", "model", "address", "base_url", "token_prefix"];
-  const OVERVIEW_SUBTITLE_KEYS = ["base_url", "endpoint", "pool", "backend_pool", "route_group", "protocol", "actor", "client_name"];
-  const OVERVIEW_HIGHLIGHT_KEYS = ["enabled", "pool", "backend_pool", "protocol", "weight", "proxy_id", "usage_count", "last_used_at", "endpoint"];
+  const OVERVIEW_SUBTITLE_KEYS = ["base_url", "endpoint", "protocol", "actor", "client_name"];
+  const OVERVIEW_HIGHLIGHT_KEYS = ["status", "enabled", "protocol", "weight", "proxy_id", "usage_count", "last_used_at", "endpoint"];
   const METADATA_PRIORITY_KEYS = ["id", "resource_type", "resource_id", "created_at", "updated_at", "last_used_at"];
   const EVENT_OVERVIEW_META_KEYS = ["type", "category", "severity", "actor", "endpoint", "backend", "client_name", "model"];
 

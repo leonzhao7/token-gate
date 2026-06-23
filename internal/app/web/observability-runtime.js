@@ -113,7 +113,6 @@
     usageLogBackendFilter,
     usageLogModelFilter,
     usageLogClientKeyFilter,
-    usageLogPolicyFilter,
     usageLogProxyFilter,
     usageLogStatusFilter,
   }) {
@@ -129,9 +128,6 @@
     usageLogBackendFilter.value = state.usageLogFilters.backend;
     usageLogModelFilter.value = state.usageLogFilters.model;
     usageLogClientKeyFilter.value = state.usageLogFilters.clientKey;
-    if (usageLogPolicyFilter) {
-      usageLogPolicyFilter.value = state.usageLogFilters.policy;
-    }
     if (usageLogProxyFilter) {
       usageLogProxyFilter.value = state.usageLogFilters.proxy;
     }
@@ -149,7 +145,6 @@
     usageLogBackendFilter,
     usageLogModelFilter,
     usageLogClientKeyFilter,
-    usageLogPolicyFilter,
     usageLogProxyFilter,
     usageLogStatusFilter,
   }) {
@@ -159,7 +154,6 @@
     state.usageLogFilters.backend = String(usageLogBackendFilter.value || "").trim();
     state.usageLogFilters.model = String(usageLogModelFilter.value || "").trim();
     state.usageLogFilters.clientKey = String(usageLogClientKeyFilter.value || "").trim();
-    state.usageLogFilters.policy = String(usageLogPolicyFilter?.value || "").trim();
     state.usageLogFilters.proxy = String(usageLogProxyFilter?.value || "").trim();
     state.usageLogFilters.status = String(usageLogStatusFilter?.value || "").trim();
     state.pagination.usageLogs.page = 1;
@@ -174,7 +168,6 @@
     state.usageLogFilters.backend = "";
     state.usageLogFilters.model = "";
     state.usageLogFilters.clientKey = "";
-    state.usageLogFilters.policy = "";
     state.usageLogFilters.proxy = "";
     state.usageLogFilters.status = "";
     syncUsageLogFilterInputs(input);
@@ -231,13 +224,11 @@
     usageLogBackendOptions,
     usageLogModelOptions,
     usageLogClientKeyOptions,
-    usageLogPolicyOptions,
     usageLogProxyOptions,
   }) {
     displayUtils.renderDatalist(usageLogBackendOptions, state.usageLogOptions.backends);
     displayUtils.renderDatalist(usageLogModelOptions, state.usageLogOptions.models);
     displayUtils.renderDatalist(usageLogClientKeyOptions, state.usageLogOptions.clientKeys);
-    displayUtils.renderDatalist(usageLogPolicyOptions, state.usageLogOptions.policies);
     displayUtils.renderDatalist(usageLogProxyOptions, state.usageLogOptions.proxies);
   }
 

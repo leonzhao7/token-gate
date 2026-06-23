@@ -70,12 +70,6 @@
     return `${modelCount} models / ${endpointCount} endpoints`;
   }
 
-  function formatPolicyCoverage(policy) {
-    const backendCount = Number(policy?.backend_count || 0);
-    const modelCount = Number(policy?.model_count || 0);
-    return `${Number.isFinite(backendCount) ? backendCount : 0} backends / ${Number.isFinite(modelCount) ? modelCount : 0} models`;
-  }
-
   function formatLatency(value) {
     const latency = Number(value || 0);
     if (!Number.isFinite(latency) || latency <= 0) {
@@ -112,17 +106,7 @@
 
   function formatBackendRouting(backend) {
     const parts = [
-      backend?.pool ? `pool ${backend.pool}` : "",
       proxyLabel(backend?.proxy_id, backend?.proxy),
-    ].filter(Boolean);
-    return parts.join(" | ") || "-";
-  }
-
-  function formatPolicyRouting(policy) {
-    const parts = [
-      policy?.backend_pool ? `pool ${policy.backend_pool}` : "",
-      Number.isFinite(Number(policy?.priority)) ? `priority ${policy.priority}` : "",
-      policy?.failover_enabled ? "failover on" : "failover off",
     ].filter(Boolean);
     return parts.join(" | ") || "-";
   }
@@ -142,7 +126,6 @@
       proxy: ["data-edit-proxy", "data-delete-proxy"],
       backend: ["data-edit-backend", "data-delete-backend"],
       client: ["data-edit-client", "data-delete-client"],
-      policy: ["data-edit-policy", "data-delete-policy"],
     }[type];
 
     if (!attributes) {
@@ -221,8 +204,6 @@
     formatDataSize,
     formatDateTime,
     formatLatency,
-    formatPolicyCoverage,
-    formatPolicyRouting,
     formatUsageCount,
     renderDatalist,
     statusPill,

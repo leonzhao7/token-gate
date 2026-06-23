@@ -18,37 +18,29 @@ const (
 	BackendStatusAbnormal = "abnormal"
 	BackendStatusDisabled = "disabled"
 
-	PlacementSticky = "sticky"
-	PlacementPack   = "pack"
-	PlacementSpread = "spread"
-
 	BackendProtocolOpenAI    = "openai"
 	BackendProtocolAnthropic = "anthropic"
 )
 
 type ClientKey struct {
-	ID                int64     `json:"id"`
-	Name              string    `json:"name"`
-	TokenHash         string    `json:"-"`
-	Token             string    `json:"token,omitempty"`
-	TokenPrefix       string    `json:"token_prefix"`
-	Enabled           bool      `json:"enabled"`
-	RouteModeOverride string    `json:"route_mode_override"`
-	RouteGroup        string    `json:"route_group"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	TokenHash   string    `json:"-"`
+	Token       string    `json:"token,omitempty"`
+	TokenPrefix string    `json:"token_prefix"`
+	Enabled     bool      `json:"enabled"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type Backend struct {
 	ID                  int64             `json:"id"`
 	Name                string            `json:"name"`
-	Pool                string            `json:"pool"`
 	Protocol            string            `json:"protocol"`
 	BaseURL             string            `json:"base_url"`
 	APIKey              string            `json:"api_key,omitempty"`
 	ProxyID             int64             `json:"proxy_id"`
 	Proxy               *SocksProxy       `json:"proxy,omitempty"`
-	Enabled             bool              `json:"enabled"`
 	Status              string            `json:"status"`
 	ConsecutiveFailures int               `json:"consecutive_failures"`
 	RecoverAt           *time.Time        `json:"recover_at,omitempty"`
@@ -69,18 +61,6 @@ type SocksProxy struct {
 	Enabled   bool      `json:"enabled"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
-}
-
-type ModelPolicy struct {
-	ID              int64     `json:"id"`
-	Pattern         string    `json:"pattern"`
-	Endpoint        string    `json:"endpoint"`
-	PlacementPolicy string    `json:"placement_policy"`
-	BackendPool     string    `json:"backend_pool"`
-	FailoverEnabled bool      `json:"failover_enabled"`
-	Priority        int       `json:"priority"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type AuditEvent struct {
@@ -106,15 +86,11 @@ type UsageLog struct {
 	ClientID            int64     `json:"client_id"`
 	ClientName          string    `json:"client_name"`
 	ClientTokenPrefix   string    `json:"client_token_prefix"`
-	RouteModeOverride   string    `json:"route_mode_override"`
-	RouteGroup          string    `json:"route_group"`
 	Method              string    `json:"method"`
 	Path                string    `json:"path"`
 	Query               string    `json:"query"`
 	Endpoint            string    `json:"endpoint"`
 	Model               string    `json:"model"`
-	PolicyID            int64     `json:"policy_id"`
-	PolicyName          string    `json:"policy_name"`
 	BackendID           int64     `json:"backend_id"`
 	BackendName         string    `json:"backend_name"`
 	ProxyID             int64     `json:"proxy_id"`

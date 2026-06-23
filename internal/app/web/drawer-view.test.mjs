@@ -59,8 +59,8 @@ test("renderDrawerShell composes tabs, body, and footer markup", () => {
             title: "Events",
             count: 1,
             items: [{
-              title: "policy updated",
-              summary: "policy.changed",
+              title: "backend recovered",
+              summary: "backend.recovered",
               tone: "warning",
               chips: ["warning"],
               meta: [{ label: "Actor", value: "admin" }],
@@ -80,9 +80,9 @@ test("renderDrawerShell composes tabs, body, and footer markup", () => {
     activitySections: [{
       title: "Events",
       count: 1,
-      items: [{
-        title: "policy updated",
-        summary: "policy.changed",
+    items: [{
+        title: "backend recovered",
+        summary: "backend.recovered",
         tone: "warning",
         chips: ["warning"],
         meta: [{ label: "Actor", value: "admin" }],
@@ -109,7 +109,7 @@ test("renderDrawerBody returns loading and error states for shell rendering", ()
   assert.match(loadingMarkup, /Fetching Event detail/);
 
   const errorMarkup = DrawerViewUtils.renderDrawerBody({
-    drawer: { kind: "policies", tab: "overview", loading: false, error: "boom", data: null },
+    drawer: { kind: "backends", tab: "overview", loading: false, error: "boom", data: null },
     activitySections: [],
     escapeHTML: (value) => String(value),
   });
@@ -130,8 +130,8 @@ test("renderDrawerBody renders activity sections and usage log footer stays read
       title: "Events",
       count: 1,
       items: [{
-        title: "policy updated",
-        summary: "policy.changed",
+        title: "backend recovered",
+        summary: "backend.recovered",
         tone: "warning",
         chips: ["warning"],
         meta: [{ label: "Time", value: "2026-06-19T08:00:00Z", format: "datetime" }],
@@ -161,8 +161,7 @@ test("renderDrawerBody renders activity sections and usage log footer stays read
 test("renderDrawerTabPanel upgrades overview payload into a summary hero with highlight cards", () => {
   const markup = DrawerViewUtils.renderDrawerTabPanel("overview", {
     name: "edge-a",
-    enabled: true,
-    pool: "premium",
+    status: "normal",
     protocol: "openai",
     weight: 3,
     proxy_id: 7,
@@ -173,9 +172,8 @@ test("renderDrawerTabPanel upgrades overview payload into a summary hero with hi
   assert.match(markup, /drawer-overview-hero/);
   assert.match(markup, /drawer-highlight-grid/);
   assert.match(markup, /edge-a/);
-  assert.match(markup, /premium/);
   assert.match(markup, /openai/);
-  assert.match(markup, /Enabled/);
+  assert.match(markup, /normal/);
 });
 
 test("renderDrawerTabPanel upgrades configuration payload into grouped config cards", () => {
@@ -318,12 +316,12 @@ test("renderDrawerBody renders usage log request and response tabs from the real
 
 test("renderDrawerTabPanel renders event overview as audit-focused hero with summary context", () => {
   const markup = DrawerViewUtils.renderDrawerTabPanel("overview", {
-    type: "policy.updated",
-    message: "Policy threshold updated for premium clients",
-    category: "policy",
+    type: "backend.abnormal",
+    message: "Backend marked abnormal after consecutive failures",
+    category: "backend",
     severity: "warning",
     actor: "admin@example.com",
-    endpoint: "/admin/policies/7",
+    endpoint: "/admin/backends/7",
     backend: "edge-a",
     client_name: "premium-web",
     model: "gpt-5.4",
@@ -333,8 +331,8 @@ test("renderDrawerTabPanel renders event overview as audit-focused hero with sum
   });
 
   assert.match(markup, /drawer-overview-hero/);
-  assert.match(markup, /Policy threshold updated for premium clients/);
-  assert.match(markup, /policy\.updated/);
+  assert.match(markup, /Backend marked abnormal after consecutive failures/);
+  assert.match(markup, /backend\.abnormal/);
   assert.match(markup, /drawer-highlight-grid/);
   assert.match(markup, /Category/);
   assert.match(markup, /Severity/);

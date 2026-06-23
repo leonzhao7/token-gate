@@ -98,7 +98,6 @@ test("refreshResourceList updates matching resource collection and calls the pai
     proxies: [],
     backends: [],
     clients: [],
-    policies: [],
   };
   const renderCalls = [];
 
@@ -117,9 +116,6 @@ test("refreshResourceList updates matching resource collection and calls the pai
     },
     renderClients() {
       renderCalls.push("clients");
-    },
-    renderPolicies() {
-      renderCalls.push("policies");
     },
   });
 

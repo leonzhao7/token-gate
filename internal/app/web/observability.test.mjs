@@ -128,7 +128,6 @@ test("buildUsageLogQueryParams uses the shared filter set for list, stats, and d
     backend: "alpha",
     model: "gpt-5.4",
     clientKey: "web-prod",
-    policy: "gpt-*",
     proxy: "tokyo",
     status: "4xx",
   });
@@ -137,7 +136,6 @@ test("buildUsageLogQueryParams uses the shared filter set for list, stats, and d
   assert.equal(params.get("backend"), "alpha");
   assert.equal(params.get("model"), "gpt-5.4");
   assert.equal(params.get("client_key"), "web-prod");
-  assert.equal(params.get("policy"), "gpt-*");
   assert.equal(params.get("proxy"), "tokyo");
   assert.equal(params.get("status"), "4xx");
   assert.match(params.get("date_from") || "", /T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
@@ -182,7 +180,6 @@ test("createEventSummaryModel normalizes counters and keeps common categories", 
     categories: [
       { key: "system", label: "System", count: 0, tone: "neutral" },
       { key: "backend", label: "Backend", count: 4, tone: "success" },
-      { key: "policy", label: "Policy", count: 0, tone: "primary" },
       { key: "proxy", label: "Proxy", count: 0, tone: "neutral" },
       { key: "client_key", label: "Client Key", count: 0, tone: "primary" },
       { key: "security", label: "Security", count: 1, tone: "danger" },

@@ -5,7 +5,6 @@
     "renderProxyRow",
     "renderBackendRow",
     "renderClientRow",
-    "renderPolicyRow",
     "renderResourceTablePage",
   ];
   const REQUIRED_STATE_METHODS = [
@@ -79,8 +78,6 @@
     "formatDataSize",
     "formatDateTime",
     "formatLatency",
-    "formatPolicyCoverage",
-    "formatPolicyRouting",
     "formatUsageCount",
     "escapeHTML",
     "emptyState",
@@ -146,7 +143,6 @@
     "renderProxyRow",
     "renderBackendRow",
     "renderClientRow",
-    "renderPolicyRow",
     "renderResourceListByKey",
   ];
   const REQUIRED_RESOURCE_DATA_RUNTIME_METHODS = [

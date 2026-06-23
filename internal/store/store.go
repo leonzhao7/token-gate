@@ -44,18 +44,10 @@ type BackendUsageSummary struct {
 	LastUsedAt   time.Time
 }
 
-type PolicyUsageSummary struct {
-	RequestCount int
-	BackendCount int
-	ModelCount   int
-	LastUsedAt   time.Time
-}
-
 type UsageLogFilter struct {
 	BackendName string
 	Model       string
 	ClientName  string
-	PolicyName  string
 	ProxyName   string
 	Status      string
 	Query       string
@@ -67,7 +59,6 @@ type UsageLogOptions struct {
 	Backends   []string
 	Models     []string
 	ClientKeys []string
-	Policies   []string
 	Proxies    []string
 }
 
@@ -84,7 +75,6 @@ type EventFilter struct {
 type DashboardSummaryData struct {
 	Backends        int
 	ClientKeys      int
-	ModelPolicies   int
 	SocksProxies    int
 	HealthyBackends int
 	RecentErrors    int
@@ -120,7 +110,6 @@ type DashboardActivitySummary struct {
 type SearchResults struct {
 	Backends   []SearchResult
 	ClientKeys []SearchResult
-	Policies   []SearchResult
 	Proxies    []SearchResult
 	UsageLogs  []SearchResult
 	Events     []SearchResult
@@ -147,13 +136,6 @@ type ClientKeyDetailData struct {
 	Client domain.ClientKey
 	Usage  []domain.UsageLog
 	Events []domain.AuditEvent
-}
-
-type ModelPolicyDetailData struct {
-	Policy   domain.ModelPolicy
-	Usage    []domain.UsageLog
-	Backends []domain.Backend
-	Events   []domain.AuditEvent
 }
 
 type SocksProxyDetailData struct {
@@ -209,8 +191,6 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			token TEXT NOT NULL DEFAULT '',
 			token_prefix TEXT NOT NULL,
 			enabled INTEGER NOT NULL DEFAULT 1,
-			route_mode_override TEXT NOT NULL DEFAULT '',
-			route_group TEXT NOT NULL DEFAULT '',
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);`,
@@ -229,12 +209,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		`CREATE TABLE IF NOT EXISTS backends (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL UNIQUE,
-			pool TEXT NOT NULL DEFAULT '',
 			protocol TEXT NOT NULL DEFAULT 'openai',
 			base_url TEXT NOT NULL,
 			api_key TEXT NOT NULL,
 			proxy_id INTEGER NOT NULL DEFAULT 0,
-			enabled INTEGER NOT NULL DEFAULT 1,
 			status TEXT NOT NULL DEFAULT 'normal',
 			consecutive_failures INTEGER NOT NULL DEFAULT 0,
 			recover_at TEXT NOT NULL DEFAULT '',
@@ -245,20 +223,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);`,
-		`CREATE INDEX IF NOT EXISTS idx_backends_enabled ON backends(enabled);`,
 		`CREATE INDEX IF NOT EXISTS idx_backends_status ON backends(status);`,
-		`CREATE TABLE IF NOT EXISTS model_policies (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			pattern TEXT NOT NULL,
-			endpoint TEXT NOT NULL,
-			placement_policy TEXT NOT NULL,
-			backend_pool TEXT NOT NULL DEFAULT '',
-			failover_enabled INTEGER NOT NULL DEFAULT 1,
-			priority INTEGER NOT NULL DEFAULT 100,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		);`,
-		`CREATE INDEX IF NOT EXISTS idx_model_policies_priority ON model_policies(priority, endpoint);`,
 		`CREATE TABLE IF NOT EXISTS audit_events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			level TEXT NOT NULL,
@@ -282,15 +247,11 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			client_id INTEGER NOT NULL DEFAULT 0,
 			client_name TEXT NOT NULL DEFAULT '',
 			client_token_prefix TEXT NOT NULL DEFAULT '',
-			route_mode_override TEXT NOT NULL DEFAULT '',
-			route_group TEXT NOT NULL DEFAULT '',
 			method TEXT NOT NULL DEFAULT '',
 			path TEXT NOT NULL DEFAULT '',
 			query TEXT NOT NULL DEFAULT '',
 			endpoint TEXT NOT NULL DEFAULT '',
 			model TEXT NOT NULL DEFAULT '',
-			policy_id INTEGER NOT NULL DEFAULT 0,
-			policy_name TEXT NOT NULL DEFAULT '',
 			backend_id INTEGER NOT NULL DEFAULT 0,
 			backend_name TEXT NOT NULL DEFAULT '',
 			proxy_id INTEGER NOT NULL DEFAULT 0,
@@ -376,8 +337,6 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		name       string
 		definition string
 	}{
-		{name: "policy_id", definition: "INTEGER NOT NULL DEFAULT 0"},
-		{name: "policy_name", definition: "TEXT NOT NULL DEFAULT ''"},
 		{name: "proxy_id", definition: "INTEGER NOT NULL DEFAULT 0"},
 		{name: "proxy_name", definition: "TEXT NOT NULL DEFAULT ''"},
 		{name: "status_family", definition: "TEXT NOT NULL DEFAULT ''"},
@@ -442,7 +401,7 @@ func HashToken(token string) string {
 
 func (s *Store) FindClientKeyByToken(ctx context.Context, token string) (*domain.ClientKey, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, name, token_hash, token, token_prefix, enabled, route_mode_override, route_group, created_at, updated_at
+		SELECT id, name, token_hash, token, token_prefix, enabled, created_at, updated_at
 		FROM client_keys
 		WHERE token_hash = ? AND enabled = 1
 	`, HashToken(strings.TrimSpace(token)))
@@ -459,7 +418,7 @@ func (s *Store) FindClientKeyByToken(ctx context.Context, token string) (*domain
 
 func (s *Store) ListClientKeys(ctx context.Context) ([]domain.ClientKey, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, token_hash, token, token_prefix, enabled, route_mode_override, route_group, created_at, updated_at
+		SELECT id, name, token_hash, token, token_prefix, enabled, created_at, updated_at
 		FROM client_keys
 		ORDER BY id DESC
 	`)
@@ -485,7 +444,7 @@ func (s *Store) CountClientKeys(ctx context.Context) (int, error) {
 
 func (s *Store) ListClientKeysPage(ctx context.Context, limit, offset int) ([]domain.ClientKey, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, token_hash, token, token_prefix, enabled, route_mode_override, route_group, created_at, updated_at
+		SELECT id, name, token_hash, token, token_prefix, enabled, created_at, updated_at
 		FROM client_keys
 		ORDER BY id DESC
 		LIMIT ? OFFSET ?
@@ -512,16 +471,14 @@ func (s *Store) CreateClientKey(ctx context.Context, client domain.ClientKey) (d
 	client.UpdatedAt = now
 
 	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO client_keys(name, token_hash, token, token_prefix, enabled, route_mode_override, route_group, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO client_keys(name, token_hash, token, token_prefix, enabled, created_at, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?)
 	`,
 		strings.TrimSpace(client.Name),
 		client.TokenHash,
 		strings.TrimSpace(client.Token),
 		client.TokenPrefix,
 		boolToInt(client.Enabled),
-		strings.TrimSpace(client.RouteModeOverride),
-		strings.TrimSpace(client.RouteGroup),
 		formatTime(now),
 		formatTime(now),
 	)
@@ -539,7 +496,7 @@ func (s *Store) UpdateClientKey(ctx context.Context, client domain.ClientKey) (d
 
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE client_keys
-		SET name = ?, token_hash = ?, token = ?, token_prefix = ?, enabled = ?, route_mode_override = ?, route_group = ?, updated_at = ?
+		SET name = ?, token_hash = ?, token = ?, token_prefix = ?, enabled = ?, updated_at = ?
 		WHERE id = ?
 	`,
 		strings.TrimSpace(client.Name),
@@ -547,8 +504,6 @@ func (s *Store) UpdateClientKey(ctx context.Context, client domain.ClientKey) (d
 		strings.TrimSpace(client.Token),
 		client.TokenPrefix,
 		boolToInt(client.Enabled),
-		strings.TrimSpace(client.RouteModeOverride),
-		strings.TrimSpace(client.RouteGroup),
 		formatTime(now),
 		client.ID,
 	)
@@ -560,7 +515,7 @@ func (s *Store) UpdateClientKey(ctx context.Context, client domain.ClientKey) (d
 
 func (s *Store) GetClientKey(ctx context.Context, id int64) (domain.ClientKey, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, name, token_hash, token, token_prefix, enabled, route_mode_override, route_group, created_at, updated_at
+		SELECT id, name, token_hash, token, token_prefix, enabled, created_at, updated_at
 		FROM client_keys
 		WHERE id = ?
 	`, id)
@@ -697,7 +652,7 @@ func (s *Store) DeleteSocksProxy(ctx context.Context, id int64) error {
 func (s *Store) ListBackends(ctx context.Context) ([]domain.Backend, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
+			b.id, b.name, b.protocol, b.base_url, b.api_key, b.proxy_id, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
 			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
 		FROM backends b
 		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
@@ -729,10 +684,6 @@ func (s *Store) DashboardSummary(ctx context.Context, now time.Time) (DashboardS
 		return DashboardSummaryData{}, err
 	}
 	clientCount, err := s.CountClientKeys(ctx)
-	if err != nil {
-		return DashboardSummaryData{}, err
-	}
-	policyCount, err := s.CountModelPolicies(ctx)
 	if err != nil {
 		return DashboardSummaryData{}, err
 	}
@@ -770,7 +721,7 @@ func (s *Store) DashboardSummary(ctx context.Context, now time.Time) (DashboardS
 	activeClients := make(map[string]struct{})
 
 	for _, backend := range backends {
-		if backend.Enabled {
+		if backend.Status == domain.BackendStatusNormal {
 			healthyBackends++
 		}
 	}
@@ -808,7 +759,6 @@ func (s *Store) DashboardSummary(ctx context.Context, now time.Time) (DashboardS
 	return DashboardSummaryData{
 		Backends:        backendsCount,
 		ClientKeys:      clientCount,
-		ModelPolicies:   policyCount,
 		SocksProxies:    proxyCount,
 		HealthyBackends: healthyBackends,
 		RecentErrors:    recentErrors,
@@ -932,7 +882,6 @@ func (s *Store) Search(ctx context.Context, query string, limit int) (SearchResu
 	results := SearchResults{
 		Backends:   []SearchResult{},
 		ClientKeys: []SearchResult{},
-		Policies:   []SearchResult{},
 		Proxies:    []SearchResult{},
 		UsageLogs:  []SearchResult{},
 		Events:     []SearchResult{},
@@ -947,17 +896,17 @@ func (s *Store) Search(ctx context.Context, query string, limit int) (SearchResu
 	limit = normalizeLimit(limit, 5, 20)
 
 	backendRows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, pool, base_url, enabled
+		SELECT id, name, base_url, status
 		FROM backends
-		WHERE lower(name) LIKE ? OR lower(pool) LIKE ? OR lower(base_url) LIKE ?
+		WHERE lower(name) LIKE ? OR lower(base_url) LIKE ? OR lower(status) LIKE ?
 		ORDER BY
 			CASE
 				WHEN lower(name) = ? THEN 0
 				WHEN lower(name) LIKE ? THEN 1
-				WHEN lower(pool) = ? THEN 2
-				WHEN lower(pool) LIKE ? THEN 3
-				WHEN lower(base_url) = ? THEN 4
-				WHEN lower(base_url) LIKE ? THEN 5
+				WHEN lower(base_url) = ? THEN 2
+				WHEN lower(base_url) LIKE ? THEN 3
+				WHEN lower(status) = ? THEN 4
+				WHEN lower(status) LIKE ? THEN 5
 				ELSE 6
 			END,
 			id DESC
@@ -971,20 +920,19 @@ func (s *Store) Search(ctx context.Context, query string, limit int) (SearchResu
 		var (
 			id      int64
 			name    string
-			pool    string
 			baseURL string
-			enabled int
+			status  string
 		)
-		if err := backendRows.Scan(&id, &name, &pool, &baseURL, &enabled); err != nil {
+		if err := backendRows.Scan(&id, &name, &baseURL, &status); err != nil {
 			return SearchResults{}, err
 		}
 		results.Backends = append(results.Backends, SearchResult{
 			Kind:       "backend",
 			ID:         id,
 			Title:      name,
-			Subtitle:   firstNonEmpty(pool, baseURL),
-			Meta:       map[string]any{"pool": pool, "base_url": baseURL},
-			Status:     enabledStatus(enabled == 1),
+			Subtitle:   baseURL,
+			Meta:       map[string]any{"base_url": baseURL},
+			Status:     status,
 			TargetPage: "backends",
 			TargetID:   id,
 		})
@@ -994,22 +942,20 @@ func (s *Store) Search(ctx context.Context, query string, limit int) (SearchResu
 	}
 
 	clientRows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, token_prefix, enabled, route_group
+		SELECT id, name, token_prefix, enabled
 		FROM client_keys
-		WHERE lower(name) LIKE ? OR lower(token_prefix) LIKE ? OR lower(route_group) LIKE ?
+		WHERE lower(name) LIKE ? OR lower(token_prefix) LIKE ?
 		ORDER BY
 			CASE
 				WHEN lower(name) = ? THEN 0
 				WHEN lower(name) LIKE ? THEN 1
 				WHEN lower(token_prefix) = ? THEN 2
 				WHEN lower(token_prefix) LIKE ? THEN 3
-				WHEN lower(route_group) = ? THEN 4
-				WHEN lower(route_group) LIKE ? THEN 5
-				ELSE 6
+				ELSE 4
 			END,
 			id DESC
 		LIMIT ?
-	`, like, like, like, term, prefix, term, prefix, term, prefix, limit)
+	`, like, like, term, prefix, term, prefix, limit)
 	if err != nil {
 		return SearchResults{}, err
 	}
@@ -1020,9 +966,8 @@ func (s *Store) Search(ctx context.Context, query string, limit int) (SearchResu
 			name        string
 			tokenPrefix string
 			enabled     int
-			routeGroup  string
 		)
-		if err := clientRows.Scan(&id, &name, &tokenPrefix, &enabled, &routeGroup); err != nil {
+		if err := clientRows.Scan(&id, &name, &tokenPrefix, &enabled); err != nil {
 			return SearchResults{}, err
 		}
 		results.ClientKeys = append(results.ClientKeys, SearchResult{
@@ -1030,61 +975,13 @@ func (s *Store) Search(ctx context.Context, query string, limit int) (SearchResu
 			ID:         id,
 			Title:      name,
 			Subtitle:   tokenPrefix,
-			Meta:       map[string]any{"route_group": routeGroup},
+			Meta:       map[string]any{},
 			Status:     enabledStatus(enabled == 1),
 			TargetPage: "client-keys",
 			TargetID:   id,
 		})
 	}
 	if err := clientRows.Err(); err != nil {
-		return SearchResults{}, err
-	}
-
-	policyRows, err := s.db.QueryContext(ctx, `
-		SELECT id, pattern, endpoint, placement_policy, backend_pool
-		FROM model_policies
-		WHERE lower(pattern) LIKE ? OR lower(endpoint) LIKE ? OR lower(backend_pool) LIKE ?
-		ORDER BY
-			CASE
-				WHEN lower(pattern) = ? THEN 0
-				WHEN lower(pattern) LIKE ? THEN 1
-				WHEN lower(endpoint) = ? THEN 2
-				WHEN lower(endpoint) LIKE ? THEN 3
-				WHEN lower(backend_pool) = ? THEN 4
-				WHEN lower(backend_pool) LIKE ? THEN 5
-				ELSE 6
-			END,
-			priority ASC,
-			id DESC
-		LIMIT ?
-	`, like, like, like, term, prefix, term, prefix, term, prefix, limit)
-	if err != nil {
-		return SearchResults{}, err
-	}
-	defer policyRows.Close()
-	for policyRows.Next() {
-		var (
-			id              int64
-			pattern         string
-			endpoint        string
-			placementPolicy string
-			backendPool     string
-		)
-		if err := policyRows.Scan(&id, &pattern, &endpoint, &placementPolicy, &backendPool); err != nil {
-			return SearchResults{}, err
-		}
-		results.Policies = append(results.Policies, SearchResult{
-			Kind:       "policy",
-			ID:         id,
-			Title:      pattern,
-			Subtitle:   endpoint,
-			Meta:       map[string]any{"placement_policy": placementPolicy, "backend_pool": backendPool},
-			Status:     "configured",
-			TargetPage: "model-policies",
-			TargetID:   id,
-		})
-	}
-	if err := policyRows.Err(); err != nil {
 		return SearchResults{}, err
 	}
 
@@ -1278,31 +1175,6 @@ func (s *Store) ClientKeyDetail(ctx context.Context, id int64, limit int) (Clien
 	}, nil
 }
 
-func (s *Store) ModelPolicyDetail(ctx context.Context, id int64, limit int) (ModelPolicyDetailData, error) {
-	policy, err := s.GetModelPolicy(ctx, id)
-	if err != nil {
-		return ModelPolicyDetailData{}, err
-	}
-	usage, err := s.listUsageLogsByPolicyID(ctx, id, limit)
-	if err != nil {
-		return ModelPolicyDetailData{}, err
-	}
-	backends, err := s.listBackendsByPool(ctx, policy.BackendPool)
-	if err != nil {
-		return ModelPolicyDetailData{}, err
-	}
-	events, err := s.listAuditEventsByModel(ctx, policy.Pattern, limit)
-	if err != nil {
-		return ModelPolicyDetailData{}, err
-	}
-	return ModelPolicyDetailData{
-		Policy:   policy,
-		Usage:    ensureUsageLogSlice(usage),
-		Backends: ensureBackendSlice(backends),
-		Events:   ensureAuditEventSlice(events),
-	}, nil
-}
-
 func (s *Store) SocksProxyDetail(ctx context.Context, id int64, limit int) (SocksProxyDetailData, error) {
 	proxy, err := s.GetSocksProxy(ctx, id)
 	if err != nil {
@@ -1478,50 +1350,6 @@ func (s *Store) BackendUsageSummaryByIDs(ctx context.Context, ids []int64) (map[
 	return out, rows.Err()
 }
 
-func (s *Store) PolicyUsageSummaryByIDs(ctx context.Context, ids []int64) (map[int64]PolicyUsageSummary, error) {
-	if len(ids) == 0 {
-		return map[int64]PolicyUsageSummary{}, nil
-	}
-
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
-	args := make([]any, 0, len(ids))
-	for _, id := range ids {
-		args = append(args, id)
-	}
-
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT policy_id, COUNT(*), COUNT(DISTINCT backend_name), COUNT(DISTINCT model), MAX(created_at)
-		FROM usage_logs
-		WHERE policy_id IN (`+placeholders+`)
-		GROUP BY policy_id
-	`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	out := make(map[int64]PolicyUsageSummary, len(ids))
-	for rows.Next() {
-		var (
-			policyID     int64
-			requests     int
-			backendCount int
-			modelCount   int
-			lastUsed     string
-		)
-		if err := rows.Scan(&policyID, &requests, &backendCount, &modelCount, &lastUsed); err != nil {
-			return nil, err
-		}
-		out[policyID] = PolicyUsageSummary{
-			RequestCount: requests,
-			BackendCount: backendCount,
-			ModelCount:   modelCount,
-			LastUsedAt:   parseTime(lastUsed),
-		}
-	}
-	return out, rows.Err()
-}
-
 func (s *Store) BackendBindingCountByProxyIDs(ctx context.Context, ids []int64) (map[int64]int, error) {
 	if len(ids) == 0 {
 		return map[int64]int{}, nil
@@ -1561,7 +1389,7 @@ func (s *Store) BackendBindingCountByProxyIDs(ctx context.Context, ids []int64) 
 func (s *Store) ListBackendsPage(ctx context.Context, limit, offset int) ([]domain.Backend, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
+			b.id, b.name, b.protocol, b.base_url, b.api_key, b.proxy_id, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
 			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
 		FROM backends b
 		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
@@ -1590,16 +1418,14 @@ func (s *Store) CreateBackend(ctx context.Context, backend domain.Backend) (doma
 	backend.UpdatedAt = now
 
 	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO backends(name, pool, protocol, base_url, api_key, proxy_id, enabled, status, consecutive_failures, recover_at, weight, model_list, model_mapping, endpoint_list, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO backends(name, protocol, base_url, api_key, proxy_id, status, consecutive_failures, recover_at, weight, model_list, model_mapping, endpoint_list, created_at, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		strings.TrimSpace(backend.Name),
-		strings.TrimSpace(backend.Pool),
 		domain.NormalizeBackendProtocol(backend.Protocol),
 		strings.TrimSpace(backend.BaseURL),
 		strings.TrimSpace(backend.APIKey),
 		backend.ProxyID,
-		boolToInt(backend.Enabled),
 		normalizeBackendStatus(backend.Status),
 		0,
 		"",
@@ -1627,16 +1453,14 @@ func (s *Store) UpdateBackend(ctx context.Context, backend domain.Backend) (doma
 
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE backends
-		SET name = ?, pool = ?, protocol = ?, base_url = ?, api_key = ?, proxy_id = ?, enabled = ?, status = ?, consecutive_failures = ?, recover_at = ?, weight = ?, model_list = ?, model_mapping = ?, endpoint_list = ?, updated_at = ?
+		SET name = ?, protocol = ?, base_url = ?, api_key = ?, proxy_id = ?, status = ?, consecutive_failures = ?, recover_at = ?, weight = ?, model_list = ?, model_mapping = ?, endpoint_list = ?, updated_at = ?
 		WHERE id = ?
 	`,
 		strings.TrimSpace(backend.Name),
-		strings.TrimSpace(backend.Pool),
 		domain.NormalizeBackendProtocol(backend.Protocol),
 		strings.TrimSpace(backend.BaseURL),
 		strings.TrimSpace(backend.APIKey),
 		backend.ProxyID,
-		boolToInt(backend.Enabled),
 		normalizeBackendStatus(backend.Status),
 		backend.ConsecutiveFailures,
 		formatOptionalTime(backend.RecoverAt),
@@ -1656,7 +1480,7 @@ func (s *Store) UpdateBackend(ctx context.Context, backend domain.Backend) (doma
 func (s *Store) GetBackend(ctx context.Context, id int64) (domain.Backend, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT
-			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
+			b.id, b.name, b.protocol, b.base_url, b.api_key, b.proxy_id, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
 			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
 		FROM backends b
 		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
@@ -1720,119 +1544,6 @@ func (s *Store) RecoverExpiredBackends(ctx context.Context, now time.Time) error
 
 func (s *Store) DeleteBackend(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM backends WHERE id = ?`, id)
-	return err
-}
-
-func (s *Store) ListModelPolicies(ctx context.Context) ([]domain.ModelPolicy, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, pattern, endpoint, placement_policy, backend_pool, failover_enabled, priority, created_at, updated_at
-		FROM model_policies
-		ORDER BY priority ASC, id DESC
-	`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var policies []domain.ModelPolicy
-	for rows.Next() {
-		policy, err := scanModelPolicy(rows)
-		if err != nil {
-			return nil, err
-		}
-		policies = append(policies, policy)
-	}
-	return policies, rows.Err()
-}
-
-func (s *Store) CountModelPolicies(ctx context.Context) (int, error) {
-	return countRows(ctx, s.db, "model_policies")
-}
-
-func (s *Store) ListModelPoliciesPage(ctx context.Context, limit, offset int) ([]domain.ModelPolicy, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, pattern, endpoint, placement_policy, backend_pool, failover_enabled, priority, created_at, updated_at
-		FROM model_policies
-		ORDER BY priority ASC, id DESC
-		LIMIT ? OFFSET ?
-	`, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var policies []domain.ModelPolicy
-	for rows.Next() {
-		policy, err := scanModelPolicy(rows)
-		if err != nil {
-			return nil, err
-		}
-		policies = append(policies, policy)
-	}
-	return policies, rows.Err()
-}
-
-func (s *Store) CreateModelPolicy(ctx context.Context, policy domain.ModelPolicy) (domain.ModelPolicy, error) {
-	now := time.Now().UTC()
-	policy.CreatedAt = now
-	policy.UpdatedAt = now
-
-	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO model_policies(pattern, endpoint, placement_policy, backend_pool, failover_enabled, priority, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-	`,
-		strings.TrimSpace(policy.Pattern),
-		strings.TrimSpace(policy.Endpoint),
-		strings.TrimSpace(policy.PlacementPolicy),
-		strings.TrimSpace(policy.BackendPool),
-		boolToInt(policy.FailoverEnabled),
-		normalizePriority(policy.Priority),
-		formatTime(now),
-		formatTime(now),
-	)
-	if err != nil {
-		return domain.ModelPolicy{}, err
-	}
-
-	policy.ID, err = result.LastInsertId()
-	return policy, err
-}
-
-func (s *Store) UpdateModelPolicy(ctx context.Context, policy domain.ModelPolicy) (domain.ModelPolicy, error) {
-	now := time.Now().UTC()
-	policy.UpdatedAt = now
-
-	_, err := s.db.ExecContext(ctx, `
-		UPDATE model_policies
-		SET pattern = ?, endpoint = ?, placement_policy = ?, backend_pool = ?, failover_enabled = ?, priority = ?, updated_at = ?
-		WHERE id = ?
-	`,
-		strings.TrimSpace(policy.Pattern),
-		strings.TrimSpace(policy.Endpoint),
-		strings.TrimSpace(policy.PlacementPolicy),
-		strings.TrimSpace(policy.BackendPool),
-		boolToInt(policy.FailoverEnabled),
-		normalizePriority(policy.Priority),
-		formatTime(now),
-		policy.ID,
-	)
-	if err != nil {
-		return domain.ModelPolicy{}, err
-	}
-	return s.GetModelPolicy(ctx, policy.ID)
-}
-
-func (s *Store) GetModelPolicy(ctx context.Context, id int64) (domain.ModelPolicy, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, pattern, endpoint, placement_policy, backend_pool, failover_enabled, priority, created_at, updated_at
-		FROM model_policies
-		WHERE id = ?
-	`, id)
-	return scanModelPolicy(row)
-}
-
-func (s *Store) DeleteModelPolicy(ctx context.Context, id int64) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM model_policies WHERE id = ?`, id)
 	return err
 }
 
@@ -2007,27 +1718,23 @@ func (s *Store) AppendUsageLog(ctx context.Context, log domain.UsageLog) error {
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO usage_logs(
-			request_id, client_id, client_name, client_token_prefix, route_mode_override, route_group,
-			method, path, query, endpoint, model, policy_id, policy_name, backend_id, backend_name, proxy_id, proxy_name,
+			request_id, client_id, client_name, client_token_prefix,
+			method, path, query, endpoint, model, backend_id, backend_name, proxy_id, proxy_name,
 			attempts, status_code, status_family, duration_ms, error_message, client_ip, user_agent, trace_id,
 			request_bytes, response_bytes, request_headers_json, request_body_preview, response_headers_json, response_body_preview,
 			preview_truncated, is_stream, created_at
 		)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		strings.TrimSpace(log.RequestID),
 		log.ClientID,
 		log.ClientName,
 		log.ClientTokenPrefix,
-		log.RouteModeOverride,
-		log.RouteGroup,
 		strings.TrimSpace(log.Method),
 		strings.TrimSpace(log.Path),
 		strings.TrimSpace(log.Query),
 		strings.TrimSpace(log.Endpoint),
 		strings.TrimSpace(log.Model),
-		log.PolicyID,
-		strings.TrimSpace(log.PolicyName),
 		log.BackendID,
 		log.BackendName,
 		log.ProxyID,
@@ -2059,8 +1766,8 @@ func (s *Store) CountUsageLogs(ctx context.Context) (int, error) {
 
 func (s *Store) GetUsageLog(ctx context.Context, id int64) (domain.UsageLog, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, request_id, client_id, client_name, client_token_prefix, route_mode_override, route_group,
-			method, path, query, endpoint, model, policy_id, policy_name, backend_id, backend_name, proxy_id, proxy_name,
+		SELECT id, request_id, client_id, client_name, client_token_prefix,
+			method, path, query, endpoint, model, backend_id, backend_name, proxy_id, proxy_name,
 			attempts, status_code, status_family, duration_ms, error_message, client_ip, user_agent, trace_id,
 			request_bytes, response_bytes, request_headers_json, request_body_preview, response_headers_json, response_body_preview,
 			preview_truncated, is_stream, created_at
@@ -2073,8 +1780,8 @@ func (s *Store) GetUsageLog(ctx context.Context, id int64) (domain.UsageLog, err
 func (s *Store) UsageLogStats(ctx context.Context, filter UsageLogFilter) (UsageLogStats, error) {
 	where, args := usageLogFilterClause(filter)
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, request_id, client_id, client_name, client_token_prefix, route_mode_override, route_group,
-			method, path, query, endpoint, model, policy_id, policy_name, backend_id, backend_name, proxy_id, proxy_name,
+		SELECT id, request_id, client_id, client_name, client_token_prefix,
+			method, path, query, endpoint, model, backend_id, backend_name, proxy_id, proxy_name,
 			attempts, status_code, status_family, duration_ms, error_message, client_ip, user_agent, trace_id,
 			request_bytes, response_bytes, request_headers_json, request_body_preview, response_headers_json, response_body_preview,
 			preview_truncated, is_stream, created_at
@@ -2159,8 +1866,8 @@ func (s *Store) ListUsageLogsPageFiltered(ctx context.Context, filter UsageLogFi
 	where, args := usageLogFilterClause(filter)
 	args = append(args, limit, offset)
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, request_id, client_id, client_name, client_token_prefix, route_mode_override, route_group,
-			method, path, query, endpoint, model, policy_id, policy_name, backend_id, backend_name, proxy_id, proxy_name,
+		SELECT id, request_id, client_id, client_name, client_token_prefix,
+			method, path, query, endpoint, model, backend_id, backend_name, proxy_id, proxy_name,
 			attempts, status_code, status_family, duration_ms, error_message, client_ip, user_agent, trace_id,
 			request_bytes, response_bytes, request_headers_json, request_body_preview, response_headers_json, response_body_preview,
 			preview_truncated, is_stream, created_at
@@ -2216,10 +1923,6 @@ func (s *Store) UsageLogOptions(ctx context.Context) (UsageLogOptions, error) {
 	if err != nil {
 		return UsageLogOptions{}, err
 	}
-	policies, err := s.ListModelPolicies(ctx)
-	if err != nil {
-		return UsageLogOptions{}, err
-	}
 	proxies, err := s.ListSocksProxies(ctx)
 	if err != nil {
 		return UsageLogOptions{}, err
@@ -2228,7 +1931,6 @@ func (s *Store) UsageLogOptions(ctx context.Context) (UsageLogOptions, error) {
 	backendSet := make(map[string]struct{})
 	modelSet := make(map[string]struct{})
 	clientSet := make(map[string]struct{})
-	policySet := make(map[string]struct{})
 	proxySet := make(map[string]struct{})
 
 	for _, backend := range backends {
@@ -2254,11 +1956,6 @@ func (s *Store) UsageLogOptions(ctx context.Context) (UsageLogOptions, error) {
 			clientSet[name] = struct{}{}
 		}
 	}
-	for _, policy := range policies {
-		if pattern := strings.TrimSpace(policy.Pattern); pattern != "" {
-			policySet[pattern] = struct{}{}
-		}
-	}
 	for _, proxy := range proxies {
 		if name := strings.TrimSpace(proxy.Name); name != "" {
 			proxySet[name] = struct{}{}
@@ -2269,7 +1966,6 @@ func (s *Store) UsageLogOptions(ctx context.Context) (UsageLogOptions, error) {
 		Backends:   sortedKeys(backendSet),
 		Models:     sortedKeys(modelSet),
 		ClientKeys: sortedKeys(clientSet),
-		Policies:   sortedKeys(policySet),
 		Proxies:    sortedKeys(proxySet),
 	}, nil
 }
@@ -2289,10 +1985,6 @@ func usageLogFilterClause(filter UsageLogFilter) (string, []any) {
 	}
 	if value := strings.TrimSpace(filter.ClientName); value != "" {
 		clauses = append(clauses, `client_name = ?`)
-		args = append(args, value)
-	}
-	if value := strings.TrimSpace(filter.PolicyName); value != "" {
-		clauses = append(clauses, `policy_name = ?`)
 		args = append(args, value)
 	}
 	if value := strings.TrimSpace(filter.ProxyName); value != "" {
@@ -2416,8 +2108,6 @@ func scanClientKey(s scanner) (domain.ClientKey, error) {
 		&client.Token,
 		&client.TokenPrefix,
 		&enabled,
-		&client.RouteModeOverride,
-		&client.RouteGroup,
 		&createdAt,
 		&updatedAt,
 	)
@@ -2462,17 +2152,14 @@ func scanBackend(s scanner) (domain.Backend, error) {
 		endpointList               string
 		createdAt, updatedAt       string
 		recoverAt                  string
-		enabled                    int
 	)
 	err := s.Scan(
 		&backend.ID,
 		&backend.Name,
-		&backend.Pool,
 		&backend.Protocol,
 		&backend.BaseURL,
 		&backend.APIKey,
 		&backend.ProxyID,
-		&enabled,
 		&backend.Status,
 		&backend.ConsecutiveFailures,
 		&recoverAt,
@@ -2486,7 +2173,6 @@ func scanBackend(s scanner) (domain.Backend, error) {
 	if err != nil {
 		return domain.Backend{}, err
 	}
-	backend.Enabled = enabled == 1
 	backend.Status = normalizeBackendStatus(backend.Status)
 	backend.RecoverAt = parseOptionalTime(recoverAt)
 	backend.Protocol = domain.NormalizeBackendProtocol(backend.Protocol)
@@ -2505,7 +2191,6 @@ func scanBackendWithProxy(s scanner) (domain.Backend, error) {
 		endpointList               string
 		createdAt, updatedAt       string
 		recoverAt                  string
-		enabled                    int
 		proxyID                    sql.NullInt64
 		proxyName                  sql.NullString
 		proxyAddress               sql.NullString
@@ -2518,12 +2203,10 @@ func scanBackendWithProxy(s scanner) (domain.Backend, error) {
 	err := s.Scan(
 		&backend.ID,
 		&backend.Name,
-		&backend.Pool,
 		&backend.Protocol,
 		&backend.BaseURL,
 		&backend.APIKey,
 		&backend.ProxyID,
-		&enabled,
 		&backend.Status,
 		&backend.ConsecutiveFailures,
 		&recoverAt,
@@ -2546,7 +2229,6 @@ func scanBackendWithProxy(s scanner) (domain.Backend, error) {
 		return domain.Backend{}, err
 	}
 
-	backend.Enabled = enabled == 1
 	backend.Status = normalizeBackendStatus(backend.Status)
 	backend.RecoverAt = parseOptionalTime(recoverAt)
 	backend.Protocol = domain.NormalizeBackendProtocol(backend.Protocol)
@@ -2568,32 +2250,6 @@ func scanBackendWithProxy(s scanner) (domain.Backend, error) {
 		}
 	}
 	return backend, nil
-}
-
-func scanModelPolicy(s scanner) (domain.ModelPolicy, error) {
-	var (
-		policy               domain.ModelPolicy
-		createdAt, updatedAt string
-		failover             int
-	)
-	err := s.Scan(
-		&policy.ID,
-		&policy.Pattern,
-		&policy.Endpoint,
-		&policy.PlacementPolicy,
-		&policy.BackendPool,
-		&failover,
-		&policy.Priority,
-		&createdAt,
-		&updatedAt,
-	)
-	if err != nil {
-		return domain.ModelPolicy{}, err
-	}
-	policy.FailoverEnabled = failover == 1
-	policy.CreatedAt = parseTime(createdAt)
-	policy.UpdatedAt = parseTime(updatedAt)
-	return policy, nil
 }
 
 func scanAuditEvent(s scanner) (domain.AuditEvent, error) {
@@ -2637,15 +2293,11 @@ func scanUsageLog(s scanner) (domain.UsageLog, error) {
 		&entry.ClientID,
 		&entry.ClientName,
 		&entry.ClientTokenPrefix,
-		&entry.RouteModeOverride,
-		&entry.RouteGroup,
 		&entry.Method,
 		&entry.Path,
 		&entry.Query,
 		&entry.Endpoint,
 		&entry.Model,
-		&entry.PolicyID,
-		&entry.PolicyName,
 		&entry.BackendID,
 		&entry.BackendName,
 		&entry.ProxyID,
@@ -2747,8 +2399,8 @@ func decodeMap(raw string) map[string]string {
 
 func (s *Store) listUsageLogsSince(ctx context.Context, since time.Time) ([]domain.UsageLog, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, request_id, client_id, client_name, client_token_prefix, route_mode_override, route_group,
-			method, path, query, endpoint, model, policy_id, policy_name, backend_id, backend_name, proxy_id, proxy_name,
+		SELECT id, request_id, client_id, client_name, client_token_prefix,
+			method, path, query, endpoint, model, backend_id, backend_name, proxy_id, proxy_name,
 			attempts, status_code, status_family, duration_ms, error_message, client_ip, user_agent, trace_id,
 			request_bytes, response_bytes, request_headers_json, request_body_preview, response_headers_json, response_body_preview,
 			preview_truncated, is_stream, created_at
@@ -2780,25 +2432,21 @@ func (s *Store) listUsageLogsByClientID(ctx context.Context, id int64, limit int
 	return s.listUsageLogsByColumn(ctx, "client_id", id, limit)
 }
 
-func (s *Store) listUsageLogsByPolicyID(ctx context.Context, id int64, limit int) ([]domain.UsageLog, error) {
-	return s.listUsageLogsByColumn(ctx, "policy_id", id, limit)
-}
-
 func (s *Store) listUsageLogsByProxyID(ctx context.Context, id int64, limit int) ([]domain.UsageLog, error) {
 	return s.listUsageLogsByColumn(ctx, "proxy_id", id, limit)
 }
 
 func (s *Store) listUsageLogsByColumn(ctx context.Context, column string, id int64, limit int) ([]domain.UsageLog, error) {
 	switch column {
-	case "backend_id", "client_id", "policy_id", "proxy_id":
+	case "backend_id", "client_id", "proxy_id":
 	default:
 		return nil, fmt.Errorf("unsupported usage log lookup column %q", column)
 	}
 
 	limit = normalizeLimit(limit, 10, 100)
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, request_id, client_id, client_name, client_token_prefix, route_mode_override, route_group,
-			method, path, query, endpoint, model, policy_id, policy_name, backend_id, backend_name, proxy_id, proxy_name,
+		SELECT id, request_id, client_id, client_name, client_token_prefix,
+			method, path, query, endpoint, model, backend_id, backend_name, proxy_id, proxy_name,
 			attempts, status_code, status_family, duration_ms, error_message, client_ip, user_agent, trace_id,
 			request_bytes, response_bytes, request_headers_json, request_body_preview, response_headers_json, response_body_preview,
 			preview_truncated, is_stream, created_at
@@ -2873,44 +2521,13 @@ func (s *Store) listAuditEventsByColumn(ctx context.Context, column, value strin
 func (s *Store) listBackendsByProxyID(ctx context.Context, proxyID int64) ([]domain.Backend, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
+			b.id, b.name, b.protocol, b.base_url, b.api_key, b.proxy_id, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
 			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
 		FROM backends b
 		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
 		WHERE b.proxy_id = ?
 		ORDER BY b.id DESC
 	`, proxyID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var backends []domain.Backend
-	for rows.Next() {
-		backend, err := scanBackendWithProxy(rows)
-		if err != nil {
-			return nil, err
-		}
-		backends = append(backends, backend)
-	}
-	return backends, rows.Err()
-}
-
-func (s *Store) listBackendsByPool(ctx context.Context, pool string) ([]domain.Backend, error) {
-	pool = strings.TrimSpace(pool)
-	if pool == "" {
-		return []domain.Backend{}, nil
-	}
-
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT
-			b.id, b.name, b.pool, b.protocol, b.base_url, b.api_key, b.proxy_id, b.enabled, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
-			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
-		FROM backends b
-		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
-		WHERE b.pool = ?
-		ORDER BY b.id DESC
-	`, pool)
 	if err != nil {
 		return nil, err
 	}

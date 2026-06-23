@@ -2,7 +2,6 @@
   const SEARCH_GROUPS = [
     { key: "backends", label: "Backends" },
     { key: "client_keys", label: "Client Keys" },
-    { key: "policies", label: "Policies" },
     { key: "proxies", label: "Proxies" },
     { key: "usage_logs", label: "Usage Logs" },
     { key: "events", label: "Events" },

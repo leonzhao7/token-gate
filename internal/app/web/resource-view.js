@@ -175,7 +175,7 @@
           <div class="cell-subtitle">${escapeHTML(backend.base_url)}</div>
         </td>
         <td>
-          ${statusPill(backend.enabled, "enabled", "disabled")}
+          ${statusPill(backend.status || "normal", backend.status || "normal", "unknown")}
           <div class="cell-subtitle">${escapeHTML(formatBackendRouting(backend))}</div>
         </td>
         <td>
@@ -220,10 +220,6 @@
           <div class="cell-subtitle"><span class="secret-text">${escapeHTML(clientTokenText || "-")}</span></div>
         </td>
         <td>${statusPill(client.enabled, "enabled", "disabled")}</td>
-        <td>
-          <div>${escapeHTML(client.route_mode_override || "default")}</div>
-          <div class="cell-subtitle">${escapeHTML(client.route_group || "-")}</div>
-        </td>
         <td>${escapeHTML(formatUsageCount(client.usage_count))}</td>
         <td>${escapeHTML(formatDateTime(client.last_used_at))}</td>
         <td>${escapeHTML(formatDateTime(client.updated_at))}</td>
@@ -231,48 +227,7 @@
       </tr>
       ${expanded ? `
         <tr class="detail-row">
-          <td colspan="7">
-            ${quickDetails}
-          </td>
-        </tr>
-      ` : ""}
-    `;
-  }
-
-  function renderPolicyRow({
-    policy,
-    expanded,
-    editing,
-    quickDetails,
-    formatPolicyRouting,
-    formatUsageCount,
-    formatPolicyCoverage,
-    formatDateTime,
-    tableActions,
-    escapeHTML = defaultEscapeHTML,
-  }) {
-    return `
-      <tr class="${editing ? "is-editing" : ""} clickable-row" data-row-open="policy" data-row-id="${escapeHTML(policy.id)}" data-row-title="${escapeHTML(policy.pattern)}">
-        <td>
-          <button class="row-title" data-toggle-policy="${policy.id}" type="button" aria-expanded="${String(Boolean(expanded))}">
-            ${renderRowChevron(expanded)}
-            <span>${escapeHTML(policy.pattern)}</span>
-          </button>
-          <div class="cell-subtitle">${escapeHTML(policy.endpoint)}</div>
-        </td>
-        <td>
-          <div><span class="chip">${escapeHTML(policy.placement_policy)}</span></div>
-          <div class="cell-subtitle">${escapeHTML(formatPolicyRouting(policy))}</div>
-        </td>
-        <td>${escapeHTML(formatUsageCount(policy.request_count))}</td>
-        <td>${escapeHTML(formatPolicyCoverage(policy))}</td>
-        <td>${escapeHTML(formatDateTime(policy.last_used_at))}</td>
-        <td>${escapeHTML(formatDateTime(policy.updated_at))}</td>
-        <td>${tableActions("policy", policy.id)}</td>
-      </tr>
-      ${expanded ? `
-        <tr class="detail-row">
-          <td colspan="7">
+          <td colspan="6">
             ${quickDetails}
           </td>
         </tr>
@@ -350,7 +305,6 @@
     renderProxyRow,
     renderBackendRow,
     renderClientRow,
-    renderPolicyRow,
     renderResourceTablePage,
   };
 

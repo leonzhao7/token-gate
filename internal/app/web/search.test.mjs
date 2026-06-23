@@ -102,21 +102,21 @@ test("normalizeSearchResponse keeps supported groups in product order", () => {
 
 test("normalizeSearchResponse drops invalid rows and defaults missing metadata", () => {
   const normalized = normalizeSearchResponse({
-    query: "policy",
+    query: "edge",
     results: {
-      policies: [
+      backends: [
         {
-          kind: "policy",
+          kind: "backend",
           id: 7,
           title: "",
-          target_page: "model-policies",
+          target_page: "backends",
           target_id: 7,
         },
         {
-          kind: "policy",
+          kind: "backend",
           id: 8,
-          title: "gpt-4o",
-          target_page: "model-policies",
+          title: "edge-a",
+          target_page: "backends",
           target_id: 8,
         },
       ],
@@ -125,14 +125,14 @@ test("normalizeSearchResponse drops invalid rows and defaults missing metadata",
 
   assert.equal(normalized.total, 1);
   assert.deepEqual(normalized.groups[0].items[0], {
-    group: "policies",
-    kind: "policy",
+    group: "backends",
+    kind: "backend",
     id: "8",
-    title: "gpt-4o",
+    title: "edge-a",
     subtitle: "",
     meta: "",
     status: "",
-    targetPage: "model-policies",
+    targetPage: "backends",
     targetId: "8",
   });
 });

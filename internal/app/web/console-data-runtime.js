@@ -118,7 +118,6 @@
     renderProxies,
     renderBackends,
     renderClients,
-    renderPolicies,
     renderEvents,
     renderUsageLogs,
     renderDrawerShell,
@@ -133,11 +132,10 @@
     const usageLogPage = state.pagination.usageLogs;
     const usageLogQuery = buildUsageLogQuery?.() || "";
     const eventQuery = buildEventQuery?.() || "";
-    const [proxies, backends, clients, policies, events, eventSummary, usageLogs, usageLogStats, usageLogOptions] = await Promise.all([
+    const [proxies, backends, clients, events, eventSummary, usageLogs, usageLogStats, usageLogOptions] = await Promise.all([
       fetchAllCollectionPages("/admin/api/socks-proxies"),
       fetchAllCollectionPages("/admin/api/backends"),
       fetchAllCollectionPages("/admin/api/client-keys"),
-      fetchAllCollectionPages("/admin/api/model-policies"),
       api(`/admin/api/events?page=${eventPage.page}&limit=${eventPage.size}${eventQuery}`),
       api(`/admin/api/events/summary?${buildEventSummaryQuery?.() || ""}`),
       api(`/admin/api/usage-logs?page=${usageLogPage.page}&limit=${usageLogPage.size}${usageLogQuery}`),
@@ -148,7 +146,6 @@
     state.proxies = displayUtils.ensureArray(proxies);
     state.backends = displayUtils.ensureArray(backends);
     state.clients = displayUtils.ensureArray(clients);
-    state.policies = displayUtils.ensureArray(policies);
     paginationUtils.applyPagedResponse("events", events, state, {
       pageSizeOptions,
       resourceStateUtils,
@@ -162,7 +159,6 @@
     state.usageLogOptions.backends = displayUtils.ensureArray(usageLogOptions?.backends);
     state.usageLogOptions.models = displayUtils.ensureArray(usageLogOptions?.models);
     state.usageLogOptions.clientKeys = displayUtils.ensureArray(usageLogOptions?.client_keys);
-    state.usageLogOptions.policies = displayUtils.ensureArray(usageLogOptions?.policies);
     state.usageLogOptions.proxies = displayUtils.ensureArray(usageLogOptions?.proxies);
     state.ui.lastRefreshAt = new Date().toISOString();
 
@@ -171,7 +167,6 @@
     renderProxies?.();
     renderBackends?.();
     renderClients?.();
-    renderPolicies?.();
     renderEvents?.();
     renderUsageLogs?.();
     renderDashboardShell?.();
@@ -225,9 +220,6 @@
     if (normalized === "open-backends") {
       navigateToPage?.("backends");
       return;
-    }
-    if (normalized === "open-policies") {
-      navigateToPage?.("model-policies");
     }
   }
 

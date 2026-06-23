@@ -152,8 +152,6 @@ func clientAttrs(client domain.ClientKey) []slog.Attr {
 		slog.Int64("client_id", client.ID),
 		slog.String("client_name", client.Name),
 		slog.String("client_token_prefix", client.TokenPrefix),
-		slog.String("client_route_mode_override", client.RouteModeOverride),
-		slog.String("client_route_group", client.RouteGroup),
 	}
 }
 
@@ -162,7 +160,7 @@ func backendAttemptAttrs(backend domain.Backend, attempt int) []slog.Attr {
 		slog.Int("attempt", attempt),
 		slog.Int64("backend_id", backend.ID),
 		slog.String("backend_name", backend.Name),
-		slog.String("backend_pool", backend.Pool),
+		slog.String("backend_status", backend.Status),
 		slog.String("backend_protocol", domain.NormalizeBackendProtocol(backend.Protocol)),
 		slog.String("backend_base_url", backend.BaseURL),
 		slog.Int64("backend_proxy_id", backend.ProxyID),

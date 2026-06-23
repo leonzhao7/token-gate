@@ -15,12 +15,11 @@ const {
   createDashboardActivityState,
 } = require("./dashboard.js");
 
-test("createDashboardSummaryCards maps counts, growth, status, and sparkline into four cards", () => {
+test("createDashboardSummaryCards maps counts, growth, status, and sparkline into three cards", () => {
   const cards = createDashboardSummaryCards({
     counts: {
       backends: 4,
       client_keys: 7,
-      model_policies: 5,
       socks_proxies: 2,
     },
     growth: {
@@ -39,7 +38,7 @@ test("createDashboardSummaryCards maps counts, growth, status, and sparkline int
     ],
   });
 
-  assert.equal(cards.length, 4);
+  assert.equal(cards.length, 3);
   assert.deepEqual(cards[0], {
     key: "backends",
     label: "Backends",
@@ -49,7 +48,7 @@ test("createDashboardSummaryCards maps counts, growth, status, and sparkline int
     detail: "3 healthy / 1 attention",
     sparkline: [2, 3, 5],
   });
-  assert.deepEqual(cards[3], {
+  assert.deepEqual(cards[2], {
     key: "proxies",
     label: "Proxies",
     value: 2,
@@ -110,10 +109,9 @@ test("createDashboardActivityState builds event counters and trims recent lists"
     summary: [
       { category: "warning", count: 4 },
       { category: "error", count: 1 },
-      { category: "policy", count: 3 },
     ],
     events: [
-      { id: 11, type: "policy.changed", message: "Policy updated", created_at: "2026-06-18T01:02:03Z" },
+      { id: 11, type: "proxy.changed", message: "Proxy updated", created_at: "2026-06-18T01:02:03Z" },
       { id: 12, type: "backend.updated", message: "Backend rotated", created_at: "2026-06-18T01:05:03Z" },
     ],
     usage: [
@@ -125,11 +123,10 @@ test("createDashboardActivityState builds event counters and trims recent lists"
   assert.deepEqual(activity.counters, [
     { key: "warning", label: "Warnings", count: 4, tone: "warning" },
     { key: "error", label: "Errors", count: 1, tone: "danger" },
-    { key: "policy", label: "Policy Changes", count: 3, tone: "primary" },
     { key: "key", label: "Key Creations", count: 0, tone: "neutral" },
     { key: "backend", label: "Backend Updates", count: 0, tone: "success" },
   ]);
-  assert.equal(activity.events[0].title, "policy.changed");
+  assert.equal(activity.events[0].title, "proxy.changed");
   assert.equal(activity.usage[1].status, "429");
 });
 
@@ -153,7 +150,6 @@ test("applyDashboardSummaryPayload stores each summary card separately", () => {
     counts: {
       backends: 3,
       client_keys: 8,
-      model_policies: 4,
       socks_proxies: 2,
     },
     growth: {
@@ -175,7 +171,6 @@ test("applyDashboardSummaryPayload stores each summary card separately", () => {
   assert.equal(state.summaryCards.backends.data.label, "Backends");
   assert.equal(state.summaryCards.client_keys.status, "ready");
   assert.equal(state.summaryCards.client_keys.data.value, 8);
-  assert.equal(state.summaryCards.policies.status, "ready");
   assert.equal(state.summaryCards.proxies.status, "ready");
 });
 
@@ -186,7 +181,6 @@ test("applyDashboardSummaryPayload can update one summary card without touching 
     counts: {
       backends: 9,
       client_keys: 8,
-      model_policies: 4,
       socks_proxies: 2,
     },
     growth: {
@@ -207,7 +201,6 @@ test("applyDashboardSummaryPayload can update one summary card without touching 
   assert.equal(state.summaryCards.backends.status, "ready");
   assert.equal(state.summaryCards.backends.data.value, 9);
   assert.equal(state.summaryCards.client_keys.status, "loading");
-  assert.equal(state.summaryCards.policies.status, "loading");
   assert.equal(state.summaryCards.proxies.status, "loading");
 });
 
@@ -219,7 +212,6 @@ test("applyDashboardSummaryError can fail one summary card without touching peer
   assert.equal(state.summaryCards.backends.status, "failed");
   assert.equal(state.summaryCards.backends.error, "summary unavailable");
   assert.equal(state.summaryCards.client_keys.status, "loading");
-  assert.equal(state.summaryCards.policies.status, "loading");
   assert.equal(state.summaryCards.proxies.status, "loading");
 });
 

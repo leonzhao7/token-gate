@@ -85,15 +85,6 @@
                   </svg>
                   <span>Client Keys</span>
                 </a>
-                <a href="#model-policies" class="nav-item" data-page-link="model-policies" data-nav-label="Policies" aria-label="Policies" title="Policies">
-                  <svg class="nav-icon" data-nav-icon="policies" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M4 7h10"></path>
-                    <path d="M4 17h10"></path>
-                    <circle cx="17" cy="7" r="3"></circle>
-                    <circle cx="17" cy="17" r="3"></circle>
-                  </svg>
-                  <span>Policies</span>
-                </a>
               </div>
             </section>
 
@@ -178,7 +169,7 @@
                 id="searchOpenBtn"
                 class="shell-search-launcher"
                 type="search"
-                placeholder="Search backends, keys, policies..."
+                placeholder="Search backends, keys, proxies..."
                 autocomplete="off"
                 aria-haspopup="dialog"
                 aria-controls="searchModalRoot"
@@ -219,7 +210,7 @@
               <div>
                 <span class="section-label">Transparent LLM Gateway</span>
                 <h2>Dashboard</h2>
-                <p>Monitor infrastructure, access credentials, routing policies, and traffic usage.</p>
+                <p>Monitor infrastructure, access credentials, backend health, and traffic usage.</p>
               </div>
               <div class="page-actions">
                 <a class="page-action-pill" href="#backends">
@@ -236,15 +227,6 @@
                     <path d="m15 8 3 3"></path>
                   </svg>
                   <span>Manage Client Keys</span>
-                </a>
-                <a class="page-action-pill" href="#model-policies">
-                  <svg class="shell-icon" data-shell-icon="action-policies" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M4 7h10"></path>
-                    <path d="M4 17h10"></path>
-                    <circle cx="17" cy="7" r="3"></circle>
-                    <circle cx="17" cy="17" r="3"></circle>
-                  </svg>
-                  <span>Edit Policies</span>
                 </a>
               </div>
             </div>
@@ -359,8 +341,11 @@
                       <input name="name" placeholder="edge-openai-1" required />
                     </label>
                     <label class="field">
-                      <span>Pool</span>
-                      <input name="pool" placeholder="image / default / premium" />
+                      <span>Status</span>
+                      <select name="status">
+                        <option value="normal">normal</option>
+                        <option value="disabled">disabled</option>
+                      </select>
                     </label>
                   </div>
                   <label class="field">
@@ -403,13 +388,6 @@
                       <span>Weight</span>
                       <input name="weight" type="number" min="1" value="1" />
                     </label>
-                    <label class="toggle-field">
-                      <span>Enabled</span>
-                      <span class="toggle-wrap">
-                        <input name="enabled" type="checkbox" checked />
-                        <span class="toggle-text">Backend 可参与调度</span>
-                      </span>
-                    </label>
                   </div>
                   <div class="button-row">
                     <button id="backendSubmitBtn" type="submit">新增 Backend</button>
@@ -425,7 +403,7 @@
               <div class="section-heading">
                 <span class="section-label">Access</span>
                 <h3>Client Keys</h3>
-                <p>管理客户端入口凭据，并按需要覆盖模型策略中的 placement 行为。</p>
+                <p>管理客户端入口凭据，控制哪些 token 可以访问公网 API。</p>
               </div>
               <button id="addClientBtn" type="button">新增</button>
             </div>
@@ -456,21 +434,6 @@
                     <span>Token</span>
                     <input name="token" placeholder="留空则自动生成或保留旧 token" />
                   </label>
-                  <div class="field-grid two-col">
-                    <label class="field">
-                      <span>Route Mode Override</span>
-                      <select name="route_mode_override">
-                        <option value="">Use policy default</option>
-                        <option value="sticky">sticky</option>
-                        <option value="pack">pack</option>
-                        <option value="spread">spread</option>
-                      </select>
-                    </label>
-                    <label class="field">
-                      <span>Route Group</span>
-                      <input name="route_group" placeholder="frontend-a / shared" />
-                    </label>
-                  </div>
                   <label class="toggle-field">
                     <span>Enabled</span>
                     <span class="toggle-wrap">
@@ -481,87 +444,6 @@
                   <div class="button-row">
                     <button id="clientSubmitBtn" type="submit">新增 Client Key</button>
                     <button class="ghost-button hidden" id="clientCancelBtn" type="button">取消</button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </section>
-
-          <section class="page resource-page" id="model-policies" data-page-title="Model Policies" data-page-breadcrumb="Dashboard / Model Policies">
-            <div class="resource-header">
-              <div class="section-heading">
-                <span class="section-label">Routing</span>
-                <h3>Model Policies</h3>
-                <p>按模型模式和端点定义 placement policy、backend pool 和 failover 行为。</p>
-              </div>
-              <button id="addPolicyBtn" type="button">新增</button>
-            </div>
-            <div class="resource-layout list-only">
-              <div id="policyList" class="resource-list"></div>
-            </div>
-            <div id="policyModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="policyModalTitle">
-              <div class="modal-panel">
-                <div class="modal-header">
-                  <div>
-                    <span class="section-label">Model Policy</span>
-                    <h3 id="policyModalTitle">新增 Policy</h3>
-                  </div>
-                  <button class="icon-button" id="policyModalCloseBtn" type="button" aria-label="关闭 Policy 弹窗">
-                    <svg class="shell-icon" data-shell-icon="close" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M6 6l12 12"></path>
-                      <path d="M18 6 6 18"></path>
-                    </svg>
-                  </button>
-                </div>
-                <form id="policyForm" class="editor-card modal-form">
-                  <p class="edit-banner hidden" id="policyEditBanner">正在编辑 Model Policy</p>
-                  <div class="field-grid two-col">
-                    <label class="field">
-                      <span>Model Pattern</span>
-                      <input name="pattern" placeholder="gpt-image-* / gpt-4o" required />
-                    </label>
-                    <label class="field">
-                      <span>Endpoint</span>
-                      <select name="endpoint">
-                        <option value="chat">chat</option>
-                        <option value="responses">responses</option>
-                        <option value="embeddings">embeddings</option>
-                        <option value="images">images</option>
-                        <option value="messages">messages</option>
-                        <option value="*">*</option>
-                      </select>
-                    </label>
-                  </div>
-                  <div class="field-grid two-col">
-                    <label class="field">
-                      <span>Placement Policy</span>
-                      <select name="placement_policy">
-                        <option value="sticky">sticky</option>
-                        <option value="pack">pack</option>
-                        <option value="spread">spread</option>
-                      </select>
-                    </label>
-                    <label class="field">
-                      <span>Backend Pool</span>
-                      <input name="backend_pool" placeholder="default / image / premium" />
-                    </label>
-                  </div>
-                  <div class="field-grid two-col">
-                    <label class="field">
-                      <span>Priority</span>
-                      <input name="priority" type="number" value="100" />
-                    </label>
-                    <label class="toggle-field">
-                      <span>Failover</span>
-                      <span class="toggle-wrap">
-                        <input name="failover_enabled" type="checkbox" checked />
-                        <span class="toggle-text">失败时自动切换下一个候选</span>
-                      </span>
-                    </label>
-                  </div>
-                  <div class="button-row">
-                    <button id="policySubmitBtn" type="submit">新增 Policy</button>
-                    <button class="ghost-button hidden" id="policyCancelBtn" type="button">取消</button>
                   </div>
                 </form>
               </div>
@@ -599,7 +481,7 @@
                 </label>
                 <label class="field">
                   <span>Category</span>
-                  <input id="eventCategoryFilter" placeholder="backend / policy / security" />
+                  <input id="eventCategoryFilter" placeholder="backend / security / proxy" />
                 </label>
                 <label class="field">
                   <span>Severity</span>
@@ -687,10 +569,6 @@
                 <label class="field">
                   <span>Client Key</span>
                   <input id="usageLogClientKeyFilter" list="usageLogClientKeyOptions" placeholder="client key name" />
-                </label>
-                <label class="field">
-                  <span>Policy</span>
-                  <input id="usageLogPolicyFilter" list="usageLogPolicyOptions" placeholder="policy pattern" />
                 </label>
                 <label class="field">
                   <span>Proxy</span>
@@ -795,7 +673,7 @@
         </div>
         <label class="field search-shell-field">
           <span>Search</span>
-          <input id="searchInput" type="search" placeholder="搜索 backend、client key、policy、proxy、log、event…" />
+          <input id="searchInput" type="search" placeholder="搜索 backend、client key、proxy、log、event…" />
         </label>
         <div class="search-modal-results" id="searchResultsRoot">
           <p class="muted-text">输入关键字后会按分组返回结果，支持键盘快捷键打开。</p>

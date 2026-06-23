@@ -69,10 +69,10 @@ test("requireResourceViewUtils throws a clear error when resource-view utils are
 
 test("requireResourceStateUtils returns the resource state api when all required functions exist", () => {
   const resourceState = requireResourceStateUtils(ResourceStateUtils);
-  assert.deepEqual(resourceState.defaultResourceView("policies"), {
+  assert.deepEqual(resourceState.defaultResourceView("backends"), {
     query: "",
     filter: "all",
-    sort: "priority_asc",
+    sort: "updated_desc",
   });
 });
 
@@ -589,7 +589,6 @@ test("requireResourceRenderRuntimeUtils returns the resource render runtime api 
   assert.equal(typeof runtime.renderProxyRow, "function");
   assert.equal(typeof runtime.renderBackendRow, "function");
   assert.equal(typeof runtime.renderClientRow, "function");
-  assert.equal(typeof runtime.renderPolicyRow, "function");
   assert.equal(typeof runtime.renderResourceListByKey, "function");
 });
 
@@ -610,7 +609,7 @@ test("requireResourceRenderRuntimeUtils reports exact missing helper names for p
         return "";
       },
     }),
-    /missing ResourceRenderRuntimeUtils methods: renderBackendRow, renderClientRow, renderPolicyRow, renderResourceListByKey/i,
+    /missing ResourceRenderRuntimeUtils methods: renderBackendRow, renderClientRow, renderResourceListByKey/i,
   );
 });
 
@@ -1367,7 +1366,7 @@ test("app.js wires backend proxy options through backend form lifecycle helpers"
     state.backends = [{
       id: 3,
       name: "edge-a",
-      pool: "premium",
+      status: "normal",
       protocol: "openai",
       base_url: "https://edge-a.example",
       api_key: "secret",
@@ -1376,7 +1375,7 @@ test("app.js wires backend proxy options through backend form lifecycle helpers"
       model_mapping: {},
       endpoints: ["responses"],
       weight: 1,
-      enabled: true
+      failure_count: 0
     }];
     startCreateBackend();
   `, context);
@@ -1428,7 +1427,7 @@ test("app.js initializes resource view defaults through ResourceStateUtils", () 
 
   loadAppWithoutBootstrap(context);
 
-  assert.deepEqual(calls, ["proxies", "backends", "clients", "policies"]);
+  assert.deepEqual(calls, ["proxies", "backends", "clients"]);
 });
 
 test("app.js skips the initial console refresh when no admin token is saved", async () => {
@@ -1654,7 +1653,7 @@ function createDisplayUtilsStub(overrides = {}) {
       return "30m 0 ok / 0 fail";
     },
     formatBackendRouting() {
-      return "pool default";
+      return "normal";
     },
     formatBindingCount() {
       return "0 backends";
@@ -1667,12 +1666,6 @@ function createDisplayUtilsStub(overrides = {}) {
     },
     formatLatency() {
       return "10 ms";
-    },
-    formatPolicyCoverage() {
-      return "0 backends / 0 models";
-    },
-    formatPolicyRouting() {
-      return "priority 10";
     },
     formatUsageCount() {
       return "0 requests";

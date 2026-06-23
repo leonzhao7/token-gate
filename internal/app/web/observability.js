@@ -2,7 +2,6 @@
   const EVENT_CATEGORIES = [
     { key: "system", label: "System", tone: "neutral" },
     { key: "backend", label: "Backend", tone: "success" },
-    { key: "policy", label: "Policy", tone: "primary" },
     { key: "proxy", label: "Proxy", tone: "neutral" },
     { key: "client_key", label: "Client Key", tone: "primary" },
     { key: "security", label: "Security", tone: "danger" },
@@ -24,7 +23,6 @@
     appendParam(params, "backend", normalized.backend);
     appendParam(params, "model", normalized.model);
     appendParam(params, "client_key", normalized.clientKey);
-    appendParam(params, "policy", normalized.policy);
     appendParam(params, "proxy", normalized.proxy);
     appendParam(params, "status", normalizeUsageLogStatus(normalized.status));
     return params.toString();
@@ -220,7 +218,6 @@
     const icons = {
       system: "system",
       backend: "backend",
-      policy: "policy",
       proxy: "proxy",
       client_key: "client-key",
       security: "security",

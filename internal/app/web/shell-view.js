@@ -118,7 +118,7 @@
       return `
         <div class="search-empty-state">
           <strong>Searching “${escapeHTML(trimmedQuery)}”</strong>
-          <p class="muted-text">正在查询 backends、keys、policies、proxies、usage logs 与 events。</p>
+          <p class="muted-text">正在查询 backends、keys、proxies、usage logs 与 events。</p>
         </div>
       `;
     }

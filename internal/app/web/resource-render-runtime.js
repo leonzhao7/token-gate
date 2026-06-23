@@ -89,35 +89,11 @@
     });
   }
 
-  function renderPolicyRow({
-    policy,
-    state,
-    buildQuickDetailMarkup: buildQuickDetailMarkupFn,
-    resourceViewUtils,
-    displayUtils,
-  }) {
-    return resourceViewUtils.renderPolicyRow({
-      policy,
-      expanded: state.expandedPolicies.has(String(policy.id)),
-      editing: String(state.editingPolicyID) === String(policy.id),
-      quickDetails: typeof buildQuickDetailMarkupFn === "function"
-        ? buildQuickDetailMarkupFn("policies", policy)
-        : "",
-      formatPolicyRouting: displayUtils.formatPolicyRouting,
-      formatUsageCount: displayUtils.formatUsageCount,
-      formatPolicyCoverage: displayUtils.formatPolicyCoverage,
-      formatDateTime: displayUtils.formatDateTime,
-      tableActions: displayUtils.tableActions,
-      escapeHTML: displayUtils.escapeHTML,
-    });
-  }
-
   function renderResourceListByKey({
     resourceKey,
     renderProxies,
     renderBackends,
     renderClients,
-    renderPolicies,
   }) {
     if (resourceKey === "proxies") {
       renderProxies();
@@ -129,10 +105,6 @@
     }
     if (resourceKey === "clients") {
       renderClients();
-      return;
-    }
-    if (resourceKey === "policies") {
-      renderPolicies();
     }
   }
 
@@ -141,7 +113,6 @@
     renderProxyRow,
     renderBackendRow,
     renderClientRow,
-    renderPolicyRow,
     renderResourceListByKey,
   };
 

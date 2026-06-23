@@ -21,21 +21,21 @@ import (
 	"token-gate/internal/store"
 )
 
-func TestProxyFailsOverAndKeepsTransparentRequest(t *testing.T) {
+func TestProxyRetriesOnAnyNon2xxAndReturnsSuccessFromLaterBackend(t *testing.T) {
 	const (
 		clientToken = "client-secret"
 		requestBody = `{"model":"gpt-4o","messages":[{"role":"user","content":"hello"}]}`
 	)
 
 	application := newTestApp(t)
-	client := createTestClient(t, application, clientToken)
+	createTestClient(t, application, clientToken)
 	backends := []domain.Backend{
 		createTestBackend(t, application, domain.Backend{
 			Name:      "alpha",
 			BaseURL:   "https://alpha.local/root/v1",
 			APIKey:    "alpha-key",
-			Enabled:   true,
-			Weight:    1,
+			Status:    domain.BackendStatusNormal,
+			Weight:    9,
 			Models:    []string{"gpt-4o"},
 			Endpoints: []string{domain.EndpointChat},
 		}),
@@ -43,21 +43,14 @@ func TestProxyFailsOverAndKeepsTransparentRequest(t *testing.T) {
 			Name:      "beta",
 			BaseURL:   "https://beta.local/root/v1",
 			APIKey:    "beta-key",
-			Enabled:   true,
-			Weight:    1,
+			Status:    domain.BackendStatusNormal,
+			Weight:    3,
 			Models:    []string{"gpt-4o"},
 			Endpoints: []string{domain.EndpointChat},
 		}),
 	}
-	createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "gpt-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		FailoverEnabled: true,
-		Priority:        10,
-	})
 
-	selection, err := application.scheduler.SelectBackend(context.Background(), client, domain.EndpointChat, "gpt-4o")
+	selection, err := application.scheduler.SelectBackend(context.Background(), domain.EndpointChat, "gpt-4o")
 	if err != nil {
 		t.Fatalf("select backend: %v", err)
 	}
@@ -138,8 +131,8 @@ func TestProxyFailsOverOnUnauthorizedBackendResponse(t *testing.T) {
 			Name:      "alpha",
 			BaseURL:   "https://alpha.local/root/v1",
 			APIKey:    "alpha-key",
-			Enabled:   true,
-			Weight:    1,
+			Status:    domain.BackendStatusNormal,
+			Weight:    9,
 			Models:    []string{"gpt-4o"},
 			Endpoints: []string{domain.EndpointChat},
 		}),
@@ -147,21 +140,14 @@ func TestProxyFailsOverOnUnauthorizedBackendResponse(t *testing.T) {
 			Name:      "beta",
 			BaseURL:   "https://beta.local/root/v1",
 			APIKey:    "beta-key",
-			Enabled:   true,
-			Weight:    1,
+			Status:    domain.BackendStatusNormal,
+			Weight:    3,
 			Models:    []string{"gpt-4o"},
 			Endpoints: []string{domain.EndpointChat},
 		}),
 	}
-	createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "gpt-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		FailoverEnabled: true,
-		Priority:        10,
-	})
 
-	selection, err := application.scheduler.SelectBackend(context.Background(), client, domain.EndpointChat, "gpt-4o")
+	selection, err := application.scheduler.SelectBackend(context.Background(), domain.EndpointChat, "gpt-4o")
 	if err != nil {
 		t.Fatalf("select backend: %v", err)
 	}
@@ -184,6 +170,47 @@ func TestProxyFailsOverOnUnauthorizedBackendResponse(t *testing.T) {
 	}
 }
 
+func TestProxyReturns503WhenAllCandidatesFail(t *testing.T) {
+	const requestBody = `{"model":"gpt-4o","messages":[{"role":"user","content":"hello"}]}`
+
+	application := newTestApp(t)
+	client := createTestClient(t, application, "client-secret")
+	backends := []domain.Backend{
+		createTestBackend(t, application, domain.Backend{
+			Name:      "alpha",
+			BaseURL:   "https://alpha.local/root/v1",
+			APIKey:    "alpha-key",
+			Status:    domain.BackendStatusNormal,
+			Weight:    9,
+			Models:    []string{"gpt-4o"},
+			Endpoints: []string{domain.EndpointChat},
+		}),
+		createTestBackend(t, application, domain.Backend{
+			Name:      "beta",
+			BaseURL:   "https://beta.local/root/v1",
+			APIKey:    "beta-key",
+			Status:    domain.BackendStatusNormal,
+			Weight:    3,
+			Models:    []string{"gpt-4o"},
+			Endpoints: []string{domain.EndpointChat},
+		}),
+	}
+
+	fixture := newFailoverFixture(t, backends)
+	fixture.statusByName["alpha"] = http.StatusTooManyRequests
+	fixture.statusByName["beta"] = http.StatusBadGateway
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when all backends fail, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestProxyRewritesBackendModelByMapping(t *testing.T) {
 	const (
 		clientToken = "client-secret"
@@ -196,18 +223,10 @@ func TestProxyRewritesBackendModelByMapping(t *testing.T) {
 		Name:         "mapped-backend",
 		BaseURL:      "https://mapped.local/root/v1",
 		APIKey:       "mapped-key",
-		Enabled:      true,
 		Weight:       1,
 		Models:       []string{"gpt-5.4-test"},
 		ModelMapping: map[string]string{"gpt-5.4": "gpt-5.4-test"},
 		Endpoints:    []string{domain.EndpointChat},
-	})
-	createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "gpt-5.4",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		FailoverEnabled: true,
-		Priority:        10,
 	})
 
 	fixture := newFailoverFixture(t, []domain.Backend{backend})
@@ -242,7 +261,6 @@ func TestPublicModelsPrefersClientFacingMappedModelNames(t *testing.T) {
 		Name:         "mapped-backend",
 		BaseURL:      "https://mapped.local/root/v1",
 		APIKey:       "mapped-key",
-		Enabled:      true,
 		Weight:       1,
 		Models:       []string{"gpt-5.4-test", "gpt-4o", "gpt-image-*"},
 		ModelMapping: map[string]string{"gpt-5.4": "gpt-5.4-test"},
@@ -288,6 +306,132 @@ func TestPublicModelsPrefersClientFacingMappedModelNames(t *testing.T) {
 	}
 }
 
+func TestPublicModelsListsOnlyNormalBackends(t *testing.T) {
+	application := newTestApp(t)
+	createTestClient(t, application, "client-secret")
+	createTestBackend(t, application, domain.Backend{
+		Name:      "normal",
+		BaseURL:   "https://normal.local/root/v1",
+		APIKey:    "normal-key",
+		Status:    domain.BackendStatusNormal,
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+	createTestBackend(t, application, domain.Backend{
+		Name:      "disabled",
+		BaseURL:   "https://disabled.local/root/v1",
+		APIKey:    "disabled-key",
+		Status:    domain.BackendStatusDisabled,
+		Weight:    1,
+		Models:    []string{"gpt-4.1"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer client-secret")
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", recorder.Code)
+	}
+	if strings.Contains(recorder.Body.String(), "gpt-4.1") {
+		t.Fatalf("disabled backend model should not appear: %s", recorder.Body.String())
+	}
+}
+
+func TestCreateBackendDefaultsToNormalStatus(t *testing.T) {
+	application := newTestApp(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends", strings.NewReader(`{
+		"name":"edge-a",
+		"protocol":"openai",
+		"base_url":"https://edge-a.local/v1",
+		"api_key":"edge-a-key",
+		"proxy_id":0,
+		"weight":7,
+		"models":["gpt-4o"],
+		"model_mapping":{"gpt-5.4":"gpt-5.4-test"},
+		"endpoints":["chat"]
+	}`))
+	req.Header.Set("Authorization", "Bearer "+application.cfg.AdminToken)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"status":"normal"`) {
+		t.Fatalf("expected backend status normal, got %s", recorder.Body.String())
+	}
+}
+
+func TestUpdateBackendRejectsAbnormalStatus(t *testing.T) {
+	application := newTestApp(t)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "edge-a",
+		Protocol:  domain.BackendProtocolOpenAI,
+		BaseURL:   "https://edge-a.local/v1",
+		APIKey:    "edge-a-key",
+		Status:    domain.BackendStatusNormal,
+		Weight:    7,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/admin/api/backends/%d", backend.ID), strings.NewReader(`{
+		"name":"edge-a",
+		"protocol":"openai",
+		"base_url":"https://edge-a.local/v1",
+		"api_key":"edge-a-key",
+		"proxy_id":0,
+		"status":"abnormal",
+		"weight":7,
+		"models":["gpt-4o"],
+		"model_mapping":{},
+		"endpoints":["chat"]
+	}`))
+	req.SetPathValue("id", strconv.FormatInt(backend.ID, 10))
+	req.Header.Set("Authorization", "Bearer "+application.cfg.AdminToken)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestPolicyRoutesRemoved(t *testing.T) {
+	application := newTestApp(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/model-policies/1/detail", nil)
+	req.Header.Set("Authorization", "Bearer "+application.cfg.AdminToken)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for removed policy route, got %d", recorder.Code)
+	}
+}
+
+func TestCreateClientKeyRejectsLegacyRouteFields(t *testing.T) {
+	application := newTestApp(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/client-keys", strings.NewReader(`{
+		"name":"legacy-client",
+		"enabled":true,
+		"route_mode_override":"sticky"
+	}`))
+	req.Header.Set("Authorization", "Bearer "+application.cfg.AdminToken)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for removed route fields, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestProxySupportsAnthropicMessagesClientAndBackend(t *testing.T) {
 	const (
 		clientToken = "anthropic-client-secret"
@@ -301,17 +445,9 @@ func TestProxySupportsAnthropicMessagesClientAndBackend(t *testing.T) {
 		Protocol:  domain.BackendProtocolAnthropic,
 		BaseURL:   "https://claude.local/root/v1",
 		APIKey:    "backend-anthropic-key",
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"claude-*"},
 		Endpoints: []string{domain.EndpointMessages},
-	})
-	createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "claude-*",
-		Endpoint:        domain.EndpointMessages,
-		PlacementPolicy: domain.PlacementSticky,
-		FailoverEnabled: true,
-		Priority:        10,
 	})
 
 	fixture := newFailoverFixture(t, []domain.Backend{backend})
@@ -391,7 +527,7 @@ func TestUpdateBackendPreservesAPIKeyWhenPayloadIsBlank(t *testing.T) {
 		Protocol:  domain.BackendProtocolAnthropic,
 		BaseURL:   "https://editable.local/v1",
 		APIKey:    "keep-this-key",
-		Enabled:   true,
+		Status:    domain.BackendStatusNormal,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
@@ -399,10 +535,9 @@ func TestUpdateBackendPreservesAPIKeyWhenPayloadIsBlank(t *testing.T) {
 
 	body := `{
 		"name":"editable-updated",
-		"pool":"main",
 		"base_url":"https://editable.local/root/v1",
 		"api_key":"",
-		"enabled":true,
+		"status":"normal",
 		"weight":2,
 		"models":["gpt-4o","gpt-image-*"],
 		"model_mapping":{"gpt-4o":"gpt-4o-upstream"},
@@ -446,9 +581,7 @@ func TestAdminClientKeyStoresAndReturnsToken(t *testing.T) {
 	createBody := `{
 		"name":"visible-client",
 		"token":"` + clientToken + `",
-		"enabled":true,
-		"route_mode_override":"sticky",
-		"route_group":"frontend-a"
+		"enabled":true
 	}`
 	createReq := httptest.NewRequest(http.MethodPost, "/admin/api/client-keys", strings.NewReader(createBody))
 	createReq.Header.Set("Authorization", "Bearer test-admin")
@@ -502,9 +635,7 @@ func TestAdminClientKeyStoresAndReturnsToken(t *testing.T) {
 	updateBody := `{
 		"name":"visible-client-renamed",
 		"token":"` + clientToken + `",
-		"enabled":true,
-		"route_mode_override":"sticky",
-		"route_group":"frontend-a"
+		"enabled":true
 	}`
 	updateReq := httptest.NewRequest(http.MethodPut, "/admin/api/client-keys/"+strconv.FormatInt(createPayload.Client.ID, 10), strings.NewReader(updateBody))
 	updateReq.Header.Set("Authorization", "Bearer test-admin")
@@ -662,11 +793,9 @@ func TestAdminSocksProxyCRUDAndBackendBinding(t *testing.T) {
 
 	backendBody := fmt.Sprintf(`{
 		"name":"proxied-backend",
-		"pool":"main",
 		"base_url":"https://proxied.local/v1",
 		"api_key":"backend-key",
 		"proxy_id":%d,
-		"enabled":true,
 		"weight":1,
 		"models":["gpt-4o"],
 		"endpoints":["chat"]
@@ -726,7 +855,6 @@ func TestAdminSocksProxyListIncludesBindingAndUsageSummary(t *testing.T) {
 		BaseURL:   "https://alpha.local/v1",
 		APIKey:    "alpha-key",
 		ProxyID:   proxy.ID,
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
@@ -797,59 +925,8 @@ func TestAdminSocksProxyListIncludesBindingAndUsageSummary(t *testing.T) {
 	}
 }
 
-func TestPolicyListIncludesUsageSummary(t *testing.T) {
+func TestPolicyListRouteRemoved(t *testing.T) {
 	application := newTestApp(t)
-	ctx := context.Background()
-
-	policy := createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "alpha-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		BackendPool:     "alpha-pool",
-		FailoverEnabled: true,
-		Priority:        10,
-	})
-
-	for index, entry := range []domain.UsageLog{
-		{
-			RequestID:         "policy-list-1",
-			ClientID:          1,
-			ClientName:        "client-a",
-			ClientTokenPrefix: "cli-a",
-			Method:            http.MethodPost,
-			Path:              "/v1/chat/completions",
-			Endpoint:          domain.EndpointChat,
-			Model:             "alpha-1",
-			PolicyID:          policy.ID,
-			PolicyName:        policy.Pattern,
-			BackendID:         11,
-			BackendName:       "backend-a",
-			Attempts:          1,
-			StatusCode:        http.StatusOK,
-			DurationMS:        40,
-		},
-		{
-			RequestID:         "policy-list-2",
-			ClientID:          2,
-			ClientName:        "client-b",
-			ClientTokenPrefix: "cli-b",
-			Method:            http.MethodPost,
-			Path:              "/v1/chat/completions",
-			Endpoint:          domain.EndpointChat,
-			Model:             "alpha-2",
-			PolicyID:          policy.ID,
-			PolicyName:        policy.Pattern,
-			BackendID:         12,
-			BackendName:       "backend-b",
-			Attempts:          1,
-			StatusCode:        http.StatusTooManyRequests,
-			DurationMS:        80,
-		},
-	} {
-		if err := application.store.AppendUsageLog(ctx, entry); err != nil {
-			t.Fatalf("append usage log %d: %v", index+1, err)
-		}
-	}
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/api/model-policies", nil)
 	req.Header.Set("Authorization", "Bearer test-admin")
@@ -857,37 +934,8 @@ func TestPolicyListIncludesUsageSummary(t *testing.T) {
 
 	application.Handler().ServeHTTP(recorder, req)
 
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected policy list status 200, got %d body=%s", recorder.Code, recorder.Body.String())
-	}
-
-	var payload struct {
-		Items []struct {
-			ID           int64      `json:"id"`
-			RequestCount int        `json:"request_count"`
-			BackendCount int        `json:"backend_count"`
-			ModelCount   int        `json:"model_count"`
-			LastUsedAt   *time.Time `json:"last_used_at"`
-		} `json:"items"`
-	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("unmarshal policy list: %v", err)
-	}
-	if len(payload.Items) != 1 {
-		t.Fatalf("expected one policy item, got %#v", payload.Items)
-	}
-	item := payload.Items[0]
-	if item.ID != policy.ID {
-		t.Fatalf("expected policy id %d, got %#v", policy.ID, item)
-	}
-	if item.RequestCount != 2 {
-		t.Fatalf("expected request_count 2, got %#v", item)
-	}
-	if item.BackendCount != 2 || item.ModelCount != 2 {
-		t.Fatalf("expected backend/model counts 2/2, got %#v", item)
-	}
-	if item.LastUsedAt == nil || item.LastUsedAt.IsZero() {
-		t.Fatalf("expected last_used_at populated, got %#v", item)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -901,7 +949,6 @@ func TestAdminOverviewAndListsReturnEmptyArrays(t *testing.T) {
 		{path: "/admin/api/socks-proxies"},
 		{path: "/admin/api/backends"},
 		{path: "/admin/api/client-keys"},
-		{path: "/admin/api/model-policies"},
 		{path: "/admin/api/events"},
 	}
 
@@ -957,17 +1004,9 @@ func TestAdminDashboardApisReturnAggregatedData(t *testing.T) {
 		Name:      "alpha-backend",
 		BaseURL:   "https://alpha.local/v1",
 		APIKey:    "alpha-key",
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
-	})
-	createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "gpt-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		FailoverEnabled: true,
-		Priority:        10,
 	})
 
 	fixture := newFailoverFixture(t, []domain.Backend{backend})
@@ -986,18 +1025,17 @@ func TestAdminDashboardApisReturnAggregatedData(t *testing.T) {
 	failReq.Header.Set("Authorization", "Bearer "+client.Token)
 	failRecorder := httptest.NewRecorder()
 	application.Handler().ServeHTTP(failRecorder, failReq)
-	if failRecorder.Code != http.StatusInternalServerError {
+	if failRecorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected failed proxy request, got %d body=%s", failRecorder.Code, failRecorder.Body.String())
 	}
 
 	updateReq := httptest.NewRequest(http.MethodPut, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10), strings.NewReader(`{
 		"name":"alpha-backend",
-		"pool":"",
 		"protocol":"openai",
 		"base_url":"https://alpha.local/v1",
 		"api_key":"alpha-key",
 		"proxy_id":0,
-		"enabled":true,
+		"status":"normal",
 		"weight":1,
 		"models":["gpt-4o"],
 		"model_mapping":{},
@@ -1033,9 +1071,6 @@ func TestAdminDashboardApisReturnAggregatedData(t *testing.T) {
 	}
 	if summaryPayload.Cards["client_keys"].Count != 1 {
 		t.Fatalf("expected one client key card, got %#v", summaryPayload.Cards["client_keys"])
-	}
-	if summaryPayload.Cards["policies"].Count != 1 {
-		t.Fatalf("expected one policy card, got %#v", summaryPayload.Cards["policies"])
 	}
 	if summaryPayload.Cards["backends"].Failures == 0 {
 		t.Fatalf("expected backend failure count to be recorded, got %#v", summaryPayload.Cards["backends"])
@@ -1110,7 +1145,6 @@ func TestAdminSearchReturnsGroupedResults(t *testing.T) {
 		Name:      "alpha-backend",
 		BaseURL:   "https://alpha.local/v1",
 		APIKey:    "alpha-key",
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-alpha"},
 		Endpoints: []string{domain.EndpointChat},
@@ -1119,24 +1153,9 @@ func TestAdminSearchReturnsGroupedResults(t *testing.T) {
 		Name:      "beta-backend",
 		BaseURL:   "https://beta.local/v1",
 		APIKey:    "beta-key",
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
-	})
-	createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "alpha-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		FailoverEnabled: true,
-		Priority:        10,
-	})
-	createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "beta-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		FailoverEnabled: true,
-		Priority:        20,
 	})
 	createTestClient(t, application, "beta-client-token")
 	createdProxy := createTestProxy(t, application, domain.SocksProxy{
@@ -1161,12 +1180,11 @@ func TestAdminSearchReturnsGroupedResults(t *testing.T) {
 
 	updateReq := httptest.NewRequest(http.MethodPut, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10), strings.NewReader(`{
 		"name":"alpha-backend",
-		"pool":"",
 		"protocol":"openai",
 		"base_url":"https://alpha.local/v1",
 		"api_key":"alpha-key",
 		"proxy_id":`+strconv.FormatInt(createdProxy.ID, 10)+`,
-		"enabled":true,
+		"status":"normal",
 		"weight":1,
 		"models":["gpt-alpha"],
 		"model_mapping":{},
@@ -1192,7 +1210,6 @@ func TestAdminSearchReturnsGroupedResults(t *testing.T) {
 		Results struct {
 			Backends   []map[string]any `json:"backends"`
 			ClientKeys []map[string]any `json:"client_keys"`
-			Policies   []map[string]any `json:"policies"`
 			Proxies    []map[string]any `json:"proxies"`
 			Events     []map[string]any `json:"events"`
 			UsageLogs  []map[string]any `json:"usage_logs"`
@@ -1209,9 +1226,6 @@ func TestAdminSearchReturnsGroupedResults(t *testing.T) {
 	}
 	if len(searchPayload.Results.ClientKeys) == 0 {
 		t.Fatalf("expected client key search results, got %#v", searchPayload.Results)
-	}
-	if len(searchPayload.Results.Policies) == 0 {
-		t.Fatalf("expected policy search results, got %#v", searchPayload.Results)
 	}
 	if len(searchPayload.Results.Proxies) == 0 {
 		t.Fatalf("expected proxy search results, got %#v", searchPayload.Results)
@@ -1236,24 +1250,13 @@ func TestResourceDetailApisReturnDrawerPayload(t *testing.T) {
 	})
 	backend := createTestBackend(t, application, domain.Backend{
 		Name:      "alpha-backend",
-		Pool:      "main",
 		BaseURL:   "https://alpha.local/v1",
 		APIKey:    "alpha-key",
 		ProxyID:   proxyItem.ID,
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-alpha"},
 		Endpoints: []string{domain.EndpointChat},
 	})
-	policy := createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "gpt-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		BackendPool:     "main",
-		FailoverEnabled: true,
-		Priority:        10,
-	})
-
 	fixture := newFailoverFixture(t, []domain.Backend{backend})
 	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-alpha","messages":[{"role":"user","content":"hello"}]}`))
@@ -1270,7 +1273,6 @@ func TestResourceDetailApisReturnDrawerPayload(t *testing.T) {
 	}{
 		{name: "backend", path: "/admin/api/backends/" + strconv.FormatInt(backend.ID, 10) + "/detail"},
 		{name: "client", path: "/admin/api/client-keys/" + strconv.FormatInt(client.ID, 10) + "/detail"},
-		{name: "policy", path: "/admin/api/model-policies/" + strconv.FormatInt(policy.ID, 10) + "/detail"},
 		{name: "proxy", path: "/admin/api/socks-proxies/" + strconv.FormatInt(proxyItem.ID, 10) + "/detail"},
 	}
 
@@ -1367,17 +1369,9 @@ func TestBackendListIncludesRecentRequestStats(t *testing.T) {
 		Name:      "alpha",
 		BaseURL:   "https://alpha.local/v1",
 		APIKey:    "alpha-key",
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
-	})
-	createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "gpt-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		FailoverEnabled: true,
-		Priority:        10,
 	})
 
 	fixture := newFailoverFixture(t, []domain.Backend{backend})
@@ -1396,7 +1390,7 @@ func TestBackendListIncludesRecentRequestStats(t *testing.T) {
 	failReq.Header.Set("Authorization", "Bearer "+client.Token)
 	failRecorder := httptest.NewRecorder()
 	application.Handler().ServeHTTP(failRecorder, failReq)
-	if failRecorder.Code != http.StatusInternalServerError {
+	if failRecorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected failed proxy request, got %d body=%s", failRecorder.Code, failRecorder.Body.String())
 	}
 
@@ -1449,24 +1443,17 @@ func TestBackendListIncludesRecentRequestStats(t *testing.T) {
 	}
 }
 
-func TestBackendListExcludesBadRequestFromFailureStats(t *testing.T) {
+func TestBackendListTreatsUpstreamBadRequestAsFailedAttempt(t *testing.T) {
 	application := newTestApp(t)
 	client := createTestClient(t, application, "client-secret")
 	backend := createTestBackend(t, application, domain.Backend{
 		Name:      "alpha",
 		BaseURL:   "https://alpha.local/v1",
 		APIKey:    "alpha-key",
-		Enabled:   true,
+		Status:    domain.BackendStatusNormal,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
-	})
-	createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "gpt-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		FailoverEnabled: true,
-		Priority:        10,
 	})
 
 	fixture := newFailoverFixture(t, []domain.Backend{backend})
@@ -1477,8 +1464,8 @@ func TestBackendListExcludesBadRequestFromFailureStats(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+client.Token)
 	recorder := httptest.NewRecorder()
 	application.Handler().ServeHTTP(recorder, req)
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected proxy response 400, got %d body=%s", recorder.Code, recorder.Body.String())
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected proxy response 503, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
 
 	listReq := httptest.NewRequest(http.MethodGet, "/admin/api/backends", nil)
@@ -1505,8 +1492,8 @@ func TestBackendListExcludesBadRequestFromFailureStats(t *testing.T) {
 	if len(payload.Items) != 1 {
 		t.Fatalf("expected one backend item, got %d", len(payload.Items))
 	}
-	if payload.Items[0].RecentStats.Failures != 0 {
-		t.Fatalf("expected 400 not to count as backend failure, got %#v", payload.Items[0].RecentStats)
+	if payload.Items[0].RecentStats.Failures != 1 {
+		t.Fatalf("expected failed attempt to count as backend failure, got %#v", payload.Items[0].RecentStats)
 	}
 }
 
@@ -1525,11 +1512,9 @@ func TestBackendListIncludesUsageAndRelationshipSummaries(t *testing.T) {
 
 	backend := createTestBackend(t, application, domain.Backend{
 		Name:      "alpha",
-		Pool:      "premium",
 		BaseURL:   "https://alpha.local/v1",
 		APIKey:    "alpha-key",
 		ProxyID:   proxyItem.ID,
-		Enabled:   true,
 		Weight:    2,
 		Models:    []string{"gpt-4o", "gpt-4.1"},
 		Endpoints: []string{domain.EndpointChat, domain.EndpointResponses},
@@ -1645,17 +1630,9 @@ func TestUsageLogListAndPagination(t *testing.T) {
 		Name:      "alpha",
 		BaseURL:   "https://alpha.local/v1",
 		APIKey:    "alpha-key",
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
-	})
-	createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "gpt-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		FailoverEnabled: true,
-		Priority:        10,
 	})
 
 	fixture := newFailoverFixture(t, []domain.Backend{backend})
@@ -1829,7 +1806,6 @@ func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) 
 		BaseURL:      "https://alpha.local/v1",
 		APIKey:       "alpha-key",
 		ProxyID:      proxyItem.ID,
-		Enabled:      true,
 		Weight:       1,
 		Models:       []string{"gpt-4o", "gpt-image-*"},
 		ModelMapping: map[string]string{"gpt-5.4": "gpt-5.4-test"},
@@ -1841,22 +1817,11 @@ func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) 
 		Name:      "beta",
 		BaseURL:   "https://beta.local/v1",
 		APIKey:    "beta-key",
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4.1"},
 		Endpoints: []string{domain.EndpointResponses},
 	}); err != nil {
 		t.Fatalf("create backend beta: %v", err)
-	}
-	if _, err := application.store.CreateModelPolicy(ctx, domain.ModelPolicy{
-		Pattern:         "gpt-*",
-		Endpoint:        domain.EndpointResponses,
-		PlacementPolicy: domain.PlacementSticky,
-		BackendPool:     "default",
-		FailoverEnabled: true,
-		Priority:        10,
-	}); err != nil {
-		t.Fatalf("create model policy: %v", err)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/api/usage-log-options", nil)
@@ -1872,7 +1837,6 @@ func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) 
 		Backends   []string `json:"backends"`
 		Models     []string `json:"models"`
 		ClientKeys []string `json:"client_keys"`
-		Policies   []string `json:"policies"`
 		Proxies    []string `json:"proxies"`
 	}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
@@ -1896,7 +1860,6 @@ func TestUsageLogOptionsListConfiguredBackendsModelsAndClientKeys(t *testing.T) 
 	assertHas(payload.Models, "gpt-5.4")
 	assertHas(payload.ClientKeys, "client-a")
 	assertHas(payload.ClientKeys, "client-b")
-	assertHas(payload.Policies, "gpt-*")
 	assertHas(payload.Proxies, "tokyo")
 }
 
@@ -2001,17 +1964,9 @@ func TestUsageLogPersistsAfterClientWriteFailure(t *testing.T) {
 		Name:      "alpha",
 		BaseURL:   "https://alpha.local/v1",
 		APIKey:    "alpha-key",
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
-	})
-	createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "gpt-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		FailoverEnabled: true,
-		Priority:        10,
 	})
 
 	fixture := newFailoverFixture(t, []domain.Backend{backend})
@@ -2248,17 +2203,9 @@ func TestUsageLogDetailReturnsPreviewData(t *testing.T) {
 		Name:      "alpha",
 		BaseURL:   "https://alpha.local/v1",
 		APIKey:    "alpha-key",
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointResponses},
-	})
-	createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "gpt-*",
-		Endpoint:        domain.EndpointResponses,
-		PlacementPolicy: domain.PlacementSticky,
-		FailoverEnabled: true,
-		Priority:        10,
 	})
 
 	fixture := newFailoverFixture(t, []domain.Backend{backend})
@@ -2344,7 +2291,7 @@ func TestEventSummaryReturnsCategoryCounts(t *testing.T) {
 	for _, event := range []domain.AuditEvent{
 		{Level: "warn", Type: "backend", Message: "alpha failed", ClientName: "ops"},
 		{Level: "info", Type: "backend", Message: "alpha recovered", ClientName: "ops"},
-		{Level: "warn", Type: "policy", Message: "policy changed", ClientName: "admin"},
+		{Level: "warn", Type: "client_key", Message: "client key changed", ClientName: "admin"},
 	} {
 		if err := application.store.AppendAuditEvent(ctx, event); err != nil {
 			t.Fatalf("append audit event: %v", err)
@@ -2383,7 +2330,7 @@ func TestEventSummaryReturnsCategoryCounts(t *testing.T) {
 	for _, item := range payload.Categories {
 		categoryCounts[item.Category] = item.Count
 	}
-	if categoryCounts["backend"] != 2 || categoryCounts["policy"] != 1 {
+	if categoryCounts["backend"] != 2 || categoryCounts["client_key"] != 1 {
 		t.Fatalf("unexpected category counts: %#v", payload.Categories)
 	}
 
@@ -2402,7 +2349,7 @@ func TestEventsFilterByCategoryAndDateRange(t *testing.T) {
 
 	for _, event := range []domain.AuditEvent{
 		{Level: "warn", Type: "backend", Message: "backend event"},
-		{Level: "info", Type: "policy", Message: "policy event"},
+		{Level: "info", Type: "client_key", Message: "client key event"},
 	} {
 		if err := application.store.AppendAuditEvent(ctx, event); err != nil {
 			t.Fatalf("append audit event: %v", err)
@@ -2521,24 +2468,14 @@ func TestDashboardSummaryReturnsCountsAndSeries(t *testing.T) {
 	}
 	backend := createTestBackend(t, application, domain.Backend{
 		Name:      "alpha",
-		Pool:      "primary",
 		BaseURL:   "https://alpha.local/v1",
 		APIKey:    "alpha-key",
 		ProxyID:   proxyItem.ID,
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
 	})
 	createTestClient(t, application, "alpha-client-token")
-	createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "gpt-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		BackendPool:     "primary",
-		FailoverEnabled: true,
-		Priority:        10,
-	})
 	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
 		RequestID:         "dash-1",
 		ClientID:          1,
@@ -2577,10 +2514,9 @@ func TestDashboardSummaryReturnsCountsAndSeries(t *testing.T) {
 
 	var payload struct {
 		Counts struct {
-			Backends      int `json:"backends"`
-			ClientKeys    int `json:"client_keys"`
-			ModelPolicies int `json:"model_policies"`
-			SocksProxies  int `json:"socks_proxies"`
+			Backends     int `json:"backends"`
+			ClientKeys   int `json:"client_keys"`
+			SocksProxies int `json:"socks_proxies"`
 		} `json:"counts"`
 		Growth struct {
 			Requests float64 `json:"requests"`
@@ -2599,7 +2535,7 @@ func TestDashboardSummaryReturnsCountsAndSeries(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal dashboard summary: %v", err)
 	}
-	if payload.Counts.Backends != 1 || payload.Counts.ClientKeys != 1 || payload.Counts.ModelPolicies != 1 || payload.Counts.SocksProxies != 1 {
+	if payload.Counts.Backends != 1 || payload.Counts.ClientKeys != 1 || payload.Counts.SocksProxies != 1 {
 		t.Fatalf("unexpected counts payload: %#v", payload.Counts)
 	}
 	if payload.Status.HealthyBackends != 1 || payload.Status.ActiveClients != 1 {
@@ -2621,7 +2557,6 @@ func TestDashboardUsageReturnsSeries(t *testing.T) {
 		Name:      "usage-backend",
 		BaseURL:   "https://usage.local/v1",
 		APIKey:    "usage-key",
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
@@ -2743,8 +2678,8 @@ func TestDashboardActivityReturnsRecentLists(t *testing.T) {
 
 	if err := application.store.AppendAuditEvent(ctx, domain.AuditEvent{
 		Level:       "warn",
-		Type:        "policy.changed",
-		Message:     "policy updated",
+		Type:        "backend.abnormal",
+		Message:     "backend marked abnormal",
 		BackendName: "alpha",
 	}); err != nil {
 		t.Fatalf("append audit event: %v", err)
@@ -2790,7 +2725,7 @@ func TestDashboardActivityReturnsRecentLists(t *testing.T) {
 		t.Fatalf("unmarshal dashboard activity: %v", err)
 	}
 	if !containsAuditEvent(payload.Events, func(event domain.AuditEvent) bool {
-		return event.Type == "policy.changed"
+		return event.Type == "backend.abnormal"
 	}) {
 		t.Fatalf("expected recent event in payload, got %#v", payload.Events)
 	}
@@ -2809,8 +2744,8 @@ func TestDashboardActivitySummaryCountsEventTypes(t *testing.T) {
 	ctx := context.Background()
 
 	for _, event := range []domain.AuditEvent{
-		{Level: "info", Type: "policy.changed", Message: "policy one"},
-		{Level: "warn", Type: "policy.changed", Message: "policy two"},
+		{Level: "info", Type: "backend.abnormal", Message: "backend one"},
+		{Level: "warn", Type: "backend.abnormal", Message: "backend two"},
 		{Level: "info", Type: "backend.updated", Message: "backend one"},
 	} {
 		if err := application.store.AppendAuditEvent(ctx, event); err != nil {
@@ -2842,8 +2777,8 @@ func TestDashboardActivitySummaryCountsEventTypes(t *testing.T) {
 	for _, item := range payload.Summary {
 		counts[item.Category] = item.Count
 	}
-	if counts["policy.changed"] != 2 {
-		t.Fatalf("expected policy.changed count=2, got summary %#v", payload.Summary)
+	if counts["backend.abnormal"] != 2 {
+		t.Fatalf("expected backend.abnormal count=2, got summary %#v", payload.Summary)
 	}
 	if counts["backend.updated"] != 1 {
 		t.Fatalf("expected backend.updated count=1, got summary %#v", payload.Summary)
@@ -2864,11 +2799,9 @@ func TestSearchReturnsGroupedResults(t *testing.T) {
 	}
 	backend := createTestBackend(t, application, domain.Backend{
 		Name:      "alpha-backend",
-		Pool:      "alpha-pool",
 		BaseURL:   "https://alpha.local/v1",
 		APIKey:    "alpha-key",
 		ProxyID:   proxyItem.ID,
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
@@ -2883,14 +2816,6 @@ func TestSearchReturnsGroupedResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create client key: %v", err)
 	}
-	policy := createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "alpha-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		BackendPool:     "alpha-pool",
-		FailoverEnabled: true,
-		Priority:        10,
-	})
 	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
 		RequestID:         "search-alpha-1",
 		ClientID:          client.ID,
@@ -2913,7 +2838,7 @@ func TestSearchReturnsGroupedResults(t *testing.T) {
 		Type:        "alpha.event",
 		Message:     "alpha backend promoted",
 		BackendName: backend.Name,
-		Model:       policy.Pattern,
+		Model:       "alpha-model",
 	}); err != nil {
 		t.Fatalf("append audit event: %v", err)
 	}
@@ -2938,7 +2863,7 @@ func TestSearchReturnsGroupedResults(t *testing.T) {
 	if payload.Query != "alpha" {
 		t.Fatalf("expected query alpha, got %q", payload.Query)
 	}
-	for _, section := range []string{"backends", "client_keys", "policies", "proxies", "usage_logs", "events"} {
+	for _, section := range []string{"backends", "client_keys", "proxies", "usage_logs", "events"} {
 		items, ok := payload.Results[section]
 		if !ok {
 			t.Fatalf("expected section %q in results, got %#v", section, payload.Results)
@@ -2946,6 +2871,9 @@ func TestSearchReturnsGroupedResults(t *testing.T) {
 		if len(items) == 0 {
 			t.Fatalf("expected matches in section %q, got %#v", section, payload.Results)
 		}
+	}
+	if _, ok := payload.Results["policies"]; ok {
+		t.Fatalf("did not expect removed policies section in results: %#v", payload.Results)
 	}
 	if !containsSearchResult(payload.Results["backends"], func(item searchResultAssertion) bool {
 		return item.TargetPage == "backends" && item.TargetID == backend.ID
@@ -2961,7 +2889,6 @@ func TestSearchHonorsLimitAndRanksExactMatchesFirst(t *testing.T) {
 		Name:      "alpha",
 		BaseURL:   "https://alpha.local/v1",
 		APIKey:    "alpha-key",
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
@@ -2970,7 +2897,6 @@ func TestSearchHonorsLimitAndRanksExactMatchesFirst(t *testing.T) {
 		Name:      "zz-alpha-later",
 		BaseURL:   "https://zz-alpha.local/v1",
 		APIKey:    "zz-alpha-key",
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
@@ -3014,11 +2940,9 @@ func TestBackendDetailReturnsDrawerData(t *testing.T) {
 	}
 	backend := createTestBackend(t, application, domain.Backend{
 		Name:         "alpha-backend",
-		Pool:         "drawer-pool",
 		BaseURL:      "https://alpha.local/v1",
 		APIKey:       "alpha-key",
 		ProxyID:      proxyItem.ID,
-		Enabled:      true,
 		Weight:       2,
 		Models:       []string{"gpt-4o"},
 		ModelMapping: map[string]string{"alpha": "gpt-4o"},
@@ -3086,13 +3010,11 @@ func TestClientKeyDetailReturnsDrawerData(t *testing.T) {
 	ctx := context.Background()
 
 	client, err := application.store.CreateClientKey(ctx, domain.ClientKey{
-		Name:              "alpha-client",
-		TokenHash:         store.HashToken("alpha-client-token"),
-		Token:             "alpha-client-token",
-		TokenPrefix:       tokenPrefix("alpha-client-token"),
-		Enabled:           true,
-		RouteModeOverride: domain.PlacementSticky,
-		RouteGroup:        "alpha-group",
+		Name:        "alpha-client",
+		TokenHash:   store.HashToken("alpha-client-token"),
+		Token:       "alpha-client-token",
+		TokenPrefix: tokenPrefix("alpha-client-token"),
+		Enabled:     true,
 	})
 	if err != nil {
 		t.Fatalf("create client key: %v", err)
@@ -3146,7 +3068,7 @@ func TestClientKeyDetailReturnsDrawerData(t *testing.T) {
 	if configuration["token"] != client.Token {
 		t.Fatalf("expected detail configuration token %q, got %#v", client.Token, configuration)
 	}
-	if configuration["route_mode_override"] != domain.PlacementSticky || configuration["route_group"] != "alpha-group" {
+	if len(configuration) != 1 {
 		t.Fatalf("unexpected client configuration: %#v", configuration)
 	}
 	if overview["usage_count"] != float64(1) {
@@ -3162,102 +3084,16 @@ func TestClientKeyDetailReturnsDrawerData(t *testing.T) {
 	}
 }
 
-func TestPolicyDetailReturnsDrawerData(t *testing.T) {
+func TestPolicyDetailRouteRemoved(t *testing.T) {
 	application := newTestApp(t)
-	ctx := context.Background()
-
-	backend := createTestBackend(t, application, domain.Backend{
-		Name:      "policy-alpha-backend",
-		Pool:      "alpha-pool",
-		BaseURL:   "https://policy-alpha.local/v1",
-		APIKey:    "alpha-key",
-		Enabled:   true,
-		Weight:    1,
-		Models:    []string{"alpha-model"},
-		Endpoints: []string{domain.EndpointChat},
-	})
-	policy := createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "alpha-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		BackendPool:     "alpha-pool",
-		FailoverEnabled: true,
-		Priority:        10,
-	})
-	if err := application.store.AppendAuditEvent(ctx, domain.AuditEvent{
-		Level:   "info",
-		Type:    "policy.changed",
-		Message: "alpha policy changed",
-		Model:   policy.Pattern,
-	}); err != nil {
-		t.Fatalf("append audit event: %v", err)
-	}
-	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
-		RequestID:         "policy-detail-1",
-		ClientID:          1,
-		ClientName:        "policy-client",
-		ClientTokenPrefix: "pol",
-		Method:            http.MethodPost,
-		Path:              "/v1/chat/completions",
-		Endpoint:          domain.EndpointChat,
-		Model:             "alpha-model",
-		PolicyID:          policy.ID,
-		PolicyName:        policy.Pattern,
-		BackendID:         backend.ID,
-		BackendName:       backend.Name,
-		Attempts:          1,
-		StatusCode:        http.StatusOK,
-		DurationMS:        42,
-	}); err != nil {
-		t.Fatalf("append policy usage log: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/admin/api/model-policies/"+strconv.FormatInt(policy.ID, 10)+"/detail", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/model-policies/1/detail", nil)
 	req.Header.Set("Authorization", "Bearer test-admin")
 	recorder := httptest.NewRecorder()
 
 	application.Handler().ServeHTTP(recorder, req)
 
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
-	}
-
-	var payload struct {
-		Overview      []resourceDetailEntry `json:"overview"`
-		Configuration []resourceDetailEntry `json:"configuration"`
-		Metadata      []resourceDetailEntry `json:"metadata"`
-		Raw           domain.ModelPolicy    `json:"raw"`
-		Activity      struct {
-			Events   []domain.AuditEvent `json:"events"`
-			Usage    []domain.UsageLog   `json:"usage"`
-			Backends []domain.Backend    `json:"backends"`
-		} `json:"activity"`
-	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
-		t.Fatalf("unmarshal policy detail: %v", err)
-	}
-	configuration := detailEntriesToMap(payload.Configuration)
-	metadata := detailEntriesToMap(payload.Metadata)
-	if metadata["id"] != float64(policy.ID) || payload.Raw.ID != policy.ID {
-		t.Fatalf("expected policy ids in payload, got metadata=%#v raw=%#v", metadata, payload.Raw)
-	}
-	if configuration["pattern"] != "alpha-*" || configuration["endpoint"] != domain.EndpointChat {
-		t.Fatalf("unexpected policy configuration: %#v", configuration)
-	}
-	if !containsAuditEvent(payload.Activity.Events, func(event domain.AuditEvent) bool {
-		return event.Model == "alpha-*"
-	}) {
-		t.Fatalf("expected policy activity events, got %#v", payload.Activity.Events)
-	}
-	if !containsUsageLog(payload.Activity.Usage, func(entry domain.UsageLog) bool {
-		return entry.PolicyID == policy.ID
-	}) {
-		t.Fatalf("expected policy usage activity, got %#v", payload.Activity.Usage)
-	}
-	if !containsBackend(payload.Activity.Backends, func(item domain.Backend) bool {
-		return item.ID == backend.ID
-	}) {
-		t.Fatalf("expected policy related backend, got %#v", payload.Activity.Backends)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -3280,7 +3116,6 @@ func TestProxyDetailReturnsDrawerData(t *testing.T) {
 		BaseURL:   "https://alpha.local/v1",
 		APIKey:    "alpha-key",
 		ProxyID:   proxyItem.ID,
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
@@ -3498,16 +3333,6 @@ func createTestBackend(t *testing.T, application *App, backend domain.Backend) d
 	created, err := application.store.CreateBackend(context.Background(), backend)
 	if err != nil {
 		t.Fatalf("create backend %q: %v", backend.Name, err)
-	}
-	return created
-}
-
-func createTestPolicy(t *testing.T, application *App, policy domain.ModelPolicy) domain.ModelPolicy {
-	t.Helper()
-
-	created, err := application.store.CreateModelPolicy(context.Background(), policy)
-	if err != nil {
-		t.Fatalf("create policy %q: %v", policy.Pattern, err)
 	}
 	return created
 }

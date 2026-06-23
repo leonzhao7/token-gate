@@ -43,11 +43,10 @@ type App struct {
 }
 
 type overviewResponse struct {
-	Backends      []backendView       `json:"backends"`
-	SocksProxies  int                 `json:"socks_proxies"`
-	ClientKeys    int                 `json:"client_keys"`
-	ModelPolicies int                 `json:"model_policies"`
-	Events        []domain.AuditEvent `json:"events"`
+	Backends     []backendView       `json:"backends"`
+	SocksProxies int                 `json:"socks_proxies"`
+	ClientKeys   int                 `json:"client_keys"`
+	Events       []domain.AuditEvent `json:"events"`
 }
 
 type pagedListResponse struct {
@@ -73,10 +72,9 @@ type dashboardCard struct {
 }
 
 type dashboardSummaryCounts struct {
-	Backends      int `json:"backends"`
-	ClientKeys    int `json:"client_keys"`
-	ModelPolicies int `json:"model_policies"`
-	SocksProxies  int `json:"socks_proxies"`
+	Backends     int `json:"backends"`
+	ClientKeys   int `json:"client_keys"`
+	SocksProxies int `json:"socks_proxies"`
 }
 
 type dashboardSummaryGrowth struct {
@@ -130,7 +128,6 @@ type searchResponse struct {
 type searchResultsResponse struct {
 	Backends   []searchResultItem `json:"backends"`
 	ClientKeys []searchResultItem `json:"client_keys"`
-	Policies   []searchResultItem `json:"policies"`
 	Proxies    []searchResultItem `json:"proxies"`
 	UsageLogs  []searchResultItem `json:"usage_logs"`
 	Events     []searchResultItem `json:"events"`
@@ -207,14 +204,6 @@ type clientKeyView struct {
 	MaskedToken string     `json:"masked_token"`
 	UsageCount  int        `json:"usage_count"`
 	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
-}
-
-type policyView struct {
-	domain.ModelPolicy
-	RequestCount int        `json:"request_count"`
-	BackendCount int        `json:"backend_count"`
-	ModelCount   int        `json:"model_count"`
-	LastUsedAt   *time.Time `json:"last_used_at,omitempty"`
 }
 
 type proxyView struct {
@@ -310,11 +299,6 @@ func (a *App) routes() {
 	a.mux.Handle("POST /admin/api/client-keys", a.adminAuth(http.HandlerFunc(a.handleCreateClientKey)))
 	a.mux.Handle("PUT /admin/api/client-keys/{id}", a.adminAuth(http.HandlerFunc(a.handleUpdateClientKey)))
 	a.mux.Handle("DELETE /admin/api/client-keys/{id}", a.adminAuth(http.HandlerFunc(a.handleDeleteClientKey)))
-	a.mux.Handle("GET /admin/api/model-policies", a.adminAuth(http.HandlerFunc(a.handleListPolicies)))
-	a.mux.Handle("GET /admin/api/model-policies/{id}/detail", a.adminAuth(http.HandlerFunc(a.handlePolicyDetail)))
-	a.mux.Handle("POST /admin/api/model-policies", a.adminAuth(http.HandlerFunc(a.handleCreatePolicy)))
-	a.mux.Handle("PUT /admin/api/model-policies/{id}", a.adminAuth(http.HandlerFunc(a.handleUpdatePolicy)))
-	a.mux.Handle("DELETE /admin/api/model-policies/{id}", a.adminAuth(http.HandlerFunc(a.handleDeletePolicy)))
 	a.mux.Handle("GET /admin/api/events", a.adminAuth(http.HandlerFunc(a.handleListEvents)))
 	a.mux.Handle("GET /admin/api/events/summary", a.adminAuth(http.HandlerFunc(a.handleEventSummary)))
 	a.mux.Handle("GET /admin/api/events/{id}", a.adminAuth(http.HandlerFunc(a.handleEventDetail)))
@@ -334,7 +318,7 @@ func (a *App) handlePublicModels(w http.ResponseWriter, r *http.Request) {
 
 	models := make(map[string]struct{})
 	for _, backend := range backends {
-		if !backend.Enabled {
+		if backend.Status != domain.BackendStatusNormal {
 			continue
 		}
 		mappedUpstreamModels := make(map[string]struct{}, len(backend.ModelMapping))
@@ -394,8 +378,6 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		ClientID:           client.ID,
 		ClientName:         client.Name,
 		ClientTokenPrefix:  client.TokenPrefix,
-		RouteModeOverride:  client.RouteModeOverride,
-		RouteGroup:         client.RouteGroup,
 		Method:             r.Method,
 		Path:               r.URL.Path,
 		Query:              r.URL.RawQuery,
@@ -460,35 +442,28 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 	usageLog.RequestBytes = int64(len(body))
 	usageLog.RequestBodyPreview, usageLog.PreviewTruncated = previewText(body, 16*1024)
 
-	selection, err := a.scheduler.SelectBackend(r.Context(), client, endpoint, model)
+	selection, err := a.scheduler.SelectBackend(r.Context(), endpoint, model)
 	if err != nil {
-		usageLog.StatusCode = http.StatusBadGateway
+		usageLog.StatusCode = http.StatusServiceUnavailable
+		usageLog.StatusFamily = statusFamily(http.StatusServiceUnavailable)
 		usageLog.ErrorMessage = err.Error()
 		a.logEvent(r.Context(), slog.LevelWarn, "backend_selection_failed", append(clientAttrs(client),
 			slog.String("endpoint", endpoint),
 			slog.String("model", model),
 			slog.String("error", err.Error()),
 		)...)
-		writeError(w, http.StatusBadGateway, "no backend available")
+		writeError(w, http.StatusServiceUnavailable, "no backend available")
 		return
 	}
 	a.logEvent(r.Context(), slog.LevelInfo, "backend_selection_completed", append(clientAttrs(client),
 		slog.String("endpoint", endpoint),
 		slog.String("model", model),
-		slog.String("policy_pattern", selection.Policy.Pattern),
-		slog.String("policy_endpoint", selection.Policy.Endpoint),
-		slog.String("placement_policy", selection.Policy.PlacementPolicy),
-		slog.String("backend_pool", selection.Policy.BackendPool),
-		slog.Bool("failover_enabled", selection.Policy.FailoverEnabled),
 		slog.Int("candidate_count", len(selection.Candidates)),
 		slog.Any("candidate_backends", candidateNames(selection.Candidates)),
 	)...)
-	usageLog.PolicyName = selection.Policy.Pattern
-	usageLog.PolicyID = selection.Policy.ID
 
 	var (
-		lastErr    error
-		lastStatus int
+		lastErr error
 	)
 
 	for index, backend := range selection.Candidates {
@@ -507,7 +482,8 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		if upstreamModel != model {
 			requestBody, err = proxy.RewriteModel(body, upstreamModel)
 			if err != nil {
-				usageLog.StatusCode = http.StatusBadGateway
+				usageLog.StatusCode = http.StatusServiceUnavailable
+				usageLog.StatusFamily = statusFamily(http.StatusServiceUnavailable)
 				usageLog.ErrorMessage = "rewrite model failed: " + err.Error()
 				a.logEvent(r.Context(), slog.LevelWarn, "backend_request_rewrite_failed", append(append(clientAttrs(client),
 					backendAttemptAttrs(backend, attempt)...),
@@ -517,7 +493,7 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 					slog.String("error", err.Error()),
 				)...)
 				lastErr = err
-				break
+				continue
 			}
 		}
 		attemptStartedAt := time.Now()
@@ -531,11 +507,9 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 			slog.String("query", r.URL.RawQuery),
 		)...)
 
-		release := a.scheduler.Acquire(backend.ID)
 		resp, err := a.proxy.Do(a.withBackendTrace(r.Context(), backend, attempt), r, backend, requestBody)
 		if err != nil {
-			release()
-			a.scheduler.MarkFailure(backend.ID, err)
+			_ = a.scheduler.MarkFailure(r.Context(), backend.ID, err)
 			lastErr = err
 			usageLog.ErrorMessage = err.Error()
 			a.logEvent(r.Context(), slog.LevelWarn, "backend_request_failed", append(append(clientAttrs(client),
@@ -544,7 +518,7 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 				slog.String("model", model),
 				slog.Duration("duration", time.Since(attemptStartedAt)),
 				slog.String("error", err.Error()),
-				slog.Bool("will_failover", selection.Policy.FailoverEnabled && index < len(selection.Candidates)-1),
+				slog.Bool("will_failover", index < len(selection.Candidates)-1),
 			)...)
 			_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
 				Level:       "warn",
@@ -555,46 +529,45 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 				Endpoint:    endpoint,
 				BackendName: backend.Name,
 			})
-			if selection.Policy.FailoverEnabled && index < len(selection.Candidates)-1 {
+			if index < len(selection.Candidates)-1 {
 				continue
 			}
 			break
 		}
 
-		if proxy.RetryableStatus(resp.StatusCode) && selection.Policy.FailoverEnabled && index < len(selection.Candidates)-1 {
-			lastStatus = resp.StatusCode
+		if resp.StatusCode/100 != 2 {
 			usageLog.StatusCode = resp.StatusCode
+			usageLog.StatusFamily = statusFamily(resp.StatusCode)
 			usageLog.ErrorMessage = resp.Status
-			a.scheduler.MarkFailure(backend.ID, errors.New(resp.Status))
+			_ = a.scheduler.MarkFailure(r.Context(), backend.ID, errors.New(resp.Status))
 			_, _ = io.Copy(io.Discard, resp.Body)
 			_ = resp.Body.Close()
-			release()
-			a.logEvent(r.Context(), slog.LevelWarn, "backend_response_retryable", append(append(clientAttrs(client),
+			a.logEvent(r.Context(), slog.LevelWarn, "backend_response_failed", append(append(clientAttrs(client),
 				backendAttemptAttrs(backend, attempt)...),
 				slog.String("endpoint", endpoint),
 				slog.String("model", model),
 				slog.Int("status", resp.StatusCode),
 				slog.String("status_text", resp.Status),
 				slog.Duration("duration", time.Since(attemptStartedAt)),
-				slog.Bool("will_failover", true),
+				slog.Bool("will_failover", index < len(selection.Candidates)-1),
 			)...)
 			_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
 				Level:       "warn",
 				Type:        "backend_failover",
-				Message:     "retryable upstream status triggered failover",
+				Message:     fmt.Sprintf("upstream status %d triggered failover", resp.StatusCode),
 				ClientName:  client.Name,
 				Model:       model,
 				Endpoint:    endpoint,
 				BackendName: backend.Name,
 			})
-			continue
+			lastErr = errors.New(resp.Status)
+			if index < len(selection.Candidates)-1 {
+				continue
+			}
+			break
 		}
 
-		if domain.IsBackendFailureStatus(resp.StatusCode) {
-			a.scheduler.MarkFailure(backend.ID, errors.New(resp.Status))
-		} else {
-			a.scheduler.MarkSuccess(backend.ID)
-		}
+		_ = a.scheduler.MarkSuccess(r.Context(), backend.ID)
 		usageLog.StatusCode = resp.StatusCode
 		usageLog.StatusFamily = statusFamily(resp.StatusCode)
 		usageLog.ErrorMessage = ""
@@ -602,9 +575,8 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		usageLog.IsStream = strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
 		bufferedResp, responseBytes, responsePreview, truncated, err := cloneResponseForLogging(resp)
 		if err != nil {
-			release()
-			usageLog.StatusCode = http.StatusBadGateway
-			usageLog.StatusFamily = statusFamily(http.StatusBadGateway)
+			usageLog.StatusCode = http.StatusServiceUnavailable
+			usageLog.StatusFamily = statusFamily(http.StatusServiceUnavailable)
 			usageLog.ErrorMessage = err.Error()
 			a.logEvent(r.Context(), slog.LevelWarn, "backend_response_buffer_failed", append(append(clientAttrs(client),
 				backendAttemptAttrs(backend, attempt)...),
@@ -629,9 +601,9 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 			slog.Duration("duration", time.Since(attemptStartedAt)),
 		)...)
 		err = proxy.WriteResponse(w, resp)
-		release()
 		if err != nil {
-			usageLog.StatusCode = http.StatusBadGateway
+			usageLog.StatusCode = http.StatusServiceUnavailable
+			usageLog.StatusFamily = statusFamily(http.StatusServiceUnavailable)
 			usageLog.ErrorMessage = err.Error()
 			a.logEvent(r.Context(), slog.LevelWarn, "client_response_write_failed", append(append(clientAttrs(client),
 				backendAttemptAttrs(backend, attempt)...),
@@ -644,36 +616,27 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	usageLog.StatusCode = http.StatusServiceUnavailable
+	usageLog.StatusFamily = statusFamily(http.StatusServiceUnavailable)
 	if lastErr != nil {
-		usageLog.StatusCode = http.StatusBadGateway
 		usageLog.ErrorMessage = lastErr.Error()
 		a.logEvent(r.Context(), slog.LevelWarn, "proxy_request_failed", append(clientAttrs(client),
 			slog.String("endpoint", endpoint),
 			slog.String("model", model),
 			slog.String("error", lastErr.Error()),
 		)...)
-		writeError(w, http.StatusBadGateway, "all candidate backends failed: "+lastErr.Error())
-		return
-	}
-	if lastStatus != 0 {
-		usageLog.StatusCode = lastStatus
-		usageLog.ErrorMessage = fmt.Sprintf("all candidate backends failed with retryable status, last status=%d", lastStatus)
-		a.logEvent(r.Context(), slog.LevelWarn, "proxy_request_failed", append(clientAttrs(client),
-			slog.String("endpoint", endpoint),
-			slog.String("model", model),
-			slog.Int("last_status", lastStatus),
-		)...)
-		writeError(w, http.StatusBadGateway, fmt.Sprintf("all candidate backends failed with retryable status, last status=%d", lastStatus))
+		writeError(w, http.StatusServiceUnavailable, "no backend available")
 		return
 	}
 	usageLog.ErrorMessage = "all candidate backends failed"
-	usageLog.StatusCode = http.StatusBadGateway
+	usageLog.StatusCode = http.StatusServiceUnavailable
+	usageLog.StatusFamily = statusFamily(http.StatusServiceUnavailable)
 	a.logEvent(r.Context(), slog.LevelWarn, "proxy_request_failed", append(clientAttrs(client),
 		slog.String("endpoint", endpoint),
 		slog.String("model", model),
 		slog.String("error", "all candidate backends failed"),
 	)...)
-	writeError(w, http.StatusBadGateway, "all candidate backends failed")
+	writeError(w, http.StatusServiceUnavailable, "no backend available")
 }
 
 func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
@@ -688,11 +651,6 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	proxies, err := a.store.ListSocksProxies(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	policies, err := a.store.ListModelPolicies(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -715,11 +673,10 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, overviewResponse{
-		Backends:      ensureBackendViews(buildBackendViews(backends, summaries, stats)),
-		SocksProxies:  len(proxies),
-		ClientKeys:    len(clients),
-		ModelPolicies: len(policies),
-		Events:        ensureAuditEvents(events),
+		Backends:     ensureBackendViews(buildBackendViews(backends, summaries, stats)),
+		SocksProxies: len(proxies),
+		ClientKeys:   len(clients),
+		Events:       ensureAuditEvents(events),
 	})
 }
 
@@ -741,10 +698,9 @@ func (a *App) handleDashboardSummary(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dashboardSummaryResponse{
 		Cards: buildDashboardCards(summary),
 		Counts: dashboardSummaryCounts{
-			Backends:      summary.Backends,
-			ClientKeys:    summary.ClientKeys,
-			ModelPolicies: summary.ModelPolicies,
-			SocksProxies:  summary.SocksProxies,
+			Backends:     summary.Backends,
+			ClientKeys:   summary.ClientKeys,
+			SocksProxies: summary.SocksProxies,
 		},
 		Growth: dashboardSummaryGrowth{
 			Requests: summary.RequestGrowth,
@@ -827,9 +783,6 @@ func buildDashboardCards(summary store.DashboardSummaryData) map[string]dashboar
 			Count:   summary.ClientKeys,
 			Enabled: summary.ActiveClients,
 		},
-		"policies": {
-			Count: summary.ModelPolicies,
-		},
 		"proxies": {
 			Count: summary.SocksProxies,
 		},
@@ -895,7 +848,6 @@ func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 		Results: searchResultsResponse{
 			Backends:   toSearchResultItems(results.Backends),
 			ClientKeys: toSearchResultItems(results.ClientKeys),
-			Policies:   toSearchResultItems(results.Policies),
 			Proxies:    toSearchResultItems(results.Proxies),
 			UsageLogs:  toSearchResultItems(results.UsageLogs),
 			Events:     toSearchResultItems(results.Events),
@@ -1104,12 +1056,11 @@ func (a *App) handleListBackends(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleCreateBackend(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Name         string            `json:"name"`
-		Pool         string            `json:"pool"`
 		Protocol     string            `json:"protocol"`
 		BaseURL      string            `json:"base_url"`
 		APIKey       string            `json:"api_key"`
 		ProxyID      int64             `json:"proxy_id"`
-		Enabled      bool              `json:"enabled"`
+		Status       string            `json:"status"`
 		Weight       int               `json:"weight"`
 		Models       []string          `json:"models"`
 		ModelMapping map[string]string `json:"model_mapping"`
@@ -1130,12 +1081,10 @@ func (a *App) handleCreateBackend(w http.ResponseWriter, r *http.Request) {
 
 	backend, err := a.store.CreateBackend(r.Context(), domain.Backend{
 		Name:         payload.Name,
-		Pool:         payload.Pool,
 		Protocol:     domain.NormalizeBackendProtocol(payload.Protocol),
 		BaseURL:      payload.BaseURL,
 		APIKey:       payload.APIKey,
 		ProxyID:      payload.ProxyID,
-		Enabled:      payload.Enabled,
 		Weight:       payload.Weight,
 		Models:       payload.Models,
 		ModelMapping: payload.ModelMapping,
@@ -1168,12 +1117,11 @@ func (a *App) handleUpdateBackend(w http.ResponseWriter, r *http.Request) {
 
 	var payload struct {
 		Name         string            `json:"name"`
-		Pool         string            `json:"pool"`
 		Protocol     string            `json:"protocol"`
 		BaseURL      string            `json:"base_url"`
 		APIKey       string            `json:"api_key"`
 		ProxyID      int64             `json:"proxy_id"`
-		Enabled      bool              `json:"enabled"`
+		Status       string            `json:"status"`
 		Weight       int               `json:"weight"`
 		Models       []string          `json:"models"`
 		ModelMapping map[string]string `json:"model_mapping"`
@@ -1193,7 +1141,6 @@ func (a *App) handleUpdateBackend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	current.Name = payload.Name
-	current.Pool = payload.Pool
 	if strings.TrimSpace(payload.Protocol) != "" {
 		current.Protocol = domain.NormalizeBackendProtocol(payload.Protocol)
 	}
@@ -1202,7 +1149,18 @@ func (a *App) handleUpdateBackend(w http.ResponseWriter, r *http.Request) {
 		current.APIKey = payload.APIKey
 	}
 	current.ProxyID = payload.ProxyID
-	current.Enabled = payload.Enabled
+	switch payload.Status {
+	case "":
+	case domain.BackendStatusNormal, domain.BackendStatusDisabled:
+		if current.Status != payload.Status {
+			current.Status = payload.Status
+			current.ConsecutiveFailures = 0
+			current.RecoverAt = nil
+		}
+	default:
+		writeError(w, http.StatusBadRequest, "invalid backend status")
+		return
+	}
 	current.Weight = payload.Weight
 	current.Models = payload.Models
 	current.ModelMapping = payload.ModelMapping
@@ -1248,8 +1206,9 @@ func (a *App) handleBackendDetail(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resourceDetailPayload{
 		Overview: []resourceDetailEntry{
 			detailEntry("name", "Name", detail.Backend.Name),
-			detailEntry("pool", "Pool", detail.Backend.Pool),
-			detailEntry("enabled", "Enabled", detail.Backend.Enabled),
+			detailEntry("status", "Status", detail.Backend.Status),
+			detailEntry("consecutive_failures", "Consecutive Failures", detail.Backend.ConsecutiveFailures),
+			detailEntry("recover_at", "Recover At", optionalTimePointer(detail.Backend.RecoverAt)),
 			detailEntry("proxy_id", "Proxy ID", detail.Backend.ProxyID),
 			detailEntry("protocol", "Protocol", detail.Backend.Protocol),
 			detailEntry("weight", "Weight", detail.Backend.Weight),
@@ -1308,11 +1267,9 @@ func (a *App) handleListClientKeys(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleCreateClientKey(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		Name              string `json:"name"`
-		Token             string `json:"token"`
-		Enabled           bool   `json:"enabled"`
-		RouteModeOverride string `json:"route_mode_override"`
-		RouteGroup        string `json:"route_group"`
+		Name    string `json:"name"`
+		Token   string `json:"token"`
+		Enabled bool   `json:"enabled"`
 	}
 	if err := decodeJSON(r, &payload); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -1330,13 +1287,11 @@ func (a *App) handleCreateClientKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client, err := a.store.CreateClientKey(r.Context(), domain.ClientKey{
-		Name:              payload.Name,
-		TokenHash:         store.HashToken(token),
-		Token:             token,
-		TokenPrefix:       tokenPrefix(token),
-		Enabled:           payload.Enabled,
-		RouteModeOverride: payload.RouteModeOverride,
-		RouteGroup:        payload.RouteGroup,
+		Name:        payload.Name,
+		TokenHash:   store.HashToken(token),
+		Token:       token,
+		TokenPrefix: tokenPrefix(token),
+		Enabled:     payload.Enabled,
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -1367,11 +1322,9 @@ func (a *App) handleUpdateClientKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload struct {
-		Name              string `json:"name"`
-		Token             string `json:"token"`
-		Enabled           bool   `json:"enabled"`
-		RouteModeOverride string `json:"route_mode_override"`
-		RouteGroup        string `json:"route_group"`
+		Name    string `json:"name"`
+		Token   string `json:"token"`
+		Enabled bool   `json:"enabled"`
 	}
 	if err := decodeJSON(r, &payload); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -1380,8 +1333,6 @@ func (a *App) handleUpdateClientKey(w http.ResponseWriter, r *http.Request) {
 
 	client.Name = payload.Name
 	client.Enabled = payload.Enabled
-	client.RouteModeOverride = payload.RouteModeOverride
-	client.RouteGroup = payload.RouteGroup
 
 	issuedToken := ""
 	if strings.TrimSpace(payload.Token) != "" && strings.TrimSpace(payload.Token) != client.Token {
@@ -1442,8 +1393,6 @@ func (a *App) handleClientKeyDetail(w http.ResponseWriter, r *http.Request) {
 		},
 		Configuration: []resourceDetailEntry{
 			detailEntry("token", "Token", detail.Client.Token),
-			detailEntry("route_mode_override", "Route Mode Override", detail.Client.RouteModeOverride),
-			detailEntry("route_group", "Route Group", detail.Client.RouteGroup),
 		},
 		Metadata: []resourceDetailEntry{
 			detailEntry("id", "ID", detail.Client.ID),
@@ -1456,162 +1405,6 @@ func (a *App) handleClientKeyDetail(w http.ResponseWriter, r *http.Request) {
 			UsageLogs: ensureUsageLogs(detail.Usage),
 			Events:    ensureAuditEvents(detail.Events),
 			Backends:  []domain.Backend{},
-		},
-	})
-}
-
-func (a *App) handleListPolicies(w http.ResponseWriter, r *http.Request) {
-	page, limit := parsePageQuery(r)
-	total, err := a.store.CountModelPolicies(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	policies, err := a.store.ListModelPoliciesPage(r.Context(), limit, pageOffset(page, limit))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	summaries, err := a.store.PolicyUsageSummaryByIDs(r.Context(), modelPolicyIDs(policies))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	response := make([]policyView, 0, len(policies))
-	for _, policy := range policies {
-		summary := summaries[policy.ID]
-		response = append(response, policyView{
-			ModelPolicy:  policy,
-			RequestCount: summary.RequestCount,
-			BackendCount: summary.BackendCount,
-			ModelCount:   summary.ModelCount,
-			LastUsedAt:   optionalTime(summary.LastUsedAt),
-		})
-	}
-	writeJSON(w, http.StatusOK, pagedResponse(ensurePolicyViews(response), total, page, limit))
-}
-
-func (a *App) handleCreatePolicy(w http.ResponseWriter, r *http.Request) {
-	var payload struct {
-		Pattern         string `json:"pattern"`
-		Endpoint        string `json:"endpoint"`
-		PlacementPolicy string `json:"placement_policy"`
-		BackendPool     string `json:"backend_pool"`
-		FailoverEnabled bool   `json:"failover_enabled"`
-		Priority        int    `json:"priority"`
-	}
-	if err := decodeJSON(r, &payload); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	policy, err := a.store.CreateModelPolicy(r.Context(), domain.ModelPolicy{
-		Pattern:         payload.Pattern,
-		Endpoint:        payload.Endpoint,
-		PlacementPolicy: payload.PlacementPolicy,
-		BackendPool:     payload.BackendPool,
-		FailoverEnabled: payload.FailoverEnabled,
-		Priority:        payload.Priority,
-	})
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusCreated, policy)
-}
-
-func (a *App) handleUpdatePolicy(w http.ResponseWriter, r *http.Request) {
-	id, err := parseID(r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	policy, err := a.store.GetModelPolicy(r.Context(), id)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "policy not found")
-		return
-	}
-
-	var payload struct {
-		Pattern         string `json:"pattern"`
-		Endpoint        string `json:"endpoint"`
-		PlacementPolicy string `json:"placement_policy"`
-		BackendPool     string `json:"backend_pool"`
-		FailoverEnabled bool   `json:"failover_enabled"`
-		Priority        int    `json:"priority"`
-	}
-	if err := decodeJSON(r, &payload); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-
-	policy.Pattern = payload.Pattern
-	policy.Endpoint = payload.Endpoint
-	policy.PlacementPolicy = payload.PlacementPolicy
-	policy.BackendPool = payload.BackendPool
-	policy.FailoverEnabled = payload.FailoverEnabled
-	policy.Priority = payload.Priority
-
-	updated, err := a.store.UpdateModelPolicy(r.Context(), policy)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, updated)
-}
-
-func (a *App) handleDeletePolicy(w http.ResponseWriter, r *http.Request) {
-	id, err := parseID(r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := a.store.DeleteModelPolicy(r.Context(), id); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
-}
-
-func (a *App) handlePolicyDetail(w http.ResponseWriter, r *http.Request) {
-	id, err := parseID(r.PathValue("id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	detail, err := a.store.ModelPolicyDetail(r.Context(), id, 10)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "policy not found")
-		return
-	}
-	writeJSON(w, http.StatusOK, resourceDetailPayload{
-		Overview: []resourceDetailEntry{
-			detailEntry("pattern", "Pattern", detail.Policy.Pattern),
-			detailEntry("endpoint", "Endpoint", detail.Policy.Endpoint),
-			detailEntry("placement_policy", "Placement Policy", detail.Policy.PlacementPolicy),
-			detailEntry("backend_pool", "Backend Pool", detail.Policy.BackendPool),
-		},
-		Configuration: []resourceDetailEntry{
-			detailEntry("pattern", "Pattern", detail.Policy.Pattern),
-			detailEntry("endpoint", "Endpoint", detail.Policy.Endpoint),
-			detailEntry("placement_policy", "Placement Policy", detail.Policy.PlacementPolicy),
-			detailEntry("backend_pool", "Backend Pool", detail.Policy.BackendPool),
-			detailEntry("failover_enabled", "Failover Enabled", detail.Policy.FailoverEnabled),
-			detailEntry("priority", "Priority", detail.Policy.Priority),
-		},
-		Metadata: []resourceDetailEntry{
-			detailEntry("id", "ID", detail.Policy.ID),
-			detailEntry("created_at", "Created At", detail.Policy.CreatedAt),
-			detailEntry("updated_at", "Updated At", detail.Policy.UpdatedAt),
-		},
-		Raw: detail.Policy,
-		Activity: resourceDetailActivity{
-			Usage:     ensureUsageLogs(detail.Usage),
-			UsageLogs: ensureUsageLogs(detail.Usage),
-			Events:    ensureAuditEvents(detail.Events),
-			Backends:  detail.Backends,
 		},
 	})
 }
@@ -1779,7 +1572,6 @@ func (a *App) handleGetUsageLog(w http.ResponseWriter, r *http.Request) {
 		"metadata": map[string]any{
 			"id":                entry.ID,
 			"trace_id":          entry.TraceID,
-			"policy_name":       entry.PolicyName,
 			"proxy_name":        entry.ProxyName,
 			"preview_truncated": entry.PreviewTruncated,
 			"created_at":        entry.CreatedAt,
@@ -1798,7 +1590,6 @@ func (a *App) handleUsageLogOptions(w http.ResponseWriter, r *http.Request) {
 		"backends":    options.Backends,
 		"models":      options.Models,
 		"client_keys": options.ClientKeys,
-		"policies":    options.Policies,
 		"proxies":     options.Proxies,
 	})
 }
@@ -1858,7 +1649,6 @@ func usageLogFilterFromRequest(r *http.Request) (store.UsageLogFilter, error) {
 		BackendName: strings.TrimSpace(r.URL.Query().Get("backend")),
 		Model:       strings.TrimSpace(r.URL.Query().Get("model")),
 		ClientName:  strings.TrimSpace(r.URL.Query().Get("client_key")),
-		PolicyName:  strings.TrimSpace(r.URL.Query().Get("policy")),
 		ProxyName:   strings.TrimSpace(r.URL.Query().Get("proxy")),
 	}
 	status, err := normalizeUsageLogStatusFilter(r.URL.Query().Get("status"))
@@ -2160,20 +1950,6 @@ func ensureClientKeyViews(values []clientKeyView) []clientKeyView {
 	return values
 }
 
-func ensureModelPolicies(values []domain.ModelPolicy) []domain.ModelPolicy {
-	if values == nil {
-		return []domain.ModelPolicy{}
-	}
-	return values
-}
-
-func ensurePolicyViews(values []policyView) []policyView {
-	if values == nil {
-		return []policyView{}
-	}
-	return values
-}
-
 func ensureAuditEvents(values []domain.AuditEvent) []domain.AuditEvent {
 	if values == nil {
 		return []domain.AuditEvent{}
@@ -2220,19 +1996,16 @@ func socksProxyIDs(values []domain.SocksProxy) []int64 {
 	return ids
 }
 
-func modelPolicyIDs(values []domain.ModelPolicy) []int64 {
-	if len(values) == 0 {
-		return nil
-	}
-	ids := make([]int64, 0, len(values))
-	for _, value := range values {
-		ids = append(ids, value.ID)
-	}
-	return ids
-}
-
 func optionalTime(value time.Time) *time.Time {
 	if value.IsZero() {
+		return nil
+	}
+	copy := value.UTC()
+	return &copy
+}
+
+func optionalTimePointer(value *time.Time) *time.Time {
+	if value == nil || value.IsZero() {
 		return nil
 	}
 	copy := value.UTC()

@@ -156,7 +156,6 @@
     closeDrawerShell,
     startEditBackend,
     startEditClient,
-    startEditPolicy,
     startEditProxy,
   }) {
     const drawer = state?.ui?.drawer || {};
@@ -168,11 +167,6 @@
     if (drawer.kind === "clients") {
       closeDrawerShell?.();
       startEditClient?.(drawer.id);
-      return;
-    }
-    if (drawer.kind === "policies") {
-      closeDrawerShell?.();
-      startEditPolicy?.(drawer.id);
       return;
     }
     if (drawer.kind === "proxies") {

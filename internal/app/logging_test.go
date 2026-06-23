@@ -40,17 +40,9 @@ func TestUsageLogCreatedAtTracksRequestStartTime(t *testing.T) {
 		Name:      "alpha",
 		BaseURL:   "https://alpha.local/root/v1",
 		APIKey:    "alpha-key",
-		Enabled:   true,
 		Weight:    1,
 		Models:    []string{"gpt-4o"},
 		Endpoints: []string{domain.EndpointChat},
-	})
-	createTestPolicy(t, application, domain.ModelPolicy{
-		Pattern:         "gpt-*",
-		Endpoint:        domain.EndpointChat,
-		PlacementPolicy: domain.PlacementSticky,
-		FailoverEnabled: true,
-		Priority:        10,
 	})
 
 	fixture := newFailoverFixture(t, []domain.Backend{backend})

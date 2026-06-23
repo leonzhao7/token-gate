@@ -368,7 +368,7 @@ test("resource list runtime renders a local resource table with real helpers", (
     resourceViews: {
       backends: {
         query: "edge",
-        filter: "enabled",
+        filter: "normal",
         sort: "weight_desc",
       },
     },
@@ -384,8 +384,7 @@ test("resource list runtime renders a local resource table with real helpers", (
         id: 1,
         name: "edge-a",
         base_url: "https://edge-a.example/v1",
-        enabled: true,
-        pool: "premium",
+        status: "normal",
         protocol: "openai",
         request_count: 12,
         avg_latency_ms: 41,
@@ -398,8 +397,7 @@ test("resource list runtime renders a local resource table with real helpers", (
         id: 2,
         name: "edge-disabled",
         base_url: "https://edge-disabled.example/v1",
-        enabled: false,
-        pool: "bulk",
+        status: "disabled",
         protocol: "openai",
         request_count: 6,
         avg_latency_ms: 80,
@@ -440,7 +438,7 @@ test("resource list runtime renders a local resource table with real helpers", (
       backends: {
         filterOptions: [
           { value: "all", label: "All status" },
-          { value: "enabled", label: "Enabled" },
+          { value: "normal", label: "Normal" },
         ],
         sortOptions: [
           { value: "updated_desc", label: "Updated" },

@@ -137,7 +137,6 @@ test("theme helpers initialize persist resolve and apply theme state", () => {
     formatDateTime,
     backends: [{ id: 1 }],
     clients: [],
-    policies: [],
     proxies: [],
     usageLogStats: { total: 1 },
     usageLogMeta: { total: 1 },

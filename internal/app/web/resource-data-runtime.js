@@ -52,7 +52,6 @@
     renderProxies,
     renderBackends,
     renderClients,
-    renderPolicies,
   }) {
     if (resourceKey === "proxies") {
       state.proxies = await fetchAllCollectionPagesFn("/admin/api/socks-proxies");
@@ -68,10 +67,6 @@
       state.clients = await fetchAllCollectionPagesFn("/admin/api/client-keys");
       renderClients();
       return;
-    }
-    if (resourceKey === "policies") {
-      state.policies = await fetchAllCollectionPagesFn("/admin/api/model-policies");
-      renderPolicies();
     }
   }
 

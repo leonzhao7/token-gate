@@ -9,7 +9,6 @@
     const input = plainObject(snapshot);
     const backends = ensureArray(input.backends);
     const clients = ensureArray(input.clients);
-    const policies = ensureArray(input.policies);
     const proxies = ensureArray(input.proxies);
     const usageLogStats = plainObject(input.usageLogStats);
     const usageLogMeta = plainObject(input.usageLogMeta);
@@ -19,12 +18,12 @@
       adminTokenPresent: Boolean(input.adminTokenPresent),
       backends,
       clients,
-      policies,
     });
-    const enabledBackends = countEnabled(backends);
+    const normalBackends = countBackendsByStatus(backends, "normal");
+    const abnormalBackends = countBackendsByStatus(backends, "abnormal");
+    const disabledBackends = countBackendsByStatus(backends, "disabled");
     const enabledClients = countEnabled(clients);
     const enabledProxies = countEnabled(proxies);
-    const failoverEnabledPolicies = policies.filter((policy) => Boolean(policy?.failover_enabled)).length;
     const backendsWithProxy = backends.filter((backend) => Number(backend?.proxy_id) > 0).length;
     const modelMappings = backends.reduce((total, backend) => total + objectSize(backend?.model_mapping), 0);
     const successCount = familyCount(usageLogStats.status_families, "2xx");
@@ -35,8 +34,8 @@
         tone: alerts.length ? "warning" : "success",
         title: alerts.length ? "Configuration attention required" : "Control plane ready",
         description: alerts.length
-          ? "Core access or routing configuration is incomplete. Resolve the highlighted setup items before relying on the console."
-          : "Access, routing, and observability controls are aligned for day-to-day proxy operations.",
+          ? "Core access or backend configuration is incomplete. Resolve the highlighted setup items before relying on the console."
+          : "Access, backend scheduling, and observability controls are aligned for day-to-day proxy operations.",
         badges: [
           {
             label: "Admin token",
@@ -70,19 +69,13 @@
           key: "backends",
           label: "Backends",
           value: backends.length,
-          detail: `${enabledBackends} enabled / ${Math.max(0, backends.length - enabledBackends)} disabled`,
+          detail: `${normalBackends} normal / ${abnormalBackends} abnormal / ${disabledBackends} disabled`,
         },
         {
           key: "clients",
           label: "Client Keys",
           value: clients.length,
           detail: `${enabledClients} enabled / ${Math.max(0, clients.length - enabledClients)} disabled`,
-        },
-        {
-          key: "policies",
-          label: "Policies",
-          value: policies.length,
-          detail: `${failoverEnabledPolicies} failover on / ${Math.max(0, policies.length - failoverEnabledPolicies)} off`,
         },
         {
           key: "proxies",
@@ -101,7 +94,7 @@
           metrics: [
             { label: "Status", value: input.adminTokenPresent ? "Saved" : "Missing" },
             { label: "Last sync", value: stringValue(input.lastRefreshLabel) || "Not synced yet" },
-            { label: "Inventory", value: inventoryLabel(backends.length, clients.length, policies.length, proxies.length) },
+            { label: "Inventory", value: inventoryLabel(backends.length, clients.length, proxies.length) },
             { label: "Scope", value: "Resources, usage, events" },
           ],
           actions: [
@@ -144,18 +137,17 @@
         },
         {
           key: "routing",
-          eyebrow: "Routing",
-          title: "Routing Coverage",
-          description: "Track backend readiness, proxy attachment, model aliasing, and failover coverage from one place.",
+          eyebrow: "Scheduling",
+          title: "Backend Scheduling",
+          description: "Track backend readiness, proxy attachment, model aliasing, and automatic recovery state from one place.",
           metrics: [
-            { label: "Enabled backends", value: integerLabel(enabledBackends) },
+            { label: "Normal backends", value: integerLabel(normalBackends) },
+            { label: "Abnormal backends", value: integerLabel(abnormalBackends) },
             { label: "Backends with proxy", value: integerLabel(backendsWithProxy) },
             { label: "Model mappings", value: integerLabel(modelMappings) },
-            { label: "Failover ready", value: integerLabel(failoverEnabledPolicies) },
           ],
           actions: [
             { key: "open-backends", label: "Backends" },
-            { key: "open-policies", label: "Policies" },
           ],
         },
       ],
@@ -262,11 +254,11 @@
         body: "Store TG_ADMIN_TOKEN in the console before relying on resource or observability data.",
       });
     }
-    if (!countEnabled(input.backends)) {
+    if (!countBackendsByStatus(input.backends, "normal")) {
       alerts.push({
         tone: "warning",
-        title: "Add an enabled backend",
-        body: "At least one enabled backend is required before upstream traffic can be routed successfully.",
+        title: "Add a normal backend",
+        body: "At least one normal backend is required before upstream traffic can be routed successfully.",
       });
     }
     if (!ensureArray(input.clients).length) {
@@ -276,21 +268,13 @@
         body: "Issue a client key so traffic can authenticate through the proxy layer.",
       });
     }
-    if (!ensureArray(input.policies).length) {
-      alerts.push({
-        tone: "warning",
-        title: "Create a routing policy",
-        body: "Define at least one policy so model requests can be matched to eligible backends.",
-      });
-    }
     return alerts;
   }
 
-  function inventoryLabel(backends, clients, policies, proxies) {
+  function inventoryLabel(backends, clients, proxies) {
     return [
       `${integerLabel(backends)} backends`,
       `${integerLabel(clients)} keys`,
-      `${integerLabel(policies)} policies`,
       `${integerLabel(proxies)} proxies`,
     ].join(" · ");
   }
@@ -315,6 +299,10 @@
 
   function countEnabled(items) {
     return ensureArray(items).filter((item) => Boolean(item?.enabled)).length;
+  }
+
+  function countBackendsByStatus(items, status) {
+    return ensureArray(items).filter((item) => stringValue(item?.status || "normal").toLowerCase() === status).length;
   }
 
   function objectSize(value) {

@@ -31,7 +31,6 @@ test("createResourceToolbarModel keeps shared admin list actions in order and ad
 test("createResourceToolbarModel maps create labels per resource", () => {
   assert.equal(createResourceToolbarModel({ resourceKey: "clients" }).createLabel, "新增 Client Key");
   assert.equal(createResourceToolbarModel({ resourceKey: "proxies" }).createLabel, "新增 Proxy");
-  assert.equal(createResourceToolbarModel({ resourceKey: "policies" }).createLabel, "新增 Policy");
 });
 
 test("createResourceTableModel normalizes rows and columns for premium list pages", () => {
@@ -62,7 +61,7 @@ test("createQuickDetailSections limits inline expansion to concise summaries", (
     endpoints: ["chat", "responses"],
     model_count: 2,
     endpoint_count: 2,
-    pool: "premium",
+    status: "normal",
     proxy: { name: "tokyo-egress" },
     request_count: 42,
     avg_latency_ms: 88,
@@ -75,8 +74,8 @@ test("createQuickDetailSections limits inline expansion to concise summaries", (
       title: "Relationships",
       tone: "primary",
       items: [
-        { label: "Pool", value: "premium" },
         { label: "Proxy", value: "tokyo-egress" },
+        { label: "Status", value: "normal" },
       ],
     },
     {
@@ -107,26 +106,16 @@ test("createQuickDetailSections limits inline expansion to concise summaries", (
   ]);
 });
 
-test("createQuickDetailSections surfaces client usage and routing summaries", () => {
+test("createQuickDetailSections surfaces client usage summaries", () => {
   const sections = createQuickDetailSections("clients", {
     name: "prod-web",
     token: "client-visible-key",
     masked_token: "client-v...-key",
-    route_mode_override: "sticky",
-    route_group: "frontend-a",
     usage_count: 12,
     last_used_at: "2026-06-19T12:00:00Z",
   });
 
   assert.deepEqual(sections, [
-    {
-      title: "Routing",
-      tone: "primary",
-      items: [
-        { label: "Route mode", value: "sticky" },
-        { label: "Route group", value: "frontend-a" },
-      ],
-    },
     {
       title: "Usage",
       tone: "success",
@@ -148,17 +137,10 @@ test("createQuickDetailSections surfaces client usage and routing summaries", ()
 
 test("createQuickDetailSections preserves legacy prefix-only client key context", () => {
   const sections = createQuickDetailSections("clients", {
-    route_mode_override: "",
-    route_group: "",
     token_prefix: "legacy-ab",
   });
 
   assert.deepEqual(sections, [
-    {
-      title: "Routing",
-      tone: "primary",
-      items: [{ label: "Route mode", value: "default" }],
-    },
     {
       title: "Client Key",
       tone: "neutral",
@@ -204,59 +186,6 @@ test("createQuickDetailSections surfaces proxy bindings and usage summary", () =
         { label: "Auth", value: "proxy-user" },
         { label: "Password", value: "set" },
         { label: "Status", value: "enabled" },
-      ],
-    },
-  ]);
-});
-
-test("createQuickDetailSections surfaces policy routing and usage summary", () => {
-  const sections = createQuickDetailSections("policies", {
-    pattern: "gpt-*",
-    endpoint: "chat",
-    placement_policy: "sticky",
-    backend_pool: "premium",
-    priority: 10,
-    failover_enabled: true,
-    request_count: 23,
-    backend_count: 4,
-    model_count: 7,
-    last_used_at: "2026-06-19T15:00:00Z",
-  });
-
-  assert.deepEqual(sections, [
-    {
-      title: "Relationships",
-      tone: "primary",
-      items: [
-        { label: "Pool", value: "premium" },
-        { label: "Endpoint", value: "chat" },
-      ],
-    },
-    {
-      title: "Routing",
-      tone: "warning",
-      items: [
-        { label: "Placement", value: "sticky" },
-        { label: "Priority", value: "10" },
-        { label: "Failover", value: "on" },
-      ],
-    },
-    {
-      title: "Usage",
-      tone: "success",
-      items: [
-        { label: "Requests", value: "23" },
-        { label: "Backends", value: "4" },
-        { label: "Models", value: "7" },
-        { label: "Last used", value: "2026-06-19T15:00:00Z" },
-      ],
-    },
-    {
-      title: "JSON Preview",
-      tone: "neutral",
-      items: [
-        { label: "Pattern", value: "gpt-*" },
-        { label: "Failover", value: "true" },
       ],
     },
   ]);

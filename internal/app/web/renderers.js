@@ -33,8 +33,8 @@
       const endpointCount = numericCount(source.endpoint_count, source.endpoints);
       return compactSections([
         detailSection("Relationships", "primary", [
-          detailItem("Pool", source.pool),
           detailItem("Proxy", source.proxy?.name),
+          detailItem("Status", source.status),
         ]),
         detailSection("Capabilities", "success", [
           detailItem("Models", modelCount > 0 ? String(modelCount) : ""),
@@ -55,10 +55,6 @@
 
     if (kind === "clients") {
       return compactSections([
-        detailSection("Routing", "primary", [
-          detailItem("Route mode", source.route_mode_override || "default"),
-          detailItem("Route group", source.route_group),
-        ]),
         detailSection("Usage", "success", [
           detailItem("Requests", finiteCount(source.usage_count)),
           detailItem("Last used", source.last_used_at),
@@ -67,30 +63,6 @@
           detailItem("Masked", source.masked_token),
           detailItem("Visible", source.token),
           detailItem("Prefix", source.token_prefix ? `${source.token_prefix} (历史记录仅保存 prefix)` : ""),
-        ]),
-      ]);
-    }
-
-    if (kind === "policies") {
-      return compactSections([
-        detailSection("Relationships", "primary", [
-          detailItem("Pool", source.backend_pool),
-          detailItem("Endpoint", source.endpoint),
-        ]),
-        detailSection("Routing", "warning", [
-          detailItem("Placement", source.placement_policy),
-          detailItem("Priority", typeof source.priority !== "undefined" ? String(source.priority) : ""),
-          detailItem("Failover", typeof source.failover_enabled === "boolean" ? (source.failover_enabled ? "on" : "off") : ""),
-        ]),
-        detailSection("Usage", "success", [
-          detailItem("Requests", finiteCount(source.request_count)),
-          detailItem("Backends", finiteCount(source.backend_count)),
-          detailItem("Models", finiteCount(source.model_count)),
-          detailItem("Last used", source.last_used_at),
-        ]),
-        detailSection("JSON Preview", "neutral", [
-          detailItem("Pattern", source.pattern),
-          detailItem("Failover", typeof source.failover_enabled === "boolean" ? String(source.failover_enabled) : ""),
         ]),
       ]);
     }
@@ -218,7 +190,6 @@
     const labels = {
       backends: "新增 Backend",
       clients: "新增 Client Key",
-      policies: "新增 Policy",
       proxies: "新增 Proxy",
     };
     return labels[resourceKey] || "新增";

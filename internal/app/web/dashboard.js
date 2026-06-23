@@ -27,15 +27,6 @@
       },
     },
     {
-      key: "policies",
-      label: "Policies",
-      countKey: "model_policies",
-      growthKey: "errors",
-      detail(summary) {
-        return `${numberValue(summary?.status?.recent_errors)} recent errors`;
-      },
-    },
-    {
       key: "proxies",
       label: "Proxies",
       countKey: "socks_proxies",
@@ -49,7 +40,6 @@
   const ACTIVITY_COUNTER_DEFINITIONS = [
     { key: "warning", label: "Warnings", tone: "warning" },
     { key: "error", label: "Errors", tone: "danger" },
-    { key: "policy", label: "Policy Changes", tone: "primary" },
     { key: "key", label: "Key Creations", tone: "neutral" },
     { key: "backend", label: "Backend Updates", tone: "success" },
   ];
@@ -60,7 +50,6 @@
       summaryCards: {
         backends: createPanelState(),
         client_keys: createPanelState(),
-        policies: createPanelState(),
         proxies: createPanelState(),
       },
       usage: createPanelState({ metric: "requests", range: "7d" }),
@@ -319,9 +308,6 @@
     }
     if (normalized === "error" || normalized === "errors") {
       return "error";
-    }
-    if (normalized === "policy" || normalized.startsWith("policy.")) {
-      return "policy";
     }
     if (normalized === "key" || normalized.startsWith("key.") || normalized.startsWith("client")) {
       return "key";
