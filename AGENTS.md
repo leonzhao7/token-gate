@@ -1,22 +1,18 @@
 # AGENTS.md
 
 ## 1. Project Overview
-- `token-gate` is a Go-based AI gateway that exposes one public API surface and routes requests to multiple upstream LLM backends.
-- Supported public API families in code: OpenAI-style `chat`, `responses`, `embeddings`, `images`, `models`, plus Anthropic-style `messages` and `messages/count_tokens`.
-- It also ships a static admin console at `/admin/` for managing backends, client keys, SOCKS5 proxies, policies, usage logs, and audit events.
+- `token-gate` is a Go-based AI gateway with a static admin console.
+- It authenticates client keys, routes one public API surface to upstream LLM backends, records usage logs/audit events, and lets admins manage backends, client keys, and SOCKS5 proxies.
+- Current routing model is backend-centric only: there are no model policies, route groups, route modes, or backend pools.
 
 ## 2. Tech Stack
 - Languages: Go, JavaScript, HTML, CSS
-- Backend runtime: Go `1.25`, standard library HTTP stack (`net/http`, `httptrace`, `log/slog`, `database/sql`)
+- Backend: Go `net/http`, `database/sql`, `log/slog`
 - Storage: SQLite via `github.com/mattn/go-sqlite3`
-- Frontend runtime: browser-native vanilla JS; no bundler, no package manager, no framework
-- Testing:
-  - Go package tests with `go test`
-  - Frontend module tests with Node built-in test runner on `*.test.mjs`
-- Key built-in dependencies/patterns:
-  - `go:embed` for admin assets
-  - `httptrace` for backend connection tracing
-  - `localStorage` for admin token/theme/sidebar state
+- Frontend: browser-native vanilla JS, no bundler/framework
+- Tests:
+  - `go test ./...`
+  - `node --test internal/app/web/*.test.mjs`
 
 ## 3. Repository Structure
 - `cmd/token-gate/`
@@ -24,122 +20,125 @@
 - `internal/config/`
   - env-driven runtime config
 - `internal/domain/`
-  - core types/constants for clients, backends, policies, events, usage logs
+  - core types/constants (`Backend`, `ClientKey`, `UsageLog`, `AuditEvent`, endpoint/status constants)
 - `internal/store/`
-  - SQLite schema creation, CRUD, reporting, search, detail queries
+  - SQLite schema creation, compatibility column/index migrations, CRUD, detail queries, search, stats
 - `internal/scheduler/`
-  - policy selection, candidate filtering, rendezvous-hash placement, cooldown runtime state
+  - backend candidate selection and backend failure/success bookkeeping hooks
 - `internal/proxy/`
-  - upstream request forwarding, auth-header rewrite, SOCKS5-aware HTTP clients
+  - upstream forwarding and protocol/auth handling
 - `internal/app/`
-  - HTTP routes, auth middleware, proxy handler, admin APIs, logging/observability helpers
+  - HTTP routes, admin APIs, proxy handler, logging
 - `internal/app/web/`
-  - embedded admin UI (`index.html`, `styles.css`, many small JS modules + `*.test.mjs`)
+  - embedded admin UI (`index.html`, JS modules, `*.test.mjs`)
 - `docs/`
-  - `DESIGN.md`, `SCHEDULING.md`
-  - `docs/superpowers/specs/2026-06-18-token-gate-ai-proxy-center-design.md`
-  - `docs/superpowers/plans/2026-06-18-ai-proxy-center-implementation.md`
+  - design/spec notes, not guaranteed current
 - `start.sh`
-  - local run script with default envs and local Go cache
+  - local runner with default envs and local Go cache
 
 ## 4. Architecture Summary
 - Public request flow:
-  - client auth via `Authorization: Bearer <key>` or `X-Api-Key`
-  - endpoint detection from request path
-  - model extraction from JSON body
-  - scheduler selects one policy and ordered backend candidates
-  - proxy forwards request to upstream, rewriting upstream auth headers
-  - app records usage log + audit events around selection/failover/result
+  - client auth
+  - detect endpoint from request path
+  - extract model from request body
+  - scheduler loads backends from SQLite and selects ordered candidates
+  - app forwards request to backends in order until one succeeds
+  - usage log + audit events are persisted around the attempt sequence
 - Scheduler behavior:
-  - policy chosen by endpoint/model match, then priority, then pattern specificity
-  - placement modes in code: `sticky`, `pack`, `spread`
-  - candidate ranking uses rendezvous hashing; `spread` also divides score by active requests
-  - runtime state is in-memory only; failures trigger cooldowns, successes clear them
-- Backend model handling:
-  - selection can match either `backend.Models` or `backend.ModelMapping`
-  - if a backend maps client model -> upstream model, the app rewrites the request JSON `model` field before forwarding
+  - only `normal` backends are eligible
+  - backend must support both requested endpoint and requested model
+  - candidates are sorted by `weight DESC`, tie-break `id ASC`
+  - any upstream/network failure advances to the next candidate
+  - if all candidates fail, client gets `503`
+- Backend runtime state:
+  - persisted in SQLite on `backends.status`, `backends.consecutive_failures`, `backends.recover_at`
+  - statuses: `normal`, `abnormal`, `disabled`
+  - repeated failures mark backend `abnormal`
+  - cooldown expiry moves `abnormal -> normal` and clears failure counters
+  - manual admin edits may set backend to `normal` or `disabled`; `abnormal` remains scheduler-managed
 - Admin console architecture:
-  - static assets served from embedded `internal/app/web/*`
-  - root path redirects to `/admin/`
-  - UI is SPA-like but framework-free; modules communicate through globals like `ThemeUtils`, `ResourceRuntimeUtils`, `ObservabilityViewUtils`
-  - admin APIs provide dashboard aggregates, search, details, usage log stats/options, and CRUD endpoints
-- Visible design constraints from code/docs:
-  - no background backend health probing; `StartBackground` is intentionally empty
-  - SOCKS5 proxy binding is per backend
-  - schema is created in `store.Open`; no separate migration system
+  - static embedded files served from `internal/app/web`
+  - no build step
+  - modules expose `*Utils` globals and are also testable via `module.exports`
 
 ## 5. Development Conventions
 - Go:
-  - standard library only for HTTP/app wiring; no web framework
-  - package-local tests live beside source
-  - helper patterns: `writeJSON`, `writeError`, auth wrappers, small pure helpers
+  - standard library HTTP stack, no web framework
   - request JSON decoding uses `DisallowUnknownFields`
+  - small helper functions around handlers; main integration remains in `internal/app/app.go`
 - Frontend:
-  - each module is an IIFE that exports the same API both to `module.exports` and `globalScope.*Utils`
-  - tests import browser modules with `createRequire(...)`
-  - no build step; files are loaded directly by `index.html`
-- Naming/patterns:
-  - endpoint names use constants from `internal/domain/types.go`
-  - admin list endpoints generally support `page`/`limit`; allowed limits in app code are `10`, `20`, `50`
-  - list/detail/search/dashboard logic is mostly concentrated in `internal/app/app.go`
+  - module pattern is IIFE + `module.exports` + global export
+  - forms submit directly to admin APIs; no client-side framework state library
 - Important constraints:
-  - preserve header redaction behavior in observability paths (`Authorization`, `Api-Key`, `X-Api-Key`, `Cookie`)
-  - usage/request previews are intentionally truncated; do not expand them casually
-  - avoid introducing Node/npm tooling unless the repo explicitly adopts it
+  - preserve auth/header redaction in observability code
+  - do not reintroduce removed concepts: `policies`, `route_group`, `route_mode_override`, backend `pool`, backend `enabled`
+  - schema is managed inline in `store.Open`; there is no standalone migration tool
 
 ## 6. Current State
 - Implemented:
-  - public proxy endpoints for chat/responses/embeddings/images/messages/models
-  - client-key auth and admin-token auth
-  - backend selection with policy priority/specificity, weights, cooldowns, route-group support
-  - failover on request errors and retryable upstream statuses
-  - backend protocol support for OpenAI-style and Anthropic-style auth headers
-  - optional backend `ModelMapping`
-  - admin CRUD for SOCKS proxies, backends, client keys, and model policies
-  - admin dashboard, search, usage logs, events, detail drawers, theme toggle, shell navigation
-  - usage log persistence with request/response previews and event/audit storage
-- Partially done / currently in progress:
-  - working tree is dirty on `main`; current uncommitted edits are in:
-    - `internal/app/app.go`
-    - `internal/app/logging.go`
-    - `internal/app/logging_test.go` (new)
-    - `internal/app/web/observability-view.js`
-    - `internal/app/web/observability-view.test.mjs`
-    - `internal/store/store.go`
-  - those edits currently do three things:
-    - set `usage_logs.created_at` from request start time instead of insert time
-    - remove DNS callbacks from backend `httptrace` logging
-    - simplify usage-log table columns in the observability UI (replace `Method`/`Trace ID` columns with `Model`)
-- Known issues / risks visible in code:
-  - app-level response handling buffers the full upstream response in `cloneResponseForLogging(...)` before `proxy.WriteResponse(...)`; this conflicts with the stated streaming/SSE transparency goal and is the highest-priority architectural risk
-  - docs are slightly stale relative to code: the current app can rewrite request bodies when `backend.ModelMapping` is used
-  - `internal/app/app.go` is the main integration point and is very large; future edits there are high-churn and need careful scoping
-  - `internal/store` has broad responsibility but no direct package tests in this repo snapshot; it is exercised mainly through app/scheduler tests
+  - public proxy endpoints for OpenAI-style and Anthropic-style upstreams
+  - admin CRUD for SOCKS proxies, backends, client keys
+  - persisted backend scheduling state in SQLite
+  - backend manual status edits for `normal` and `disabled`
+  - dashboard, search, usage logs, events, settings, resource drawers
+- Completed in recent sessions:
+  - removed policy routing model end-to-end from backend API, frontend, and schema
+  - removed backend `pool`/`enabled` from backend management model
+  - removed usage-log policy filter remnants from frontend
+  - fixed legacy SQLite startup failure by creating `idx_backends_status` only after `status` migration is ensured
+  - added regression coverage for legacy backend-table migration
+  - adjusted backend edit submission so an `abnormal` backend is not accidentally coerced to `normal` when the edit form has no explicit status value
+  - added backend API regression coverage for manual `normal` / `disabled` status updates
+- Current uncommitted worktree:
+  - `internal/app/app_test.go`
+  - `internal/app/web/app.js`
+  - `internal/app/web/resource-runtime.js`
+  - `internal/app/web/resource-runtime.test.mjs`
+  - `internal/config/config.go`
+- Meaning of current uncommitted work:
+  - backend manual status update behavior + frontend fallback handling are implemented and fully verified
+  - `internal/config/config.go` changes `TG_BACKEND_COOLDOWN` default from `20s` to `10m`; it is unrelated to the manual-status fix and is still unstaged/uncommitted
 
-## 7. Active Tasks
-- 1. Finish and commit the current dirty worktree after re-validating the logging/observability behavior it changes.
-- 2. Fix or explicitly redesign streaming behavior so proxy responses are not fully buffered before client delivery; add regression coverage at the app layer.
-- 3. Reconcile docs (`README.md`, `docs/DESIGN.md`) with actual request-model rewriting and current observability UI behavior.
+## 7. In Progress
+- Isolated commit for the backend manual status behavior is not created yet.
+- `internal/config/config.go` remains a separate dirty change and should not be mixed into the behavior-fix commit unless explicitly intended.
+
+## 8. Known Issues
+- `internal/app/app.go` is still large and high-churn; behavior changes there need narrow diffs and targeted tests.
+- `docs/` is stale relative to current code:
+  - policy-based routing docs no longer describe the real system
+  - scheduler docs may still mention removed concepts
+- Local `./start.sh` can fail in shared/dev environments if `:4000` is already occupied; this is environmental, not an app-init/schema issue.
+
+## 9. Active Tasks
+- 1. Commit the current verified manual-backend-status fix without mixing in `internal/config/config.go`.
+- 2. Decide whether the new default cooldown in `internal/config/config.go` should be kept, reverted, or committed separately.
+- 3. Refresh `docs/DESIGN.md` / scheduling docs so they match the current backend-only routing model.
 - 4. Keep adding targeted tests around:
-  - usage log timestamp semantics
-  - failover + observability logging
-  - admin observability rendering
-  - any future streaming changes
-- 5. If more admin/API work lands, consider extracting slices out of `internal/app/app.go` instead of growing it further.
+  - scheduler failure threshold/cooldown behavior
+  - admin backend update semantics
+  - legacy SQLite compatibility when opening old local DB files
 
-## 8. Key Commands
-- Install dependencies:
-  - `go mod download`
+## 10. Architecture Notes
+- Policy routing architecture is gone. Routing now depends only on:
+  - endpoint support
+  - model support / exact `ModelMapping` key match
+  - backend status
+  - backend weight ordering
+- Backend status is now a first-class persisted runtime concern, not in-memory only.
+- Frontend backend edit handling must preserve current `abnormal` state unless the user explicitly changes status to `normal` or `disabled`.
+
+## 11. Key Commands
 - Run locally:
   - `./start.sh`
-  - or `TG_ADMIN_TOKEN=replace-me TG_DB_PATH=./token-gate.db go run ./cmd/token-gate`
+  - or `TG_ADMIN_TOKEN=... TG_DB_PATH=./token-gate.db go run ./cmd/token-gate`
 - Build:
   - `GOCACHE=/root/workspace/token-gate/.gocache go build ./...`
 - Go tests:
   - `GOCACHE=/root/workspace/token-gate/.gocache go test ./...`
-- Frontend module tests:
+- Frontend tests:
   - `node --test internal/app/web/*.test.mjs`
-- Useful env vars from `internal/config/config.go`:
+- Useful env vars:
   - `TG_LISTEN_ADDR`
   - `TG_DB_PATH`
   - `TG_ADMIN_TOKEN`
@@ -149,34 +148,23 @@
   - `TG_REQUEST_TIMEOUT`
   - `TG_SHUTDOWN_TIMEOUT`
 
-## 9. Git / Commit Guidance (for AI agents)
-- Check `git status --short --branch` before editing; this repo may already contain user work.
-- Do not mix unrelated subsystems in one commit:
-  - proxy/scheduler behavior
-  - store/query changes
-  - admin UI rendering
-  - docs/memory updates
-- Preserve and review existing dirty changes instead of overwriting them.
-- Commit tests with behavior changes, especially for proxy/failover/logging work.
-- Prefer small commits with a single operational theme; this repo’s large `app.go` makes mixed commits hard to review safely.
+## 12. Git / Commit Guidance
+- Always inspect `git status --short` first; the worktree may already contain unrelated user changes.
+- Do not mix these categories in one commit:
+  - backend scheduling / API semantics
+  - config default changes
+  - docs cleanup
+  - frontend rendering cleanup
+- Behavior changes should ship with tests in the same commit.
+- If `internal/config/config.go` is still dirty, treat it as a separate decision unless the task explicitly includes config defaults.
 
-## 10. AI Agent Rules
-- Inspect before modifying:
-  - start with `AGENTS.md`, `README.md`, `docs/DESIGN.md`, `git status`, then the specific package you need
-- Make minimal changes:
-  - avoid broad refactors unless the task is explicitly structural
-  - keep edits local to the touched subsystem
-- Trust code over prose:
-  - docs are helpful, but source is the authority when they disagree
-- Protect observability hygiene:
-  - keep auth/header redaction intact
-  - avoid storing more body/header data unless explicitly required
-- Keep context small:
-  - summarize large logs/diffs/test output
-  - do not paste large generated output into memory files
-- Verify before claiming success:
-  - run targeted tests first
-  - run broader `go test ./...` or `node --test ...` when the change scope warrants it
+## 13. AI Agent Rules
+- Read code before trusting old docs.
+- Make minimal changes and keep removed concepts removed.
+- Summarize outputs; do not store raw logs/diffs in memory files.
+- Verify before claiming completion:
+  - targeted tests first
+  - then broader `go test ./...` / `node --test ...` when change scope warrants it
 
-## 11. Session Boot Instructions
-> Read `AGENTS.md` -> run `git status --short --branch` -> inspect dirty files and latest commits -> open the relevant package(s) -> continue from **Active Tasks** -> run targeted tests before and after edits.
+## 14. Session Boot Instructions
+> Read `AGENTS.md` -> run `git status --short` -> check whether `internal/config/config.go` is still intentionally dirty -> continue from **Active Tasks** -> run targeted tests before and after edits.
