@@ -949,12 +949,19 @@ backendForm.addEventListener("submit", async (event) => {
   try {
     const editing = state.editingBackendID !== null;
     const data = readForm(event.currentTarget);
+    const currentBackend = editing
+      ? state.backends.find((backend) => String(backend.id) === String(state.editingBackendID))
+      : null;
     data.models = splitList(data.models);
     data.model_mapping = parseModelMapping(data.model_mapping);
     data.endpoints = splitList(data.endpoints);
     data.weight = Number(data.weight || 1);
     data.proxy_id = Number(data.proxy_id || 0);
-    data.status = data.status || "normal";
+    data.status = ResourceRuntimeUtils.resolveSubmittedBackendStatus({
+      submittedStatus: data.status,
+      currentBackendStatus: currentBackend?.status,
+      editing,
+    });
 
     if (!editing && !String(data.api_key || "").trim()) {
       throw new Error("新增 Backend 必须填写 API key");

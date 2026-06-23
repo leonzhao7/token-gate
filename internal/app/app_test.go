@@ -402,6 +402,85 @@ func TestUpdateBackendRejectsAbnormalStatus(t *testing.T) {
 	}
 }
 
+func TestUpdateBackendAllowsManualNormalAndDisabledStatus(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "edge-manual-status",
+		Protocol:  domain.BackendProtocolOpenAI,
+		BaseURL:   "https://edge.local/v1",
+		APIKey:    "edge-key",
+		Status:    domain.BackendStatusNormal,
+		Weight:    7,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+	abnormal, err := application.store.MarkBackendFailure(ctx, backend.ID, 1, 5*time.Minute, time.Date(2026, 6, 23, 10, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("mark backend failure: %v", err)
+	}
+	if abnormal.Status != domain.BackendStatusAbnormal {
+		t.Fatalf("expected abnormal backend fixture, got %#v", abnormal)
+	}
+
+	disableReq := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/admin/api/backends/%d", backend.ID), strings.NewReader(`{
+		"name":"edge-manual-status",
+		"protocol":"openai",
+		"base_url":"https://edge.local/v1",
+		"api_key":"edge-key",
+		"proxy_id":0,
+		"status":"disabled",
+		"weight":7,
+		"models":["gpt-4o"],
+		"model_mapping":{},
+		"endpoints":["chat"]
+	}`))
+	disableReq.SetPathValue("id", strconv.FormatInt(backend.ID, 10))
+	disableReq.Header.Set("Authorization", "Bearer "+application.cfg.AdminToken)
+	disableRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(disableRecorder, disableReq)
+	if disableRecorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 when manually disabling abnormal backend, got %d body=%s", disableRecorder.Code, disableRecorder.Body.String())
+	}
+
+	disabled, err := application.store.GetBackend(ctx, backend.ID)
+	if err != nil {
+		t.Fatalf("get disabled backend: %v", err)
+	}
+	if disabled.Status != domain.BackendStatusDisabled {
+		t.Fatalf("expected disabled status after manual update, got %#v", disabled)
+	}
+
+	normalReq := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/admin/api/backends/%d", backend.ID), strings.NewReader(`{
+		"name":"edge-manual-status",
+		"protocol":"openai",
+		"base_url":"https://edge.local/v1",
+		"api_key":"edge-key",
+		"proxy_id":0,
+		"status":"normal",
+		"weight":7,
+		"models":["gpt-4o"],
+		"model_mapping":{},
+		"endpoints":["chat"]
+	}`))
+	normalReq.SetPathValue("id", strconv.FormatInt(backend.ID, 10))
+	normalReq.Header.Set("Authorization", "Bearer "+application.cfg.AdminToken)
+	normalRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(normalRecorder, normalReq)
+	if normalRecorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 when manually restoring backend to normal, got %d body=%s", normalRecorder.Code, normalRecorder.Body.String())
+	}
+
+	restored, err := application.store.GetBackend(ctx, backend.ID)
+	if err != nil {
+		t.Fatalf("get restored backend: %v", err)
+	}
+	if restored.Status != domain.BackendStatusNormal || restored.ConsecutiveFailures != 0 || restored.RecoverAt != nil {
+		t.Fatalf("expected manual normal update to clear runtime state, got %#v", restored)
+	}
+}
+
 func TestPolicyRoutesRemoved(t *testing.T) {
 	application := newTestApp(t)
 

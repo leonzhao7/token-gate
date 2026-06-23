@@ -84,6 +84,31 @@ test("requireResourceStateUtils returns the resource state api when all required
   });
 });
 
+test("resolveSubmittedBackendStatus preserves abnormal fallback during edit and accepts manual normal/disabled values", () => {
+  const runtime = require("./resource-runtime.js");
+
+  assert.equal(runtime.resolveSubmittedBackendStatus({
+    submittedStatus: "",
+    currentBackendStatus: "abnormal",
+    editing: true,
+  }), "abnormal");
+  assert.equal(runtime.resolveSubmittedBackendStatus({
+    submittedStatus: "normal",
+    currentBackendStatus: "abnormal",
+    editing: true,
+  }), "normal");
+  assert.equal(runtime.resolveSubmittedBackendStatus({
+    submittedStatus: "disabled",
+    currentBackendStatus: "abnormal",
+    editing: true,
+  }), "disabled");
+  assert.equal(runtime.resolveSubmittedBackendStatus({
+    submittedStatus: "",
+    currentBackendStatus: "",
+    editing: false,
+  }), "normal");
+});
+
 test("requireResourceStateUtils throws a clear error when resource-state utils are unavailable", () => {
   assert.throws(
     () => requireResourceStateUtils(null),
@@ -1717,6 +1742,7 @@ function createAppVmContext({
 
   function createStubElement(key) {
     const classState = new Set();
+    const listeners = new Map();
     const element = new HTMLElement();
     element.__key = key;
     element.dataset = {};
@@ -1764,8 +1790,21 @@ function createAppVmContext({
         return classState.has(token);
       },
     };
-    element.addEventListener = () => {};
-    element.removeEventListener = () => {};
+    element.addEventListener = (type, handler) => {
+      if (!listeners.has(type)) {
+        listeners.set(type, []);
+      }
+      listeners.get(type).push(handler);
+    };
+    element.removeEventListener = (type, handler) => {
+      const handlers = listeners.get(type) || [];
+      listeners.set(type, handlers.filter((entry) => entry !== handler));
+    };
+    element.dispatchEvent = (event) => {
+      const handlers = listeners.get(event?.type) || [];
+      handlers.forEach((handler) => handler.call(element, event));
+      return true;
+    };
     element.setAttribute = (name, value) => {
       element.attributes[name] = value;
     };

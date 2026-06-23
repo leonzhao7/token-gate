@@ -156,6 +156,17 @@
     "handleSettingsAction",
   ];
 
+  function resolveSubmittedBackendStatus({ submittedStatus, currentBackendStatus, editing }) {
+    const normalizedSubmittedStatus = String(submittedStatus || "").trim();
+    if (normalizedSubmittedStatus) {
+      return normalizedSubmittedStatus;
+    }
+    if (editing) {
+      return String(currentBackendStatus || "").trim() || "normal";
+    }
+    return "normal";
+  }
+
   function requireResourceViewUtils(resourceViewUtils) {
     const candidate = resourceViewUtils && typeof resourceViewUtils === "object"
       ? resourceViewUtils
@@ -409,6 +420,7 @@
   }
 
   const api = {
+    resolveSubmittedBackendStatus,
     requireConsoleDataRuntimeUtils,
     requireDashboardRuntimeUtils,
     requireDashboardViewUtils,

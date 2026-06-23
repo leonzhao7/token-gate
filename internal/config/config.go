@@ -23,7 +23,7 @@ func Load() Config {
 		DBPath:          getenv("TG_DB_PATH", "./token-gate.db"),
 		AdminToken:      getenv("TG_ADMIN_TOKEN", "dev-admin-token"),
 		LogLevel:        getenv("TG_LOG_LEVEL", "info"),
-		BackendCooldown: getDuration("TG_BACKEND_COOLDOWN", 20*time.Second),
+		BackendCooldown: getDuration("TG_BACKEND_COOLDOWN", 10*time.Minute),
 		BackendFails:    getInt("TG_BACKEND_FAILS", 3),
 		RequestTimeout:  getDuration("TG_REQUEST_TIMEOUT", 30*time.Second),
 		ShutdownTimeout: getDuration("TG_SHUTDOWN_TIMEOUT", 10*time.Second),
