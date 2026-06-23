@@ -14,6 +14,10 @@ const (
 	EndpointMessages   = "messages"
 	EndpointModels     = "models"
 
+	BackendStatusNormal   = "normal"
+	BackendStatusAbnormal = "abnormal"
+	BackendStatusDisabled = "disabled"
+
 	PlacementSticky = "sticky"
 	PlacementPack   = "pack"
 	PlacementSpread = "spread"
@@ -36,21 +40,24 @@ type ClientKey struct {
 }
 
 type Backend struct {
-	ID           int64             `json:"id"`
-	Name         string            `json:"name"`
-	Pool         string            `json:"pool"`
-	Protocol     string            `json:"protocol"`
-	BaseURL      string            `json:"base_url"`
-	APIKey       string            `json:"api_key,omitempty"`
-	ProxyID      int64             `json:"proxy_id"`
-	Proxy        *SocksProxy       `json:"proxy,omitempty"`
-	Enabled      bool              `json:"enabled"`
-	Weight       int               `json:"weight"`
-	Models       []string          `json:"models"`
-	ModelMapping map[string]string `json:"model_mapping"`
-	Endpoints    []string          `json:"endpoints"`
-	CreatedAt    time.Time         `json:"created_at"`
-	UpdatedAt    time.Time         `json:"updated_at"`
+	ID                  int64             `json:"id"`
+	Name                string            `json:"name"`
+	Pool                string            `json:"pool"`
+	Protocol            string            `json:"protocol"`
+	BaseURL             string            `json:"base_url"`
+	APIKey              string            `json:"api_key,omitempty"`
+	ProxyID             int64             `json:"proxy_id"`
+	Proxy               *SocksProxy       `json:"proxy,omitempty"`
+	Enabled             bool              `json:"enabled"`
+	Status              string            `json:"status"`
+	ConsecutiveFailures int               `json:"consecutive_failures"`
+	RecoverAt           *time.Time        `json:"recover_at,omitempty"`
+	Weight              int               `json:"weight"`
+	Models              []string          `json:"models"`
+	ModelMapping        map[string]string `json:"model_mapping"`
+	Endpoints           []string          `json:"endpoints"`
+	CreatedAt           time.Time         `json:"created_at"`
+	UpdatedAt           time.Time         `json:"updated_at"`
 }
 
 type SocksProxy struct {
