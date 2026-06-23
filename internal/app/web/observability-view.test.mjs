@@ -94,8 +94,10 @@ test("renderUsageLogsPage renders stats and table rows", () => {
   });
 
   assert.match(html, /Requests/);
-  assert.match(html, /POST/);
-  assert.match(html, /trace-9/);
+  assert.match(html, /gpt-5\.4/);
+  assert.match(html, />Model</);
+  assert.doesNotMatch(html, />Method</);
+  assert.doesNotMatch(html, />Trace ID</);
   assert.match(html, /Request Stream/);
   assert.match(html, /observability-section-head/);
   assert.match(html, /pager/);
@@ -130,6 +132,9 @@ test("renderUsageLogRow and inline detail render expanded content", () => {
   assert.match(rowHTML, /req-9/);
   assert.match(rowHTML, /expanded/);
   assert.match(rowHTML, /dt:2026-06-19T00:00:00Z/);
+  assert.match(rowHTML, /gpt-5\.4/);
+  assert.doesNotMatch(rowHTML, /POST/);
+  assert.doesNotMatch(rowHTML, /trace-9/);
 
   const detailHTML = renderUsageLogInlineDetail({
     detail: { error: "Failed to load usage log detail" },

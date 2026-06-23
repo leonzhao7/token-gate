@@ -1925,6 +1925,11 @@ func (s *Store) EventSummary(ctx context.Context, filter EventFilter) (EventSumm
 }
 
 func (s *Store) AppendUsageLog(ctx context.Context, log domain.UsageLog) error {
+	createdAt := log.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO usage_logs(
 			request_id, client_id, client_name, client_token_prefix, route_mode_override, route_group,
@@ -1968,7 +1973,7 @@ func (s *Store) AppendUsageLog(ctx context.Context, log domain.UsageLog) error {
 		log.ResponseBodyPreview,
 		boolToInt(log.PreviewTruncated),
 		boolToInt(log.IsStream),
-		formatTime(time.Now().UTC()),
+		formatTime(createdAt.UTC()),
 	)
 	return err
 }

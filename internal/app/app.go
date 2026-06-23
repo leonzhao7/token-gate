@@ -402,6 +402,7 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		ClientIP:           clientIP(r),
 		UserAgent:          r.UserAgent(),
 		RequestHeadersJSON: marshalHeaders(redactedHeaders(r.Header)),
+		CreatedAt:          startedAt.UTC(),
 	}
 	defer func() {
 		usageLog.DurationMS = time.Since(startedAt).Milliseconds()

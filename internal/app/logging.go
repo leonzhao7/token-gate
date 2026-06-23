@@ -77,17 +77,6 @@ func (a *App) accessLog(next http.Handler) http.Handler {
 
 func (a *App) withBackendTrace(ctx context.Context, backend domain.Backend, attempt int) context.Context {
 	trace := &httptrace.ClientTrace{
-		DNSStart: func(info httptrace.DNSStartInfo) {
-			a.logEvent(ctx, slog.LevelInfo, "backend_dns_start", append(backendAttemptAttrs(backend, attempt),
-				slog.String("host", info.Host),
-			)...)
-		},
-		DNSDone: func(info httptrace.DNSDoneInfo) {
-			a.logEvent(ctx, slog.LevelInfo, "backend_dns_done", append(backendAttemptAttrs(backend, attempt),
-				slog.Any("addresses", info.Addrs),
-				slog.Any("error", info.Err),
-			)...)
-		},
 		ConnectStart: func(network, addr string) {
 			a.logEvent(ctx, slog.LevelInfo, "backend_connect_start", append(backendAttemptAttrs(backend, attempt),
 				slog.String("network", network),

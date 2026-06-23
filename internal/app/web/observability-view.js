@@ -132,20 +132,19 @@
           <span class="section-label">Request Stream</span>
           <strong>Usage log table</strong>
         </div>
-        <p>聚合请求统计后下钻到逐条日志，核对模型、后端、代理链路和 trace 维度。</p>
+        <p>聚合请求统计后下钻到逐条日志，核对模型、后端、代理链路和请求细节。</p>
       </header>
       <div class="event-table-shell">
         <div class="event-table usage-log-table">
           <div class="event-table-head usage-log-head">
             <span>Timestamp</span>
-            <span>Method</span>
             <span>Path</span>
+            <span>Model</span>
             <span>Status</span>
             <span>Latency</span>
             <span>Client Key</span>
             <span>Backend</span>
             <span>Proxy</span>
-            <span>Trace ID</span>
           </div>
           <div class="event-table-body">
             ${ensureArray(pageRows).map((row) => renderUsageLogRow({
@@ -183,14 +182,13 @@
               <span>${escapeHTML(formatDateTime(row.timestamp))}</span>
             </button>
           </span>
-          <span>${escapeHTML(row.method)}</span>
           <span>${escapeHTML(row.path)}</span>
+          <span>${escapeHTML(row.model)}</span>
           <span><em class="search-status-pill tone-${escapeHTML(row.tone)}">${escapeHTML(row.status)}</em></span>
           <span>${escapeHTML(row.latency)}</span>
           <span>${escapeHTML(row.clientKey)}</span>
           <span>${escapeHTML(row.backend)}</span>
           <span>${escapeHTML(row.proxy)}</span>
-          <span>${escapeHTML(row.traceId)}</span>
         </div>
         ${expanded ? `
           <div class="usage-log-inline-detail">
