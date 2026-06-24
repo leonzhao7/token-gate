@@ -42,11 +42,12 @@
   - detect endpoint from request path
   - extract model from request body
   - scheduler loads backends from SQLite and selects ordered candidates
-  - app forwards request to backends in order until one succeeds
+  - app forwards request to backends in order until one succeeds, including `/v1/messages` <-> `/v1/responses` request/response translation when client/backend protocols differ
   - usage log + audit events are persisted around the attempt sequence
 - Scheduler behavior:
   - only `normal` backends are eligible
-  - backend must support both requested endpoint and requested model
+  - backend must support the requested model / exact `ModelMapping` client-model key match
+  - candidate selection no longer filters by backend `endpoints`; endpoint compatibility is handled later by proxy/request translation rules
   - candidates are sorted by `weight DESC`, tie-break `id ASC`
   - any upstream/network failure advances to the next candidate
   - if all candidates fail, client gets `503`
@@ -102,6 +103,9 @@
   - fixed `listBackendsByProxyID` to select the expanded backend column set so proxy drawer detail works again
   - rewrote `docs/DESIGN.md` and `docs/SCHEDULING.md` so they match the current backend-only routing model and relay-station-oriented admin UI
   - usage logs row expansion now uses the same SVG chevron pattern as other admin tables instead of the broken text toggle
+  - scheduler candidate selection no longer rejects backends based on `endpoints`
+  - added `/v1/messages` <-> `/v1/responses` cross-protocol translation for both JSON and streaming SSE responses; other endpoints still pass through unchanged
+  - extended `/v1/messages` <-> `/v1/responses` request/response translation to cover tool definitions, tool choice, and tool call / tool result content blocks for cross-protocol backend routing
   - verified locally with:
     - `GOCACHE=/root/workspace/token-gate/.gocache go test ./...`
     - `node --test internal/app/web/*.test.mjs`
@@ -125,10 +129,11 @@
 
 ## 10. Architecture Notes
 - Policy routing architecture is gone. Routing now depends only on:
-  - endpoint support
   - model support / exact `ModelMapping` key match
   - backend status
   - backend weight ordering
+- Only `/v1/messages` and `/v1/responses` are cross-translated between Anthropic-style and OpenAI-style payloads.
+- Other endpoints are not translated and still proxy through with their original request/response shapes.
 - Backend status is now a first-class persisted runtime concern, not in-memory only.
 - Frontend backend edit handling must preserve current `abnormal` state unless the user explicitly changes status to `normal` or `disabled`.
 

@@ -13,7 +13,7 @@
 -> 提取 endpoint 和 model
 -> 恢复已过期的 abnormal backends
 -> 从 SQLite 读取全部 backends
--> 按 status / endpoint / model 过滤候选
+-> 按 status / model 过滤候选
 -> 按 weight desc、id asc 排序
 -> 依次尝试候选 backend
 -> 失败时自动 failover 到下一个候选
@@ -90,8 +90,7 @@ scheduler.SelectBackend(ctx, endpoint, model)
 backend 必须同时满足下面条件，才会进入候选集：
 
 1. `backend.status == normal`
-2. backend 支持当前 endpoint
-3. backend 支持当前 model，或者 `model_mapping` 中存在该客户端 model 的映射
+2. backend 支持当前 model，或者 `model_mapping` 中存在该客户端 model 的映射
 
 如果任一条件不满足，这个 backend 就不会参与本次请求。
 
@@ -145,34 +144,49 @@ abnormal = 因运行态故障临时下线
 disabled = 因人工配置永久下线，直到再次启用
 ```
 
-## 4. endpoint 是怎么匹配的
+## 4. endpoint 在当前实现里起什么作用
 
-backend 自己声明支持哪些 endpoint，字段是：
+请求路径仍然会被识别成 endpoint，例如：
 
-- `endpoints []string`
+- `/v1/chat/completions` -> `chat`
+- `/v1/responses` -> `responses`
+- `/v1/messages` -> `messages`
 
-匹配逻辑支持：
+但当前调度器已经不再用 backend 的 `endpoints` 字段过滤候选。
 
-- 精确匹配，例如 `chat`
-- glob 匹配，例如 `*`
+也就是说：
 
-实现上使用 `path.Match` 风格匹配，所以像 `chat`、`messages`、`*` 都能工作。
+- endpoint 仍然参与日志、usage log、审计事件和代理路径决策
+- endpoint 不再参与 scheduler 的候选过滤
+- 候选 backend 是否最终能接住请求，由代理层根据 path 和 backend `protocol` 决定是否：
+  - 原样转发
+  - 仅对 `/v1/messages` 与 `/v1/responses` 做跨协议转换
 
-示例：
+`endpoints` 字段目前仍保留在 backend 资源里，主要用于：
 
-- backend A: `endpoints = ["chat", "responses"]`
-- backend B: `endpoints = ["messages"]`
-- backend C: `endpoints = ["*"]`
+- 管理台展示
+- 兼容已有数据结构
+- 作为能力说明元数据
 
-请求：
+它不再主导调度。
 
-- `endpoint = chat`
+### 当前唯一的跨协议转换
 
-结果：
+当前只支持这两条受控转换：
 
-- A 匹配
-- B 不匹配
-- C 匹配
+- 客户端 `/v1/messages` + OpenAI backend
+  - 上游转到 `/v1/responses`
+- 客户端 `/v1/responses` + Anthropic backend
+  - 上游转到 `/v1/messages`
+
+转换范围包括：
+
+- 普通 JSON 请求/响应
+- `text/event-stream` 流式响应
+- tools / tool choice
+- tool call / tool result 内容块
+
+除此之外，其他 endpoint 不做转换。
 
 ## 5. model 是怎么匹配的
 
@@ -420,7 +434,7 @@ backend A 连续失败：
 1. endpoint 识别为 `chat`
 2. model 识别为 `gpt-4o`
 3. `edge-c` 因 `disabled` 被排除
-4. `edge-a`、`edge-b` 都满足 endpoint/model/status
+4. `edge-a`、`edge-b` 都满足 model/status
 5. 排序结果：
   - `edge-a`
   - `edge-b`
@@ -448,6 +462,6 @@ backend A 连续失败：
 
 ```text
 当前 Token Gate 没有 policy 层。
-请求只会在 status=normal、支持该 endpoint 和 model 的 backends 之间，
+请求只会在 status=normal、支持该 model 的 backends 之间，
 按 weight 从高到低排序，然后失败就自动切到下一个。
 ```
