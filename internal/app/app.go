@@ -281,34 +281,34 @@ func (a *App) routes() {
 	a.mux.Handle("GET /v1/models", a.clientAuth(http.HandlerFunc(a.handlePublicModels)))
 	a.mux.Handle("/v1/", a.clientAuth(http.HandlerFunc(a.handleProxy)))
 
-	a.mux.Handle("GET /admin/api/overview", a.adminAuth(http.HandlerFunc(a.handleOverview)))
-	a.mux.Handle("GET /admin/api/dashboard/summary", a.adminAuth(http.HandlerFunc(a.handleDashboardSummary)))
-	a.mux.Handle("GET /admin/api/dashboard/usage", a.adminAuth(http.HandlerFunc(a.handleDashboardUsage)))
-	a.mux.Handle("GET /admin/api/dashboard/activity", a.adminAuth(http.HandlerFunc(a.handleDashboardActivity)))
-	a.mux.Handle("GET /admin/api/search", a.adminAuth(http.HandlerFunc(a.handleSearch)))
-	a.mux.Handle("GET /admin/api/socks-proxies", a.adminAuth(http.HandlerFunc(a.handleListSocksProxies)))
-	a.mux.Handle("GET /admin/api/socks-proxies/{id}/detail", a.adminAuth(http.HandlerFunc(a.handleSocksProxyDetail)))
-	a.mux.Handle("POST /admin/api/socks-proxies", a.adminAuth(http.HandlerFunc(a.handleCreateSocksProxy)))
-	a.mux.Handle("PUT /admin/api/socks-proxies/{id}", a.adminAuth(http.HandlerFunc(a.handleUpdateSocksProxy)))
-	a.mux.Handle("DELETE /admin/api/socks-proxies/{id}", a.adminAuth(http.HandlerFunc(a.handleDeleteSocksProxy)))
-	a.mux.Handle("GET /admin/api/backends", a.adminAuth(http.HandlerFunc(a.handleListBackends)))
-	a.mux.Handle("GET /admin/api/backends/{id}/detail", a.adminAuth(http.HandlerFunc(a.handleBackendDetail)))
-	a.mux.Handle("POST /admin/api/backends", a.adminAuth(http.HandlerFunc(a.handleCreateBackend)))
-	a.mux.Handle("PUT /admin/api/backends/{id}", a.adminAuth(http.HandlerFunc(a.handleUpdateBackend)))
-	a.mux.Handle("DELETE /admin/api/backends/{id}", a.adminAuth(http.HandlerFunc(a.handleDeleteBackend)))
-	a.mux.Handle("GET /admin/api/client-keys", a.adminAuth(http.HandlerFunc(a.handleListClientKeys)))
-	a.mux.Handle("GET /admin/api/client-keys/{id}/detail", a.adminAuth(http.HandlerFunc(a.handleClientKeyDetail)))
-	a.mux.Handle("POST /admin/api/client-keys", a.adminAuth(http.HandlerFunc(a.handleCreateClientKey)))
-	a.mux.Handle("PUT /admin/api/client-keys/{id}", a.adminAuth(http.HandlerFunc(a.handleUpdateClientKey)))
-	a.mux.Handle("DELETE /admin/api/client-keys/{id}", a.adminAuth(http.HandlerFunc(a.handleDeleteClientKey)))
-	a.mux.Handle("GET /admin/api/events", a.adminAuth(http.HandlerFunc(a.handleListEvents)))
-	a.mux.Handle("GET /admin/api/events/summary", a.adminAuth(http.HandlerFunc(a.handleEventSummary)))
-	a.mux.Handle("GET /admin/api/events/{id}", a.adminAuth(http.HandlerFunc(a.handleEventDetail)))
-	a.mux.Handle("GET /admin/api/usage-logs", a.adminAuth(http.HandlerFunc(a.handleListUsageLogs)))
-	a.mux.Handle("GET /admin/api/usage-logs/stats", a.adminAuth(http.HandlerFunc(a.handleUsageLogStats)))
-	a.mux.Handle("GET /admin/api/usage-logs/{id}", a.adminAuth(http.HandlerFunc(a.handleGetUsageLog)))
-	a.mux.Handle("GET /admin/api/usage-log-options", a.adminAuth(http.HandlerFunc(a.handleUsageLogOptions)))
-	a.mux.Handle("DELETE /admin/api/usage-logs", a.adminAuth(http.HandlerFunc(a.handleClearUsageLogs)))
+	a.mux.Handle("GET /admin/api/overview", http.HandlerFunc(a.handleOverview))
+	a.mux.Handle("GET /admin/api/dashboard/summary", http.HandlerFunc(a.handleDashboardSummary))
+	a.mux.Handle("GET /admin/api/dashboard/usage", http.HandlerFunc(a.handleDashboardUsage))
+	a.mux.Handle("GET /admin/api/dashboard/activity", http.HandlerFunc(a.handleDashboardActivity))
+	a.mux.Handle("GET /admin/api/search", http.HandlerFunc(a.handleSearch))
+	a.mux.Handle("GET /admin/api/socks-proxies", http.HandlerFunc(a.handleListSocksProxies))
+	a.mux.Handle("GET /admin/api/socks-proxies/{id}/detail", http.HandlerFunc(a.handleSocksProxyDetail))
+	a.mux.Handle("POST /admin/api/socks-proxies", http.HandlerFunc(a.handleCreateSocksProxy))
+	a.mux.Handle("PUT /admin/api/socks-proxies/{id}", http.HandlerFunc(a.handleUpdateSocksProxy))
+	a.mux.Handle("DELETE /admin/api/socks-proxies/{id}", http.HandlerFunc(a.handleDeleteSocksProxy))
+	a.mux.Handle("GET /admin/api/backends", http.HandlerFunc(a.handleListBackends))
+	a.mux.Handle("GET /admin/api/backends/{id}/detail", http.HandlerFunc(a.handleBackendDetail))
+	a.mux.Handle("POST /admin/api/backends", http.HandlerFunc(a.handleCreateBackend))
+	a.mux.Handle("PUT /admin/api/backends/{id}", http.HandlerFunc(a.handleUpdateBackend))
+	a.mux.Handle("DELETE /admin/api/backends/{id}", http.HandlerFunc(a.handleDeleteBackend))
+	a.mux.Handle("GET /admin/api/client-keys", http.HandlerFunc(a.handleListClientKeys))
+	a.mux.Handle("GET /admin/api/client-keys/{id}/detail", http.HandlerFunc(a.handleClientKeyDetail))
+	a.mux.Handle("POST /admin/api/client-keys", http.HandlerFunc(a.handleCreateClientKey))
+	a.mux.Handle("PUT /admin/api/client-keys/{id}", http.HandlerFunc(a.handleUpdateClientKey))
+	a.mux.Handle("DELETE /admin/api/client-keys/{id}", http.HandlerFunc(a.handleDeleteClientKey))
+	a.mux.Handle("GET /admin/api/events", http.HandlerFunc(a.handleListEvents))
+	a.mux.Handle("GET /admin/api/events/summary", http.HandlerFunc(a.handleEventSummary))
+	a.mux.Handle("GET /admin/api/events/{id}", http.HandlerFunc(a.handleEventDetail))
+	a.mux.Handle("GET /admin/api/usage-logs", http.HandlerFunc(a.handleListUsageLogs))
+	a.mux.Handle("GET /admin/api/usage-logs/stats", http.HandlerFunc(a.handleUsageLogStats))
+	a.mux.Handle("GET /admin/api/usage-logs/{id}", http.HandlerFunc(a.handleGetUsageLog))
+	a.mux.Handle("GET /admin/api/usage-log-options", http.HandlerFunc(a.handleUsageLogOptions))
+	a.mux.Handle("DELETE /admin/api/usage-logs", http.HandlerFunc(a.handleClearUsageLogs))
 }
 
 func (a *App) handlePublicModels(w http.ResponseWriter, r *http.Request) {
@@ -1703,30 +1703,6 @@ func (a *App) handleClearUsageLogs(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (a *App) adminAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := strings.TrimSpace(extractBearer(r.Header.Get("Authorization")))
-		if token == "" {
-			token = strings.TrimSpace(r.Header.Get("X-Admin-Token"))
-		}
-		if token == "" || token != a.cfg.AdminToken {
-			a.logEvent(r.Context(), slog.LevelWarn, "admin_auth_failed",
-				slog.String("path", r.URL.Path),
-				slog.String("method", r.Method),
-				slog.String("reason", "invalid_admin_token"),
-				slog.Bool("token_present", token != ""),
-			)
-			writeError(w, http.StatusUnauthorized, "invalid admin token")
-			return
-		}
-		a.logEvent(r.Context(), slog.LevelInfo, "admin_auth_succeeded",
-			slog.String("path", r.URL.Path),
-			slog.String("method", r.Method),
-		)
-		next.ServeHTTP(w, r)
-	})
-}
-
 func usageLogFilterFromRequest(r *http.Request) (store.UsageLogFilter, error) {
 	filter := store.UsageLogFilter{
 		BackendName: strings.TrimSpace(r.URL.Query().Get("backend")),
@@ -1805,10 +1781,6 @@ func (a *App) clientAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		a.logEvent(r.Context(), slog.LevelInfo, "client_auth_succeeded", append(clientAttrs(*client),
-			slog.String("path", r.URL.Path),
-			slog.String("method", r.Method),
-		)...)
 		ctx := context.WithValue(r.Context(), clientKeyContextKey, *client)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

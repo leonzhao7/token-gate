@@ -15,7 +15,6 @@
     const eventSummary = plainObject(input.eventSummary);
 
     const alerts = createAlerts({
-      adminTokenPresent: Boolean(input.adminTokenPresent),
       backends,
       clients,
     });
@@ -38,11 +37,6 @@
           : "Access, backend scheduling, and observability controls are aligned for day-to-day proxy operations.",
         badges: [
           {
-            label: "Admin token",
-            value: input.adminTokenPresent ? "Saved" : "Missing",
-            tone: input.adminTokenPresent ? "success" : "warning",
-          },
-          {
             label: "Theme",
             value: themeDisplay(input.themePreference, input.resolvedTheme),
             tone: "neutral",
@@ -60,7 +54,6 @@
         ],
         actions: [
           { key: "refresh-data", label: "Refresh Data", tone: "primary" },
-          { key: "focus-token", label: "Admin Session", tone: "ghost" },
           { key: "open-search", label: "Open Search", tone: "ghost" },
         ],
       },
@@ -86,22 +79,6 @@
       ],
       alerts,
       panels: [
-        {
-          key: "session",
-          eyebrow: "Access",
-          title: "Admin Session",
-          description: "Store TG_ADMIN_TOKEN locally, keep inventory fresh, and recover quickly when access expires.",
-          metrics: [
-            { label: "Status", value: input.adminTokenPresent ? "Saved" : "Missing" },
-            { label: "Last sync", value: stringValue(input.lastRefreshLabel) || "Not synced yet" },
-            { label: "Inventory", value: inventoryLabel(backends.length, clients.length, proxies.length) },
-            { label: "Scope", value: "Resources, usage, events" },
-          ],
-          actions: [
-            { key: "focus-token", label: "Focus Token" },
-            { key: "refresh-data", label: "Refresh Data" },
-          ],
-        },
         {
           key: "workspace",
           eyebrow: "Workspace",
@@ -247,13 +224,6 @@
 
   function createAlerts(input) {
     const alerts = [];
-    if (!input.adminTokenPresent) {
-      alerts.push({
-        tone: "warning",
-        title: "Save an admin token",
-        body: "Store TG_ADMIN_TOKEN in the console before relying on resource or observability data.",
-      });
-    }
     if (!countBackendsByStatus(input.backends, "normal")) {
       alerts.push({
         tone: "warning",
@@ -269,14 +239,6 @@
       });
     }
     return alerts;
-  }
-
-  function inventoryLabel(backends, clients, proxies) {
-    return [
-      `${integerLabel(backends)} backends`,
-      `${integerLabel(clients)} keys`,
-      `${integerLabel(proxies)} proxies`,
-    ].join(" · ");
   }
 
   function themeDisplay(preference, resolvedTheme) {

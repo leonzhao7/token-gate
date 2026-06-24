@@ -44,7 +44,6 @@
   }
 
   function createSettingsSnapshot({
-    adminTokenValue = "",
     themePreference = "system",
     resolvedTheme = "light",
     sidebarCollapsed = false,
@@ -57,7 +56,6 @@
     eventSummary = {},
   }) {
     return {
-      adminTokenPresent: Boolean(String(adminTokenValue || "").trim()),
       themePreference,
       resolvedTheme,
       sidebarCollapsed: Boolean(sidebarCollapsed),

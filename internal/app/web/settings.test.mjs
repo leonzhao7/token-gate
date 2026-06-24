@@ -10,7 +10,6 @@ const {
 
 test("createSettingsViewModel summarizes inventory, observability, and workspace controls", () => {
   const model = createSettingsViewModel({
-    adminTokenPresent: true,
     themePreference: "system",
     resolvedTheme: "dark",
     sidebarCollapsed: true,
@@ -81,7 +80,6 @@ test("createSettingsViewModel summarizes inventory, observability, and workspace
 
 test("createSettingsViewModel raises setup alerts when core configuration is missing", () => {
   const model = createSettingsViewModel({
-    adminTokenPresent: false,
     themePreference: "light",
     resolvedTheme: "light",
     sidebarCollapsed: false,
@@ -100,17 +98,14 @@ test("createSettingsViewModel raises setup alerts when core configuration is mis
   assert.equal(model.hero.tone, "warning");
   assert.equal(model.hero.title, "Configuration attention required");
   assert.deepEqual(model.alerts.map((alert) => alert.title), [
-    "Save an admin token",
     "Add a normal backend",
     "Create a client key",
   ]);
-  assert.equal(model.hero.badges[0].value, "Missing");
-  assert.equal(model.hero.badges[3].value, "Not synced yet");
+  assert.equal(model.hero.badges[2].value, "Not synced yet");
 });
 
 test("renderSettingsPage outputs hero, summary cards, alerts, and control panels", () => {
   const html = renderSettingsPage(createSettingsViewModel({
-    adminTokenPresent: false,
     themePreference: "system",
     resolvedTheme: "dark",
     sidebarCollapsed: false,
@@ -128,7 +123,6 @@ test("renderSettingsPage outputs hero, summary cards, alerts, and control panels
 
   assert.match(html, /settings-hero/);
   assert.match(html, /Configuration attention required/);
-  assert.match(html, /Save an admin token/);
   assert.match(html, /data-settings-action="refresh-data"/);
   assert.match(html, /data-settings-action="open-search"/);
   assert.match(html, /settings-summary-grid/);

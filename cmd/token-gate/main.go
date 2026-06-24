@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -37,15 +36,6 @@ func main() {
 	server := &http.Server{
 		Addr:    cfg.ListenAddr,
 		Handler: application.Handler(),
-		ConnState: func(conn net.Conn, state http.ConnState) {
-			if state == http.StateNew || state == http.StateClosed || state == http.StateHijacked {
-				slog.Info("client_tcp_connection",
-					"remote_addr", conn.RemoteAddr().String(),
-					"local_addr", conn.LocalAddr().String(),
-					"state", state.String(),
-				)
-			}
-		},
 	}
 
 	go func() {

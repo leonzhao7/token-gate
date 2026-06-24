@@ -3,6 +3,7 @@
 ## 1. Project Overview
 - `token-gate` is a Go-based AI gateway with a static admin console.
 - It authenticates client keys, routes one public API surface to upstream LLM backends, records usage logs/audit events, and lets admins manage backends, client keys, and SOCKS5 proxies.
+- Admin console and `/admin/api/*` endpoints are currently open by default; there is no separate admin token or session layer.
 - Current routing model is backend-centric only: there are no model policies, route groups, route modes, or backend pools.
 
 ## 2. Tech Stack
@@ -59,6 +60,7 @@
   - manual admin edits may set backend to `normal` or `disabled`; `abnormal` remains scheduler-managed
 - Admin console architecture:
   - static embedded files served from `internal/app/web`
+  - `/admin/` and `/admin/api/*` do not currently require separate admin auth
   - no build step
   - modules expose `*Utils` globals and are also testable via `module.exports`
 
@@ -106,6 +108,7 @@
   - scheduler candidate selection no longer rejects backends based on `endpoints`
   - added `/v1/messages` <-> `/v1/responses` cross-protocol translation for both JSON and streaming SSE responses; other endpoints still pass through unchanged
   - extended `/v1/messages` <-> `/v1/responses` request/response translation to cover tool definitions, tool choice, and tool call / tool result content blocks for cross-protocol backend routing
+  - removed admin token/session handling from admin routes, runtime config, startup script, and embedded admin UI
   - verified locally with:
     - `GOCACHE=/root/workspace/token-gate/.gocache go test ./...`
     - `node --test internal/app/web/*.test.mjs`
@@ -136,11 +139,12 @@
 - Other endpoints are not translated and still proxy through with their original request/response shapes.
 - Backend status is now a first-class persisted runtime concern, not in-memory only.
 - Frontend backend edit handling must preserve current `abnormal` state unless the user explicitly changes status to `normal` or `disabled`.
+- Admin API and embedded admin console are currently unauthenticated; rely on network boundary controls if used outside local/trusted environments.
 
 ## 11. Key Commands
 - Run locally:
   - `./start.sh`
-  - or `TG_ADMIN_TOKEN=... TG_DB_PATH=./token-gate.db go run ./cmd/token-gate`
+  - or `TG_DB_PATH=./token-gate.db go run ./cmd/token-gate`
 - Build:
   - `GOCACHE=/root/workspace/token-gate/.gocache go build ./...`
 - Go tests:
@@ -150,7 +154,6 @@
 - Useful env vars:
   - `TG_LISTEN_ADDR`
   - `TG_DB_PATH`
-  - `TG_ADMIN_TOKEN`
   - `TG_LOG_LEVEL`
   - `TG_BACKEND_COOLDOWN`
   - `TG_BACKEND_FAILS`

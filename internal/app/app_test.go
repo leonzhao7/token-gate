@@ -356,7 +356,6 @@ func TestCreateBackendDefaultsToNormalStatus(t *testing.T) {
 		"model_mapping":{"gpt-5.4":"gpt-5.4-test"},
 		"endpoints":["chat"]
 	}`))
-	req.Header.Set("Authorization", "Bearer "+application.cfg.AdminToken)
 	recorder := httptest.NewRecorder()
 	application.Handler().ServeHTTP(recorder, req)
 
@@ -394,7 +393,6 @@ func TestUpdateBackendRejectsAbnormalStatus(t *testing.T) {
 		"endpoints":["chat"]
 	}`))
 	req.SetPathValue("id", strconv.FormatInt(backend.ID, 10))
-	req.Header.Set("Authorization", "Bearer "+application.cfg.AdminToken)
 	recorder := httptest.NewRecorder()
 	application.Handler().ServeHTTP(recorder, req)
 
@@ -438,7 +436,6 @@ func TestUpdateBackendAllowsManualNormalAndDisabledStatus(t *testing.T) {
 		"endpoints":["chat"]
 	}`))
 	disableReq.SetPathValue("id", strconv.FormatInt(backend.ID, 10))
-	disableReq.Header.Set("Authorization", "Bearer "+application.cfg.AdminToken)
 	disableRecorder := httptest.NewRecorder()
 	application.Handler().ServeHTTP(disableRecorder, disableReq)
 	if disableRecorder.Code != http.StatusOK {
@@ -466,7 +463,6 @@ func TestUpdateBackendAllowsManualNormalAndDisabledStatus(t *testing.T) {
 		"endpoints":["chat"]
 	}`))
 	normalReq.SetPathValue("id", strconv.FormatInt(backend.ID, 10))
-	normalReq.Header.Set("Authorization", "Bearer "+application.cfg.AdminToken)
 	normalRecorder := httptest.NewRecorder()
 	application.Handler().ServeHTTP(normalRecorder, normalReq)
 	if normalRecorder.Code != http.StatusOK {
@@ -486,7 +482,6 @@ func TestPolicyRoutesRemoved(t *testing.T) {
 	application := newTestApp(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/api/model-policies/1/detail", nil)
-	req.Header.Set("Authorization", "Bearer "+application.cfg.AdminToken)
 	recorder := httptest.NewRecorder()
 	application.Handler().ServeHTTP(recorder, req)
 
@@ -503,7 +498,6 @@ func TestCreateClientKeyRejectsLegacyRouteFields(t *testing.T) {
 		"enabled":true,
 		"route_mode_override":"sticky"
 	}`))
-	req.Header.Set("Authorization", "Bearer "+application.cfg.AdminToken)
 	recorder := httptest.NewRecorder()
 	application.Handler().ServeHTTP(recorder, req)
 
@@ -1361,7 +1355,6 @@ func TestAdminOverviewAndListsReturnEmptyArrays(t *testing.T) {
 
 	for _, tc := range cases {
 		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
-		req.Header.Set("Authorization", "Bearer test-admin")
 		recorder := httptest.NewRecorder()
 
 		application.Handler().ServeHTTP(recorder, req)
@@ -1401,6 +1394,39 @@ func TestAdminOverviewAndListsReturnEmptyArrays(t *testing.T) {
 		default:
 			t.Fatalf("%s expected object response, got %T", tc.path, payload)
 		}
+	}
+}
+
+func TestAdminMutationEndpointsDoNotRequireAuthorization(t *testing.T) {
+	application := newTestApp(t)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/admin/api/client-keys", strings.NewReader(`{
+		"name":"open-admin",
+		"enabled":true
+	}`))
+	createRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(createRecorder, createReq)
+
+	if createRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected unauthenticated admin create to succeed, got %d body=%s", createRecorder.Code, createRecorder.Body.String())
+	}
+
+	var createPayload struct {
+		Client domain.ClientKey `json:"client"`
+	}
+	if err := json.Unmarshal(createRecorder.Body.Bytes(), &createPayload); err != nil {
+		t.Fatalf("unmarshal create payload: %v", err)
+	}
+	if createPayload.Client.ID == 0 {
+		t.Fatalf("expected created client id, got %#v", createPayload.Client)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/admin/api/client-keys/"+strconv.FormatInt(createPayload.Client.ID, 10), nil)
+	deleteRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(deleteRecorder, deleteReq)
+
+	if deleteRecorder.Code != http.StatusOK {
+		t.Fatalf("expected unauthenticated admin delete to succeed, got %d body=%s", deleteRecorder.Code, deleteRecorder.Body.String())
 	}
 }
 
@@ -3947,7 +3973,6 @@ func newTestApp(t *testing.T) *App {
 	application, err := New(context.Background(), config.Config{
 		ListenAddr:      ":0",
 		DBPath:          t.TempDir() + "/app.db",
-		AdminToken:      "test-admin",
 		BackendCooldown: time.Minute,
 		RequestTimeout:  time.Second,
 		ShutdownTimeout: time.Second,

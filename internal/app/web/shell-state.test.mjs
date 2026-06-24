@@ -95,7 +95,6 @@ test("sidebar collapsed helpers parse and persist compact shell preference", () 
 
 test("createSettingsSnapshot collects shell state and inventory for Settings view model", () => {
   const snapshot = createSettingsSnapshot({
-    adminTokenValue: "dev-token",
     themePreference: "system",
     resolvedTheme: "dark",
     sidebarCollapsed: true,
@@ -109,7 +108,6 @@ test("createSettingsSnapshot collects shell state and inventory for Settings vie
   });
 
   assert.deepEqual(snapshot, {
-    adminTokenPresent: true,
     themePreference: "system",
     resolvedTheme: "dark",
     sidebarCollapsed: true,

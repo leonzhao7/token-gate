@@ -9,7 +9,6 @@ import (
 type Config struct {
 	ListenAddr      string
 	DBPath          string
-	AdminToken      string
 	LogLevel        string
 	BackendCooldown time.Duration
 	BackendFails    int
@@ -21,7 +20,6 @@ func Load() Config {
 	return Config{
 		ListenAddr:      getenv("TG_LISTEN_ADDR", ":8080"),
 		DBPath:          getenv("TG_DB_PATH", "./token-gate.db"),
-		AdminToken:      getenv("TG_ADMIN_TOKEN", "dev-admin-token"),
 		LogLevel:        getenv("TG_LOG_LEVEL", "info"),
 		BackendCooldown: getDuration("TG_BACKEND_COOLDOWN", 10*time.Minute),
 		BackendFails:    getInt("TG_BACKEND_FAILS", 3),

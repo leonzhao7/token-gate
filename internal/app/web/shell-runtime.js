@@ -239,8 +239,6 @@
 
   function buildSettingsSnapshot({
     shellStateUtils,
-    localStorage,
-    adminTokenKey,
     themePreference,
     resolvedTheme,
     appShell,
@@ -254,7 +252,6 @@
     eventSummary,
   }) {
     return shellStateUtils.createSettingsSnapshot({
-      adminTokenValue: localStorage.getItem(adminTokenKey) || "",
       themePreference,
       resolvedTheme,
       sidebarCollapsed: appShell?.classList.contains("sidebar-collapsed"),

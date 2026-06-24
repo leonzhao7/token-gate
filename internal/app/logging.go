@@ -80,12 +80,6 @@ func (a *App) accessLog(next http.Handler) http.Handler {
 
 func (a *App) withBackendTrace(ctx context.Context, backend domain.Backend, attempt int) context.Context {
 	trace := &httptrace.ClientTrace{
-		ConnectStart: func(network, addr string) {
-			a.logEvent(ctx, slog.LevelInfo, "backend_connect_start", append(backendAttemptAttrs(backend, attempt),
-				slog.String("network", network),
-				slog.String("addr", addr),
-			)...)
-		},
 		ConnectDone: func(network, addr string, err error) {
 			attrs := append(backendAttemptAttrs(backend, attempt),
 				slog.String("network", network),

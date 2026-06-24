@@ -64,9 +64,6 @@ test("theme helpers initialize persist resolve and apply theme state", () => {
       if (key === "theme-key") {
         return "dark";
       }
-      if (key === "admin-key") {
-        return "admin-token";
-      }
       assert.fail(`unexpected localStorage.getItem key: ${key}`);
     },
     setItem(key, value) {
@@ -128,8 +125,6 @@ test("theme helpers initialize persist resolve and apply theme state", () => {
   const formatDateTime = (value) => `formatted:${value}`;
   const buildSnapshot = () => ShellRuntimeUtils.buildSettingsSnapshot({
     shellStateUtils,
-    localStorage,
-    adminTokenKey: "admin-key",
     themePreference: state.ui.themePreference,
     resolvedTheme: state.ui.theme,
     appShell,

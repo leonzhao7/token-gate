@@ -178,7 +178,6 @@
 
   async function handleSettingsAction({
     action,
-    tokenInput,
     refreshAll,
     cycleThemePreference,
     toggleSidebarCollapsed,
@@ -187,10 +186,6 @@
   }) {
     const normalized = String(action || "").trim();
     if (!normalized) {
-      return;
-    }
-    if (normalized === "focus-token") {
-      tokenInput?.focus();
       return;
     }
     if (normalized === "refresh-data") {

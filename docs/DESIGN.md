@@ -394,12 +394,7 @@ backend 运行态保存在 SQLite 的 `backends` 表中：
 
 ## 管理 API
 
-管理 API 使用 `TG_ADMIN_TOKEN` 认证。
-
-认证方式：
-
-- `Authorization: Bearer <TG_ADMIN_TOKEN>`
-- `X-Admin-Token: <TG_ADMIN_TOKEN>`
+管理 API 默认开放，不再使用独立的 admin token 或 session。
 
 当前主要管理 API：
 
@@ -476,7 +471,7 @@ backend 运行态保存在 SQLite 的 `backends` 表中：
 - `Events`
   - timeline、summary、detail
 - `Settings`
-  - 本地 console/admin token 等状态摘要
+  - 本地主题、侧边栏和最近同步状态摘要
 
 注意：
 
@@ -554,7 +549,6 @@ expanded row 还会显示：
 
 - client 明文 token 存在 SQLite 中，便于管理台展示和编辑。
 - backend `api_key` 与 `console_password` 也存储在 SQLite 中。
-- 管理 API 只有一个全局 admin token。
 - usage log / event / detail 响应尽量避免明文暴露 secret：
   - headers 做 redaction
   - detail/raw 对 `api_key`、`console_password` 做 presence masking
@@ -562,7 +556,6 @@ expanded row 还会显示：
 生产环境建议：
 
 - 在反向代理或 LB 层做 HTTPS termination。
-- 为 `TG_ADMIN_TOKEN` 使用强随机值。
 - 限制 `/admin/` 与 `/admin/api/` 的来源 IP。
 - 对 SQLite 文件设置严格权限。
 - 如需更强安全性，再引入 KMS 或本机密钥加密 backend secrets。
@@ -573,7 +566,6 @@ expanded row 还会显示：
 
 - `TG_LISTEN_ADDR`
 - `TG_DB_PATH`
-- `TG_ADMIN_TOKEN`
 - `TG_LOG_LEVEL`
 - `TG_BACKEND_COOLDOWN`
 - `TG_BACKEND_FAILS`
@@ -627,4 +619,4 @@ node --test internal/app/web/*.test.mjs
 - 继续收敛和拆分 `internal/app/app.go` 的职责边界。
 - 增加更细的 backend 并发与限流控制。
 - 引入 Prometheus metrics 或更标准的观测导出。
-- 如果需要更强安全模型，再处理 backend secret 加密与 admin session/RBAC。
+- 如果需要更强安全模型，再处理 backend secret 加密与更细粒度访问控制。

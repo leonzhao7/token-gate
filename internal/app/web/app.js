@@ -1,6 +1,3 @@
-const tokenInput = document.querySelector("#adminToken");
-const saveTokenBtn = document.querySelector("#saveTokenBtn");
-const refreshBtn = document.querySelector("#refreshBtn");
 const pageTitle = document.querySelector("#pageTitle");
 const pageBreadcrumb = document.querySelector("#pageBreadcrumb");
 const appShell = document.querySelector(".app-shell");
@@ -93,7 +90,6 @@ const clientSubmitBtn = document.querySelector("#clientSubmitBtn");
 const clientCancelBtn = document.querySelector("#clientCancelBtn");
 const clientEditBanner = document.querySelector("#clientEditBanner");
 
-const ADMIN_TOKEN_KEY = "token-gate-admin-token";
 const THEME_PREFERENCE_KEY = "token-gate-theme-preference";
 const SIDEBAR_COLLAPSED_KEY = "token-gate-sidebar-collapsed";
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
@@ -560,8 +556,6 @@ function applyResolvedTheme() {
 function buildSettingsSnapshot() {
   return ShellRuntimeUtils.buildSettingsSnapshot({
     shellStateUtils: ShellStateUtils,
-    localStorage,
-    adminTokenKey: ADMIN_TOKEN_KEY,
     themePreference: state.ui.themePreference,
     resolvedTheme: state.ui.theme,
     appShell,
@@ -623,7 +617,6 @@ function toggleSidebarCollapsed(forceState) {
   renderHeaderPanels();
 }
 
-tokenInput.value = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
 initializeThemeState();
 initializeSidebarState();
 renderTheme();
@@ -764,26 +757,6 @@ drawerRoot?.addEventListener("click", (event) => {
   if (event.target === drawerRoot) {
     closeDrawerShell();
   }
-});
-
-async function saveAdminToken() {
-  const token = tokenInput.value.trim();
-  if (token) {
-    localStorage.setItem(ADMIN_TOKEN_KEY, token);
-  } else {
-    localStorage.removeItem(ADMIN_TOKEN_KEY);
-  }
-  renderSettings();
-  renderHeaderPanels();
-  return refreshAll();
-}
-
-saveTokenBtn.addEventListener("click", () => {
-  saveAdminToken().catch(reportError);
-});
-
-refreshBtn.addEventListener("click", () => {
-  refreshAll().catch(reportError);
 });
 
 addProxyBtn.addEventListener("click", () => {
@@ -1014,11 +987,6 @@ clientForm.addEventListener("submit", async (event) => {
 });
 
 async function refreshAll() {
-  if (!buildSettingsSnapshot().adminTokenPresent) {
-    renderSettings();
-    renderHeaderPanels();
-    return null;
-  }
   const result = await ConsoleDataRuntimeUtils.refreshAll({
     state,
     startDashboardLoading,
@@ -1852,12 +1820,10 @@ function toggleExpanded(set, id) {
 }
 
 async function api(path, method = "GET", body) {
-  const token = localStorage.getItem(ADMIN_TOKEN_KEY) || "";
   const response = await fetch(path, {
     method,
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
     },
     body: body ? JSON.stringify(body) : undefined,
   });

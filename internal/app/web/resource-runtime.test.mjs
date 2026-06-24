@@ -35,6 +35,7 @@ const PaginationUtils = require("./pagination.js");
 const DisplayUtils = require("./display-utils.js");
 const DashboardRuntimeUtils = require("./dashboard-runtime.js");
 const SearchRuntimeUtils = require("./search-runtime.js");
+const ObservabilityUtils = require("./observability.js");
 const ObservabilityRuntimeUtils = require("./observability-runtime.js");
 const ResourceListRuntimeUtils = require("./resource-list-runtime.js");
 const ResourceRenderRuntimeUtils = require("./resource-render-runtime.js");
@@ -1463,9 +1464,8 @@ test("app.js initializes resource view defaults through ResourceStateUtils", () 
   assert.deepEqual(calls, ["proxies", "backends", "clients"]);
 });
 
-test("app.js skips the initial console refresh when no admin token is saved", async () => {
+test("app.js performs the initial console refresh without requiring saved access state", async () => {
   const fetchCalls = [];
-  const alerts = [];
   const context = createAppVmContext({
     ResourceRuntimeUtils: {
       requireResourceViewUtils,
@@ -1511,15 +1511,12 @@ test("app.js skips the initial console refresh when no admin token is saved", as
   context.fetch = async (...args) => {
     fetchCalls.push(args);
     return {
-      ok: false,
-      status: 401,
+      ok: true,
+      status: 200,
       async json() {
-        return { error: { message: "invalid admin token" } };
+        return {};
       },
     };
-  };
-  context.alert = (message) => {
-    alerts.push(message);
   };
 
   vm.runInContext(fs.readFileSync(new URL("./app.js", import.meta.url), "utf8"), context, {
@@ -1527,12 +1524,12 @@ test("app.js skips the initial console refresh when no admin token is saved", as
   });
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.equal(fetchCalls.length, 0);
-  assert.deepEqual(alerts, []);
+  assert.notEqual(fetchCalls.length, 0);
+  const requestOptions = fetchCalls[0]?.[1] || {};
+  assert.equal(requestOptions.headers?.Authorization, undefined);
 });
 
-test("app.js saving an admin token refreshes console data immediately", async () => {
-  const storage = new Map();
+test("app.js refreshing console data does not persist access state", async () => {
   const refreshCalls = [];
   const context = createAppVmContext({
     ResourceRuntimeUtils: {
@@ -1582,26 +1579,10 @@ test("app.js saving an admin token refreshes console data immediately", async ()
     SettingsUtils,
   });
 
-  context.localStorage = {
-    getItem(key) {
-      return storage.has(key) ? storage.get(key) : "";
-    },
-    setItem(key, value) {
-      storage.set(key, String(value));
-    },
-    removeItem(key) {
-      storage.delete(key);
-    },
-  };
-
   loadAppWithoutBootstrap(context);
-  await vm.runInContext(`
-    tokenInput.value = "dev-admin-token";
-    saveAdminToken();
-  `, context);
+  await vm.runInContext(`refreshAll();`, context);
 
-  assert.equal(storage.get("token-gate-admin-token"), "dev-admin-token");
-  assert.equal(refreshCalls.length, 1);
+  assert.ok(refreshCalls.length >= 1);
 });
 
 test("index.html loads resource runtime dependencies before app.js", () => {
@@ -1734,6 +1715,7 @@ function createAppVmContext({
   DrawerRuntimeUtils: drawerRuntimeUtils = DrawerRuntimeUtils,
   ShellRuntimeUtils: shellRuntimeUtils = ShellRuntimeUtils,
   SearchRuntimeUtils: searchRuntimeUtils = SearchRuntimeUtils,
+  ObservabilityUtils: observabilityUtils = ObservabilityUtils,
   ObservabilityRuntimeUtils: observabilityRuntimeUtils = ObservabilityRuntimeUtils,
   ResourceListRuntimeUtils: resourceListRuntimeUtils = ResourceListRuntimeUtils,
   ResourceRenderRuntimeUtils: resourceRenderRuntimeUtils = ResourceRenderRuntimeUtils,
@@ -1947,7 +1929,7 @@ function createAppVmContext({
     DashboardUtils: {},
     ChartsUtils: {},
     DrawerUtils: {},
-    ObservabilityUtils: {},
+    ObservabilityUtils: observabilityUtils,
     ObservabilityViewUtils: {},
     RendererUtils: {},
     SettingsUtils: settingsUtils,

@@ -23,6 +23,7 @@
 - 代理层只做认证、调度、故障切换和 header 必要改写，不改写请求体或响应体。
 - 后端可配置为 `openai` 或 `anthropic` 协议；代理不做 OpenAI Chat 和 Claude Messages 的请求体互转。
 - 客户端鉴权支持 `Authorization: Bearer <key>` 和 Claude/Anthropic 常用的 `x-api-key: <key>`。
+- 管理 API 默认开放，不再使用独立 admin token / session。
 - 不自动探测后端 health；只根据真实代理请求的失败/成功维护冷却和恢复状态。
 - 流式响应一旦开始输出，若后端中途断流，当前版本不会尝试切到另一个后端。
 - “兼容官方 SDK”是支持目标；不做官方客户端身份伪装、专有签名伪造或设备指纹冒充。
@@ -50,7 +51,6 @@ SQLite 使用 `WAL` 模式，适合当前“小规模、单表不超过 5 万行
 ## 运行
 
 ```bash
-export TG_ADMIN_TOKEN='replace-me'
 export TG_DB_PATH='./token-gate.db'
 export TG_LOG_LEVEL='info'
 export TG_BACKEND_FAILS='3'

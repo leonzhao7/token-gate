@@ -534,10 +534,6 @@ a {
   gap: 10px;
 }
 
-.sidebar-control-card .button-row.compact {
-  justify-content: flex-start;
-}
-
 .theme-toggle {
   min-width: 96px;
   gap: 8px;

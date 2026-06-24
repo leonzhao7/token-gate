@@ -229,35 +229,9 @@ test("refreshAll hydrates resources, pagination state, usage options, and rerend
 
 test("handleSettingsAction dispatches supported actions to the matching handlers", async () => {
   const calls = [];
-  const tokenInput = {
-    focus() {
-      calls.push(["focus"]);
-    },
-  };
 
   await ConsoleDataRuntimeUtils.handleSettingsAction({
-    action: "focus-token",
-    tokenInput,
-    refreshAll() {
-      calls.push(["refreshAll"]);
-      return Promise.resolve();
-    },
-    cycleThemePreference() {
-      calls.push(["cycleThemePreference"]);
-    },
-    toggleSidebarCollapsed() {
-      calls.push(["toggleSidebarCollapsed"]);
-    },
-    openSearchShell() {
-      calls.push(["openSearchShell"]);
-    },
-    navigateToPage(page) {
-      calls.push(["navigateToPage", page]);
-    },
-  });
-  await ConsoleDataRuntimeUtils.handleSettingsAction({
     action: "refresh-data",
-    tokenInput,
     refreshAll() {
       calls.push(["refreshAll"]);
       return Promise.resolve();
@@ -267,8 +241,5 @@ test("handleSettingsAction dispatches supported actions to the matching handlers
     openSearchShell() {},
     navigateToPage() {},
   });
-  assert.deepEqual(calls, [
-    ["focus"],
-    ["refreshAll"],
-  ]);
+  assert.deepEqual(calls, [["refreshAll"]]);
 });
