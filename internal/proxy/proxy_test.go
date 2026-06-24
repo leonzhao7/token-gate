@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -187,6 +188,216 @@ func TestDoUsesAnthropicBackendAuthHeader(t *testing.T) {
 	}
 }
 
+func TestConvertMessagesRequestToResponsesRequest(t *testing.T) {
+	const body = `{"model":"claude-3-5-sonnet-latest","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}`
+
+	converted, err := ConvertMessagesToResponsesRequest([]byte(body))
+	if err != nil {
+		t.Fatalf("ConvertMessagesToResponsesRequest returned error: %v", err)
+	}
+
+	if got := string(converted); !strings.Contains(got, `"input"`) {
+		t.Fatalf("converted request missing input field: %s", got)
+	}
+	if strings.Contains(string(converted), `"messages"`) {
+		t.Fatalf("converted request should not keep messages field: %s", string(converted))
+	}
+	if !strings.Contains(string(converted), `"model":"claude-3-5-sonnet-latest"`) {
+		t.Fatalf("converted request lost model field: %s", string(converted))
+	}
+}
+
+func TestConvertMessagesRequestToResponsesRequestTranslatesToolsAndToolResults(t *testing.T) {
+	const body = `{
+		"model":"claude-opus-4-6",
+		"max_tokens":16,
+		"tool_choice":{"type":"tool","name":"shell"},
+		"tools":[
+			{
+				"name":"shell",
+				"description":"Run a shell command",
+				"input_schema":{
+					"type":"object",
+					"properties":{"cmd":{"type":"string"}},
+					"required":["cmd"]
+				}
+			}
+		],
+		"messages":[
+			{
+				"role":"assistant",
+				"content":[
+					{"type":"text","text":"Running shell"},
+					{"type":"tool_use","id":"toolu_1","name":"shell","input":{"cmd":"pwd"}}
+				]
+			},
+			{
+				"role":"user",
+				"content":[
+					{"type":"tool_result","tool_use_id":"toolu_1","content":"\/root\/workspace"}
+				]
+			}
+		],
+		"thinking":{"type":"enabled","budget_tokens":128},
+		"top_k":5
+	}`
+
+	converted, err := ConvertMessagesToResponsesRequest([]byte(body))
+	if err != nil {
+		t.Fatalf("ConvertMessagesToResponsesRequest returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(converted, &payload); err != nil {
+		t.Fatalf("unmarshal converted payload: %v", err)
+	}
+
+	if _, ok := payload["thinking"]; ok {
+		t.Fatalf("converted request should drop anthropic thinking config: %s", string(converted))
+	}
+	if _, ok := payload["top_k"]; ok {
+		t.Fatalf("converted request should drop anthropic top_k: %s", string(converted))
+	}
+
+	toolChoice, ok := payload["tool_choice"].(map[string]any)
+	if !ok || toolChoice["type"] != "function" || toolChoice["name"] != "shell" {
+		t.Fatalf("unexpected translated tool_choice: %#v", payload["tool_choice"])
+	}
+
+	tools, ok := payload["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("unexpected translated tools: %#v", payload["tools"])
+	}
+	tool, ok := tools[0].(map[string]any)
+	if !ok || tool["type"] != "function" || tool["name"] != "shell" || tool["description"] != "Run a shell command" {
+		t.Fatalf("unexpected translated tool: %#v", tools[0])
+	}
+	if _, ok := tool["parameters"].(map[string]any); !ok {
+		t.Fatalf("expected translated tool parameters schema, got %#v", tool["parameters"])
+	}
+	if _, ok := tool["input_schema"]; ok {
+		t.Fatalf("anthropic input_schema should not remain in translated tool: %#v", tool)
+	}
+
+	input, ok := payload["input"].([]any)
+	if !ok || len(input) != 3 {
+		t.Fatalf("unexpected translated input items: %#v", payload["input"])
+	}
+	message, ok := input[0].(map[string]any)
+	if !ok || message["type"] != "message" || message["role"] != "assistant" {
+		t.Fatalf("expected first input item to be assistant message, got %#v", input[0])
+	}
+	functionCall, ok := input[1].(map[string]any)
+	if !ok || functionCall["type"] != "function_call" || functionCall["call_id"] != "toolu_1" || functionCall["name"] != "shell" {
+		t.Fatalf("expected translated function_call item, got %#v", input[1])
+	}
+	if functionCall["arguments"] != `{"cmd":"pwd"}` {
+		t.Fatalf("unexpected function_call arguments: %#v", functionCall["arguments"])
+	}
+	functionOutput, ok := input[2].(map[string]any)
+	if !ok || functionOutput["type"] != "function_call_output" || functionOutput["call_id"] != "toolu_1" || functionOutput["output"] != "/root/workspace" {
+		t.Fatalf("expected translated function_call_output item, got %#v", input[2])
+	}
+	if strings.Contains(string(converted), `"tool_use"`) || strings.Contains(string(converted), `"tool_result"`) {
+		t.Fatalf("anthropic tool blocks should not remain in translated payload: %s", string(converted))
+	}
+}
+
+func TestConvertResponsesRequestToMessagesRequest(t *testing.T) {
+	const body = `{"model":"gpt-4o","input":"hello","max_output_tokens":16}`
+
+	converted, err := ConvertResponsesToMessagesRequest([]byte(body))
+	if err != nil {
+		t.Fatalf("ConvertResponsesToMessagesRequest returned error: %v", err)
+	}
+
+	if got := string(converted); !strings.Contains(got, `"messages"`) {
+		t.Fatalf("converted request missing messages field: %s", got)
+	}
+	if strings.Contains(string(converted), `"input"`) {
+		t.Fatalf("converted request should not keep input field: %s", string(converted))
+	}
+	if !strings.Contains(string(converted), `"model":"gpt-4o"`) {
+		t.Fatalf("converted request lost model field: %s", string(converted))
+	}
+}
+
+func TestConvertResponsesRequestToMessagesRequestTranslatesFunctionToolsAndItems(t *testing.T) {
+	const body = `{
+		"model":"gpt-5.4",
+		"tool_choice":{"type":"function","name":"shell"},
+		"tools":[
+			{
+				"type":"function",
+				"name":"shell",
+				"description":"Run a shell command",
+				"parameters":{
+					"type":"object",
+					"properties":{"cmd":{"type":"string"}},
+					"required":["cmd"]
+				}
+			}
+		],
+		"input":[
+			{"type":"message","role":"assistant","content":[{"type":"input_text","text":"Running shell"}]},
+			{"type":"function_call","call_id":"toolu_1","name":"shell","arguments":"{\"cmd\":\"pwd\"}"},
+			{"type":"function_call_output","call_id":"toolu_1","output":"\/root\/workspace"}
+		]
+	}`
+
+	converted, err := ConvertResponsesToMessagesRequest([]byte(body))
+	if err != nil {
+		t.Fatalf("ConvertResponsesToMessagesRequest returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(converted, &payload); err != nil {
+		t.Fatalf("unmarshal converted payload: %v", err)
+	}
+
+	toolChoice, ok := payload["tool_choice"].(map[string]any)
+	if !ok || toolChoice["type"] != "tool" || toolChoice["name"] != "shell" {
+		t.Fatalf("unexpected translated anthropic tool_choice: %#v", payload["tool_choice"])
+	}
+
+	tools, ok := payload["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("unexpected translated anthropic tools: %#v", payload["tools"])
+	}
+	tool, ok := tools[0].(map[string]any)
+	if !ok || tool["name"] != "shell" || tool["description"] != "Run a shell command" {
+		t.Fatalf("unexpected translated anthropic tool: %#v", tools[0])
+	}
+	if _, ok := tool["input_schema"].(map[string]any); !ok {
+		t.Fatalf("expected anthropic input_schema, got %#v", tool["input_schema"])
+	}
+
+	messages, ok := payload["messages"].([]any)
+	if !ok || len(messages) != 2 {
+		t.Fatalf("unexpected translated anthropic messages: %#v", payload["messages"])
+	}
+
+	assistant, ok := messages[0].(map[string]any)
+	if !ok || assistant["role"] != "assistant" {
+		t.Fatalf("expected assistant message, got %#v", messages[0])
+	}
+	assistantContent, ok := assistant["content"].([]any)
+	if !ok || len(assistantContent) != 2 {
+		t.Fatalf("unexpected assistant content: %#v", assistant["content"])
+	}
+	user, ok := messages[1].(map[string]any)
+	if !ok || user["role"] != "user" {
+		t.Fatalf("expected user message, got %#v", messages[1])
+	}
+	userContent, ok := user["content"].([]any)
+	if !ok || len(userContent) != 1 {
+		t.Fatalf("unexpected user content: %#v", user["content"])
+	}
+	if strings.Contains(string(converted), `"function_call"`) || strings.Contains(string(converted), `"function_call_output"`) {
+		t.Fatalf("openai function call items should not remain in anthropic payload: %s", string(converted))
+	}
+}
+
 func TestWriteResponsePreservesSSEBodyAndStripsHopByHopHeaders(t *testing.T) {
 	const streamBody = "data: one\n\ndata: [DONE]\n\n"
 
@@ -220,6 +431,56 @@ func TestWriteResponsePreservesSSEBodyAndStripsHopByHopHeaders(t *testing.T) {
 	}
 	if !recorder.Flushed {
 		t.Fatalf("expected SSE response to be flushed")
+	}
+}
+
+func TestConvertResponsesResponseToMessagesResponseTranslatesFunctionCallOutput(t *testing.T) {
+	const body = `{
+		"id":"resp_1",
+		"model":"gpt-5.4",
+		"output":[
+			{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Running shell"}]},
+			{"type":"function_call","call_id":"toolu_1","name":"shell","arguments":"{\"cmd\":\"pwd\"}"}
+		],
+		"usage":{"input_tokens":5,"output_tokens":3},
+		"stop_reason":"tool_calls"
+	}`
+
+	converted, err := ConvertResponsesResponseToMessagesResponse([]byte(body))
+	if err != nil {
+		t.Fatalf("ConvertResponsesResponseToMessagesResponse returned error: %v", err)
+	}
+
+	var payload struct {
+		Type    string `json:"type"`
+		Role    string `json:"role"`
+		Content []struct {
+			Type  string         `json:"type"`
+			Text  string         `json:"text"`
+			ID    string         `json:"id"`
+			Name  string         `json:"name"`
+			Input map[string]any `json:"input"`
+		} `json:"content"`
+		StopReason string `json:"stop_reason"`
+	}
+	if err := json.Unmarshal(converted, &payload); err != nil {
+		t.Fatalf("unmarshal converted response: %v", err)
+	}
+
+	if payload.Type != "message" || payload.Role != "assistant" {
+		t.Fatalf("unexpected anthropic response envelope: %#v", payload)
+	}
+	if len(payload.Content) != 2 {
+		t.Fatalf("unexpected anthropic content blocks: %#v", payload.Content)
+	}
+	if payload.Content[0].Type != "text" || payload.Content[0].Text != "Running shell" {
+		t.Fatalf("unexpected anthropic text block: %#v", payload.Content[0])
+	}
+	if payload.Content[1].Type != "tool_use" || payload.Content[1].ID != "toolu_1" || payload.Content[1].Name != "shell" || payload.Content[1].Input["cmd"] != "pwd" {
+		t.Fatalf("unexpected anthropic tool_use block: %#v", payload.Content[1])
+	}
+	if payload.StopReason != "tool_calls" {
+		t.Fatalf("unexpected stop_reason: %q", payload.StopReason)
 	}
 }
 

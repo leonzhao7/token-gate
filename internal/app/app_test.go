@@ -600,6 +600,333 @@ func TestProxySupportsAnthropicMessagesClientAndBackend(t *testing.T) {
 	}
 }
 
+func TestProxyTranslatesMessagesToResponsesForOpenAIBackend(t *testing.T) {
+	const (
+		clientToken = "client-secret"
+		requestBody = `{"model":"claude-3-5-sonnet-latest","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}`
+	)
+
+	application := newTestApp(t)
+	createTestClient(t, application, clientToken)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "openai-response-backend",
+		Protocol:  domain.BackendProtocolOpenAI,
+		BaseURL:   "https://openai.local/root/v1",
+		APIKey:    "backend-openai-key",
+		Weight:    1,
+		Models:    []string{"claude-3-5-sonnet-latest"},
+		Endpoints: []string{domain.EndpointResponses},
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.responseBodyByName[backend.Name] = `{"id":"resp_1","object":"response","model":"claude-3-5-sonnet-latest","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hello from openai"}]}],"usage":{"input_tokens":5,"output_tokens":3}}`
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages?beta=1", strings.NewReader(requestBody))
+	req.Header.Set("X-Api-Key", clientToken)
+	req.Header.Set("Anthropic-Version", "2023-06-01")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	records := fixture.recordsSnapshot()
+	if len(records) != 1 {
+		t.Fatalf("expected one upstream attempt, got %d: %#v", len(records), records)
+	}
+	record := records[0]
+	if record.path != "/root/v1/responses" {
+		t.Fatalf("expected backend responses path, got %q", record.path)
+	}
+	if record.rawQuery != "beta=1" {
+		t.Fatalf("query changed: %q", record.rawQuery)
+	}
+	if record.authorization != "Bearer backend-openai-key" {
+		t.Fatalf("openai backend authorization mismatch: %q", record.authorization)
+	}
+	if !strings.Contains(record.body, `"input"`) || strings.Contains(record.body, `"messages"`) {
+		t.Fatalf("expected messages request to be converted into responses request, got %s", record.body)
+	}
+	if record.anthropicVersion != "" {
+		t.Fatalf("openai backend should not receive anthropic version header, got %q", record.anthropicVersion)
+	}
+
+	var payload struct {
+		Type    string `json:"type"`
+		Role    string `json:"role"`
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
+		StopReason string `json:"stop_reason"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal translated response: %v", err)
+	}
+	if payload.Type != "message" || payload.Role != "assistant" {
+		t.Fatalf("unexpected translated anthropic response: %#v", payload)
+	}
+	if len(payload.Content) != 1 || payload.Content[0].Type != "text" || payload.Content[0].Text != "hello from openai" {
+		t.Fatalf("unexpected translated content: %#v", payload.Content)
+	}
+	if payload.Usage.InputTokens != 5 || payload.Usage.OutputTokens != 3 {
+		t.Fatalf("unexpected translated usage: %#v", payload.Usage)
+	}
+}
+
+func TestProxyTranslatesStreamingMessagesToResponsesForOpenAIBackend(t *testing.T) {
+	const (
+		clientToken  = "client-secret"
+		requestBody  = `{"model":"claude-opus-4-6","max_tokens":16,"stream":true,"messages":[{"role":"user","content":"hello"}]}`
+		responseBody = "" +
+			"event: response.created\n" +
+			"data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"model\":\"gpt-5.4\",\"status\":\"in_progress\",\"output\":[],\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\n" +
+			"event: response.output_item.added\n" +
+			"data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"msg_1\",\"status\":\"in_progress\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n" +
+			"event: response.content_part.added\n" +
+			"data: {\"type\":\"response.content_part.added\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[]}}\n\n" +
+			"event: response.output_text.delta\n" +
+			"data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"hello \"}\n\n" +
+			"event: response.output_text.delta\n" +
+			"data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"from openai\"}\n\n" +
+			"event: response.content_part.done\n" +
+			"data: {\"type\":\"response.content_part.done\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"hello from openai\",\"annotations\":[]}}\n\n" +
+			"event: response.output_item.done\n" +
+			"data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"msg_1\",\"status\":\"completed\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello from openai\",\"annotations\":[]}]}}\n\n" +
+			"event: response.completed\n" +
+			"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"model\":\"gpt-5.4\",\"status\":\"completed\",\"output\":[{\"id\":\"msg_1\",\"status\":\"completed\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello from openai\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":5,\"output_tokens\":3},\"stop_reason\":\"end_turn\"}}\n\n"
+	)
+
+	application := newTestApp(t)
+	createTestClient(t, application, clientToken)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "openai-streaming-backend",
+		Protocol:  domain.BackendProtocolOpenAI,
+		BaseURL:   "https://openai.local/root/v1",
+		APIKey:    "backend-openai-key",
+		Weight:    1,
+		Models:    []string{"claude-opus-4-6"},
+		Endpoints: []string{domain.EndpointResponses},
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.responseBodyByName[backend.Name] = responseBody
+	fixture.responseHeadersByName[backend.Name] = http.Header{
+		"Content-Type": {"text/event-stream"},
+	}
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(requestBody))
+	req.Header.Set("X-Api-Key", clientToken)
+	req.Header.Set("Anthropic-Version", "2023-06-01")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	records := fixture.recordsSnapshot()
+	if len(records) != 1 {
+		t.Fatalf("expected one upstream attempt, got %d: %#v", len(records), records)
+	}
+	record := records[0]
+	if record.path != "/root/v1/responses" {
+		t.Fatalf("expected backend responses path, got %q", record.path)
+	}
+	if !strings.Contains(record.body, `"stream":true`) {
+		t.Fatalf("expected upstream streaming request body, got %s", record.body)
+	}
+
+	if contentType := recorder.Header().Get("Content-Type"); !strings.Contains(contentType, "text/event-stream") {
+		t.Fatalf("expected streaming content-type, got %q", contentType)
+	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, "event: message_start") {
+		t.Fatalf("expected anthropic message_start event, got %s", body)
+	}
+	if !strings.Contains(body, "event: content_block_delta") || !strings.Contains(body, `"text":"hello "`) || !strings.Contains(body, `"text":"from openai"`) {
+		t.Fatalf("expected anthropic text delta events, got %s", body)
+	}
+	if !strings.Contains(body, "event: message_delta") || !strings.Contains(body, `"stop_reason":"end_turn"`) {
+		t.Fatalf("expected anthropic message_delta event, got %s", body)
+	}
+	if !strings.Contains(body, "event: message_stop") {
+		t.Fatalf("expected anthropic message_stop event, got %s", body)
+	}
+}
+
+func TestProxyTranslatesResponsesToMessagesForAnthropicBackend(t *testing.T) {
+	const (
+		clientToken = "client-secret"
+		requestBody = `{"model":"gpt-4o","input":"hello detail","max_output_tokens":16}`
+	)
+
+	application := newTestApp(t)
+	createTestClient(t, application, clientToken)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "anthropic-messages-backend",
+		Protocol:  domain.BackendProtocolAnthropic,
+		BaseURL:   "https://anthropic.local/root/v1",
+		APIKey:    "backend-anthropic-key",
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointMessages},
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.responseBodyByName[backend.Name] = `{"id":"msg_1","type":"message","role":"assistant","model":"gpt-4o","content":[{"type":"text","text":"hello from anthropic"}],"usage":{"input_tokens":7,"output_tokens":4},"stop_reason":"end_turn"}`
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses?trace=1", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+clientToken)
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	records := fixture.recordsSnapshot()
+	if len(records) != 1 {
+		t.Fatalf("expected one upstream attempt, got %d: %#v", len(records), records)
+	}
+	record := records[0]
+	if record.path != "/root/v1/messages" {
+		t.Fatalf("expected backend messages path, got %q", record.path)
+	}
+	if record.rawQuery != "trace=1" {
+		t.Fatalf("query changed: %q", record.rawQuery)
+	}
+	if record.xAPIKey != "backend-anthropic-key" {
+		t.Fatalf("anthropic backend x-api-key mismatch: %q", record.xAPIKey)
+	}
+	if !strings.Contains(record.body, `"messages"`) || strings.Contains(record.body, `"input"`) {
+		t.Fatalf("expected responses request to be converted into messages request, got %s", record.body)
+	}
+	if record.authorization != "" {
+		t.Fatalf("anthropic backend should not receive Authorization, got %q", record.authorization)
+	}
+
+	var payload struct {
+		Object string `json:"object"`
+		Model  string `json:"model"`
+		Output []struct {
+			Type    string `json:"type"`
+			Role    string `json:"role"`
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"output"`
+		Usage struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal translated response: %v", err)
+	}
+	if payload.Object != "response" || payload.Model != "gpt-4o" {
+		t.Fatalf("unexpected translated openai response: %#v", payload)
+	}
+	if len(payload.Output) != 1 || payload.Output[0].Type != "message" || payload.Output[0].Role != "assistant" {
+		t.Fatalf("unexpected translated output: %#v", payload.Output)
+	}
+	if len(payload.Output[0].Content) != 1 || payload.Output[0].Content[0].Type != "output_text" || payload.Output[0].Content[0].Text != "hello from anthropic" {
+		t.Fatalf("unexpected translated output content: %#v", payload.Output[0].Content)
+	}
+	if payload.Usage.InputTokens != 7 || payload.Usage.OutputTokens != 4 {
+		t.Fatalf("unexpected translated usage: %#v", payload.Usage)
+	}
+}
+
+func TestProxyTranslatesStreamingResponsesToMessagesForAnthropicBackend(t *testing.T) {
+	const (
+		clientToken  = "client-secret"
+		requestBody  = `{"model":"gpt-5.4","input":"hello detail","stream":true,"max_output_tokens":16}`
+		responseBody = "" +
+			"event: message_start\n" +
+			"data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-4-6\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":7,\"output_tokens\":0}}}\n\n" +
+			"event: content_block_start\n" +
+			"data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n" +
+			"event: content_block_delta\n" +
+			"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello \"}}\n\n" +
+			"event: content_block_delta\n" +
+			"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"from anthropic\"}}\n\n" +
+			"event: content_block_stop\n" +
+			"data: {\"type\":\"content_block_stop\",\"index\":0}\n\n" +
+			"event: message_delta\n" +
+			"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":7,\"output_tokens\":4}}\n\n" +
+			"event: message_stop\n" +
+			"data: {\"type\":\"message_stop\"}\n\n"
+	)
+
+	application := newTestApp(t)
+	createTestClient(t, application, clientToken)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "anthropic-streaming-backend",
+		Protocol:  domain.BackendProtocolAnthropic,
+		BaseURL:   "https://anthropic.local/root/v1",
+		APIKey:    "backend-anthropic-key",
+		Weight:    1,
+		Models:    []string{"gpt-5.4"},
+		Endpoints: []string{domain.EndpointMessages},
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.responseBodyByName[backend.Name] = responseBody
+	fixture.responseHeadersByName[backend.Name] = http.Header{
+		"Content-Type": {"text/event-stream"},
+	}
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+clientToken)
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	records := fixture.recordsSnapshot()
+	if len(records) != 1 {
+		t.Fatalf("expected one upstream attempt, got %d: %#v", len(records), records)
+	}
+	record := records[0]
+	if record.path != "/root/v1/messages" {
+		t.Fatalf("expected backend messages path, got %q", record.path)
+	}
+	if !strings.Contains(record.body, `"stream":true`) {
+		t.Fatalf("expected upstream streaming request body, got %s", record.body)
+	}
+
+	if contentType := recorder.Header().Get("Content-Type"); !strings.Contains(contentType, "text/event-stream") {
+		t.Fatalf("expected streaming content-type, got %q", contentType)
+	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, "event: response.created") {
+		t.Fatalf("expected openai response.created event, got %s", body)
+	}
+	if !strings.Contains(body, "event: response.output_text.delta") || !strings.Contains(body, `"delta":"hello "`) || !strings.Contains(body, `"delta":"from anthropic"`) {
+		t.Fatalf("expected openai text delta events, got %s", body)
+	}
+	if !strings.Contains(body, "event: response.completed") {
+		t.Fatalf("expected openai response.completed event, got %s", body)
+	}
+}
+
 func TestUpdateBackendPreservesAPIKeyWhenPayloadIsBlank(t *testing.T) {
 	application := newTestApp(t)
 	backend := createTestBackend(t, application, domain.Backend{
@@ -3523,20 +3850,24 @@ type upstreamRecord struct {
 }
 
 type failoverFixture struct {
-	t            *testing.T
-	mu           sync.Mutex
-	hostToName   map[string]string
-	statusByName map[string]int
-	records      []upstreamRecord
+	t                     *testing.T
+	mu                    sync.Mutex
+	hostToName            map[string]string
+	statusByName          map[string]int
+	responseHeadersByName map[string]http.Header
+	responseBodyByName    map[string]string
+	records               []upstreamRecord
 }
 
 func newFailoverFixture(t *testing.T, backends []domain.Backend) *failoverFixture {
 	t.Helper()
 
 	fixture := &failoverFixture{
-		t:            t,
-		hostToName:   make(map[string]string),
-		statusByName: make(map[string]int),
+		t:                     t,
+		hostToName:            make(map[string]string),
+		statusByName:          make(map[string]int),
+		responseHeadersByName: make(map[string]http.Header),
+		responseBodyByName:    make(map[string]string),
 	}
 	for _, backend := range backends {
 		parsed, err := url.Parse(backend.BaseURL)
@@ -3579,15 +3910,25 @@ func (f *failoverFixture) RoundTrip(req *http.Request) (*http.Response, error) {
 	if status == 0 {
 		status = http.StatusOK
 	}
+	bodyText := f.responseBodyByName[name]
+	if bodyText == "" {
+		bodyText = `{"backend":"` + name + `"}`
+	}
+	header := http.Header{
+		"Content-Type": {"application/json"},
+		"X-Upstream":   {name},
+	}
+	for key, values := range f.responseHeadersByName[name] {
+		cloned := make([]string, len(values))
+		copy(cloned, values)
+		header[key] = cloned
+	}
 	return &http.Response{
 		StatusCode: status,
 		Status:     http.StatusText(status),
-		Header: http.Header{
-			"Content-Type": {"application/json"},
-			"X-Upstream":   {name},
-		},
-		Body:    io.NopCloser(strings.NewReader(`{"backend":"` + name + `"}`)),
-		Request: req,
+		Header:     header,
+		Body:       io.NopCloser(strings.NewReader(bodyText)),
+		Request:    req,
 	}, nil
 }
 

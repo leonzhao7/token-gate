@@ -113,6 +113,31 @@ func TestSelectBackendMatchesMappedClientModel(t *testing.T) {
 	}
 }
 
+func TestSelectBackendIgnoresEndpointCapability(t *testing.T) {
+	ctx := context.Background()
+	st := openTestStore(t)
+	defer st.Close()
+
+	backend := createBackend(t, st, domain.Backend{
+		Name:      "any-endpoint",
+		Protocol:  domain.BackendProtocolOpenAI,
+		BaseURL:   "https://any.local/v1",
+		APIKey:    "any-key",
+		Weight:    5,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+
+	service := New(st, time.Minute, 2)
+	selection, err := service.SelectBackend(ctx, domain.EndpointResponses, "gpt-4o")
+	if err != nil {
+		t.Fatalf("SelectBackend returned error: %v", err)
+	}
+	if len(selection.Candidates) != 1 || selection.Candidates[0].ID != backend.ID {
+		t.Fatalf("expected backend to be selectable regardless of endpoint, got %#v", selection.Candidates)
+	}
+}
+
 func openTestStore(t *testing.T) *store.Store {
 	t.Helper()
 

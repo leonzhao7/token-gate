@@ -498,6 +498,30 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
+		exchange, err := proxy.PrepareExchange(r.URL.Path, backend, requestBody)
+		if err != nil {
+			if errors.Is(err, proxy.ErrCrossProtocolStreamingNotSupported) {
+				a.logEvent(r.Context(), slog.LevelInfo, "backend_request_skipped", append(append(clientAttrs(client),
+					backendAttemptAttrs(backend, attempt)...),
+					slog.String("endpoint", endpoint),
+					slog.String("model", model),
+					slog.String("reason", err.Error()),
+				)...)
+				continue
+			}
+			usageLog.StatusCode = http.StatusServiceUnavailable
+			usageLog.StatusFamily = statusFamily(http.StatusServiceUnavailable)
+			usageLog.ErrorMessage = "prepare exchange failed: " + err.Error()
+			a.logEvent(r.Context(), slog.LevelWarn, "backend_request_rewrite_failed", append(append(clientAttrs(client),
+				backendAttemptAttrs(backend, attempt)...),
+				slog.String("endpoint", endpoint),
+				slog.String("model", model),
+				slog.String("upstream_model", upstreamModel),
+				slog.String("error", err.Error()),
+			)...)
+			lastErr = err
+			continue
+		}
 		attemptStartedAt := time.Now()
 		a.logEvent(r.Context(), slog.LevelInfo, "backend_request_started", append(append(clientAttrs(client),
 			backendAttemptAttrs(backend, attempt)...),
@@ -505,11 +529,11 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 			slog.String("model", model),
 			slog.String("upstream_model", upstreamModel),
 			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
+			slog.String("path", exchange.UpstreamPath),
 			slog.String("query", r.URL.RawQuery),
 		)...)
 
-		resp, err := a.proxy.Do(a.withBackendTrace(r.Context(), backend, attempt), r, backend, requestBody)
+		resp, err := a.proxy.DoWithPath(a.withBackendTrace(r.Context(), backend, attempt), r, backend, exchange.RequestBody, exchange.UpstreamPath)
 		if err != nil {
 			_ = a.scheduler.MarkFailure(r.Context(), backend.ID, err)
 			lastErr = err
@@ -573,8 +597,19 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		usageLog.StatusCode = resp.StatusCode
 		usageLog.StatusFamily = statusFamily(resp.StatusCode)
 		usageLog.ErrorMessage = ""
-		usageLog.ResponseHeadersJSON = marshalHeaders(redactedHeaders(resp.Header))
-		usageLog.IsStream = strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
+		resp, err = exchange.AdaptResponse(resp)
+		if err != nil {
+			usageLog.StatusCode = http.StatusServiceUnavailable
+			usageLog.StatusFamily = statusFamily(http.StatusServiceUnavailable)
+			usageLog.ErrorMessage = "adapt response failed: " + err.Error()
+			a.logEvent(r.Context(), slog.LevelWarn, "backend_response_adapt_failed", append(append(clientAttrs(client),
+				backendAttemptAttrs(backend, attempt)...),
+				slog.String("endpoint", endpoint),
+				slog.String("model", model),
+				slog.String("error", err.Error()),
+			)...)
+			return
+		}
 		bufferedResp, responseBytes, responsePreview, truncated, err := cloneResponseForLogging(resp)
 		if err != nil {
 			usageLog.StatusCode = http.StatusServiceUnavailable
@@ -589,6 +624,8 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		resp = bufferedResp
+		usageLog.ResponseHeadersJSON = marshalHeaders(redactedHeaders(resp.Header))
+		usageLog.IsStream = strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
 		usageLog.ResponseBytes = responseBytes
 		usageLog.ResponseBodyPreview = responsePreview
 		usageLog.PreviewTruncated = usageLog.PreviewTruncated || truncated

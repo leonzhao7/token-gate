@@ -36,6 +36,7 @@ func New(store *store.Store, backendCooldown time.Duration, backendFails int) *S
 }
 
 func (s *Service) SelectBackend(ctx context.Context, endpoint, model string) (Selection, error) {
+	_ = endpoint
 	if err := s.store.RecoverExpiredBackends(ctx, time.Now().UTC()); err != nil {
 		return Selection{}, err
 	}
@@ -48,9 +49,6 @@ func (s *Service) SelectBackend(ctx context.Context, endpoint, model string) (Se
 	candidates := make([]domain.Backend, 0, len(backends))
 	for _, backend := range backends {
 		if backend.Status != domain.BackendStatusNormal {
-			continue
-		}
-		if !supportsEndpoint(backend.Endpoints, endpoint) {
 			continue
 		}
 		if !supportsBackendModel(backend, model) {
@@ -80,15 +78,6 @@ func (s *Service) MarkSuccess(ctx context.Context, backendID int64) error {
 func (s *Service) MarkFailure(ctx context.Context, backendID int64, _ error) error {
 	_, err := s.store.MarkBackendFailure(ctx, backendID, s.backendFails, s.backendCooldown, time.Now().UTC())
 	return err
-}
-
-func supportsEndpoint(endpoints []string, endpoint string) bool {
-	for _, candidate := range endpoints {
-		if matchPattern(candidate, endpoint) {
-			return true
-		}
-	}
-	return false
 }
 
 func supportsModel(patterns []string, model string) bool {

@@ -84,7 +84,11 @@ func RewriteModel(body []byte, model string) ([]byte, error) {
 }
 
 func (s *Service) Do(ctx context.Context, incoming *http.Request, backend domain.Backend, body []byte) (*http.Response, error) {
-	target, err := buildTargetURL(backend.BaseURL, incoming.URL)
+	return s.DoWithPath(ctx, incoming, backend, body, incoming.URL.Path)
+}
+
+func (s *Service) DoWithPath(ctx context.Context, incoming *http.Request, backend domain.Backend, body []byte, upstreamPath string) (*http.Response, error) {
+	target, err := buildTargetURL(backend.BaseURL, incoming.URL, upstreamPath)
 	if err != nil {
 		return nil, err
 	}
@@ -100,6 +104,7 @@ func (s *Service) Do(ctx context.Context, incoming *http.Request, backend domain
 	request.Header.Del("X-Api-Key")
 	request.Header.Del("Host")
 	request.Header.Del("Content-Length")
+	sanitizeBackendHeaders(request.Header, backend)
 	applyBackendAuth(request.Header, backend)
 
 	client, err := s.clientForBackend(backend)
@@ -207,28 +212,31 @@ func (f flushWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-func buildTargetURL(base string, incoming *url.URL) (string, error) {
+func buildTargetURL(base string, incoming *url.URL, requestPath string) (string, error) {
 	baseURL, err := url.Parse(strings.TrimSpace(base))
 	if err != nil {
 		return "", err
 	}
 
 	target := *baseURL
-	target.Path = joinBasePath(baseURL.Path, incoming.Path)
+	if strings.TrimSpace(requestPath) == "" {
+		requestPath = incoming.Path
+	}
+	target.Path = joinBasePath(baseURL.Path, requestPath)
 	target.RawPath = target.Path
 	target.RawQuery = incoming.RawQuery
 	return target.String(), nil
 }
 
-func joinBasePath(basePath, incomingPath string) string {
+func joinBasePath(basePath, requestPath string) string {
 	basePath = strings.TrimRight(basePath, "/")
-	if strings.HasSuffix(basePath, "/v1") && strings.HasPrefix(incomingPath, "/v1/") {
-		return basePath + strings.TrimPrefix(incomingPath, "/v1")
+	if strings.HasSuffix(basePath, "/v1") && strings.HasPrefix(requestPath, "/v1/") {
+		return basePath + strings.TrimPrefix(requestPath, "/v1")
 	}
 	if basePath == "" {
-		return incomingPath
+		return requestPath
 	}
-	return basePath + incomingPath
+	return basePath + requestPath
 }
 
 func copyHeaders(dst, src http.Header) {
@@ -265,5 +273,15 @@ func applyBackendAuth(header http.Header, backend domain.Backend) {
 		header.Set("X-Api-Key", strings.TrimSpace(backend.APIKey))
 	default:
 		header.Set("Authorization", bearerValue(backend.APIKey))
+	}
+}
+
+func sanitizeBackendHeaders(header http.Header, backend domain.Backend) {
+	switch domain.NormalizeBackendProtocol(backend.Protocol) {
+	case domain.BackendProtocolAnthropic:
+		return
+	default:
+		header.Del("Anthropic-Version")
+		header.Del("Anthropic-Beta")
 	}
 }
