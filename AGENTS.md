@@ -80,6 +80,8 @@
   - admin CRUD for SOCKS proxies, backends, client keys
   - persisted backend scheduling state in SQLite
   - backend manual status edits for `normal` and `disabled`
+  - backend console metadata fields end-to-end: `console_url`, `tags`, `console_username`, `console_password`, `notes`
+  - backend list payload metrics for `hourly_requests`, `hourly_failures`, average latency, and detail drawer metadata sections
   - dashboard, search, usage logs, events, settings, resource drawers
 - Completed in recent sessions:
   - removed policy routing model end-to-end from backend API, frontend, and schema
@@ -89,35 +91,37 @@
   - added regression coverage for legacy backend-table migration
   - adjusted backend edit submission so an `abnormal` backend is not accidentally coerced to `normal` when the edit form has no explicit status value
   - added backend API regression coverage for manual `normal` / `disabled` status updates
-- Current uncommitted worktree:
-  - `internal/app/app_test.go`
-  - `internal/app/web/app.js`
-  - `internal/app/web/resource-runtime.js`
-  - `internal/app/web/resource-runtime.test.mjs`
-  - `internal/config/config.go`
-- Meaning of current uncommitted work:
-  - backend manual status update behavior + frontend fallback handling are implemented and fully verified
-  - `internal/config/config.go` changes `TG_BACKEND_COOLDOWN` default from `20s` to `10m`; it is unrelated to the manual-status fix and is still unstaged/uncommitted
+  - added backend console-metadata persistence + legacy-column migrations
+  - added backend admin API coverage for console metadata, hourly counters, and backend detail payloads
+  - updated backend admin UI modal/search/list/quick-detail rendering for relay-station-oriented metadata
+  - completed the backend console-metadata spec end-to-end, including:
+    - backend search text and toolbar copy for console URL / tags / notes
+    - backend expanded-row recent usage snapshot
+    - backend detail proxy + API-key presence fields
+    - masked backend detail/raw secret presentation for `api_key` and `console_password`
+  - fixed `listBackendsByProxyID` to select the expanded backend column set so proxy drawer detail works again
+  - rewrote `docs/DESIGN.md` and `docs/SCHEDULING.md` so they match the current backend-only routing model and relay-station-oriented admin UI
+  - usage logs row expansion now uses the same SVG chevron pattern as other admin tables instead of the broken text toggle
+  - verified locally with:
+    - `GOCACHE=/root/workspace/token-gate/.gocache go test ./...`
+    - `node --test internal/app/web/*.test.mjs`
 
 ## 7. In Progress
-- Isolated commit for the backend manual status behavior is not created yet.
-- `internal/config/config.go` remains a separate dirty change and should not be mixed into the behavior-fix commit unless explicitly intended.
+- No known feature work is currently in progress in project memory; next work should start from active tasks.
 
 ## 8. Known Issues
 - `internal/app/app.go` is still large and high-churn; behavior changes there need narrow diffs and targeted tests.
 - `docs/` is stale relative to current code:
-  - policy-based routing docs no longer describe the real system
-  - scheduler docs may still mention removed concepts
+  - other docs outside `DESIGN.md` / `SCHEDULING.md` may still lag the current code
 - Local `./start.sh` can fail in shared/dev environments if `:4000` is already occupied; this is environmental, not an app-init/schema issue.
 
 ## 9. Active Tasks
-- 1. Commit the current verified manual-backend-status fix without mixing in `internal/config/config.go`.
-- 2. Decide whether the new default cooldown in `internal/config/config.go` should be kept, reverted, or committed separately.
-- 3. Refresh `docs/DESIGN.md` / scheduling docs so they match the current backend-only routing model.
-- 4. Keep adding targeted tests around:
+- 1. If more backend-admin changes are made, preserve the current verification bar: `go test ./...` and `node --test internal/app/web/*.test.mjs`.
+- 2. Keep adding targeted tests around:
   - scheduler failure threshold/cooldown behavior
   - admin backend update semantics
   - legacy SQLite compatibility when opening old local DB files
+  - proxy-detail and related backend/proxy join queries that depend on the expanded backend scan shape
 
 ## 10. Architecture Notes
 - Policy routing architecture is gone. Routing now depends only on:

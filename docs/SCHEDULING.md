@@ -1,11 +1,8 @@
 # Token Gate 调度说明
 
-本文专门解释 Token Gate 是如何为一次请求选择 backend 的。重点覆盖：
+本文说明当前版本的 Token Gate 如何为一次请求选择 backend，以及 backend 运行态是如何影响候选集的。
 
-- 请求进入后调度器到底按什么顺序判断
-- `policy`、`pool`、`endpoint`、`weight` 分别起什么作用
-- 多条 policy 同时命中时，最后哪条生效
-- failover 在什么情况下发生
+这份说明只描述当前代码真实实现，不描述已经移除的 policy / pool / placement 架构。
 
 ## 一句话概括
 
@@ -14,14 +11,15 @@
 ```text
 请求进入
 -> 提取 endpoint 和 model
--> 选出唯一生效的 policy
--> 根据 policy 和 backend 能力筛候选 backend
--> 按 placement + weight + 活跃请求数排序
+-> 恢复已过期的 abnormal backends
+-> 从 SQLite 读取全部 backends
+-> 按 status / endpoint / model 过滤候选
+-> 按 weight desc、id asc 排序
 -> 依次尝试候选 backend
--> 失败时按策略决定是否 failover
+-> 失败时自动 failover 到下一个候选
 ```
 
-`policy` 先决定规则，`backend` 再在规则内参与竞争。
+当前系统没有单独的策略对象；规则都在 backend 自身配置和运行态里。
 
 ## 1. 请求进入后先做什么
 
@@ -29,8 +27,8 @@
 
 1. 校验客户端 `api_key`
 2. 根据请求路径识别 endpoint
-3. 从请求体中读取 `model`
-4. 把 `client + endpoint + model` 交给调度器
+3. 从请求 body 里读取 `model`
+4. 把 `endpoint + model` 交给调度器
 
 当前支持的 endpoint 分类：
 
@@ -41,7 +39,7 @@
 - `messages`
 - `models`
 
-例如：
+路径映射：
 
 - `/v1/chat/completions` -> `chat`
 - `/v1/responses` -> `responses`
@@ -49,528 +47,407 @@
 - `/v1/images/generations` -> `images`
 - `/v1/messages` -> `messages`
 - `/v1/messages/count_tokens` -> `messages`
+- `/v1/models` -> `models`
 
-## 2. 先选出哪条 policy 生效
+注意：
 
-调度器不会把多条 policy 叠加执行，而是先从所有命中规则中选出唯一一条生效 policy。
+- `/v1/models` 走的是单独的模型汇总逻辑，不进入普通 proxy failover 流程。
+- 其他公开代理路径如果 body 不是合法 JSON，或缺失 `model` 字段，会直接失败。
 
-命中条件：
+## 2. 候选 backend 是怎么选出来的
 
-- `policy.endpoint` 匹配当前请求 endpoint
-- `policy.pattern` 匹配当前请求 model
+调度入口是：
 
-如果有多条 policy 同时命中，选择顺序是：
+```go
+scheduler.SelectBackend(ctx, endpoint, model)
+```
 
-1. `priority` 更小的优先
-2. 如果 `priority` 相同，`pattern` 更具体的优先
+内部流程分四步。
 
-### 示例 1：更具体的 pattern 生效
+### 第一步：恢复过期的 abnormal backend
 
-有两条 policy：
+在真正选候选之前，调度器会调用：
 
-- A: `pattern = gpt-*`, `endpoint = chat`, `priority = 100`
-- B: `pattern = gpt-4o`, `endpoint = chat`, `priority = 100`
+- `store.RecoverExpiredBackends(now)`
 
-请求：
+规则：
 
-- `model = gpt-4o`
-- `endpoint = chat`
+- 只处理 `status = abnormal` 的 backend
+- 要求 `recover_at <= now`
+- 满足条件后恢复为：
+  - `status = normal`
+  - `consecutive_failures = 0`
+  - `recover_at = ''`
 
-结果：
+这意味着 abnormal backend 不是永久踢出，而是“每次调度前尝试恢复”。
 
-- A 命中
-- B 也命中
-- 因为 B 的 `pattern` 更具体，所以最终 B 生效
+### 第二步：读取全部 backend
 
-### 示例 2：priority 覆盖具体度
+调度器从 SQLite 读取所有 backend。当前没有按 model、endpoint 或状态做预查询优化。
 
-有两条 policy：
-
-- A: `pattern = gpt-4o`, `endpoint = chat`, `priority = 300`
-- B: `pattern = gpt-*`, `endpoint = chat`, `priority = 100`
-
-请求：
-
-- `model = gpt-4o`
-- `endpoint = chat`
-
-结果：
-
-- 两条都命中
-- B 的 `priority` 更高，因为数字更小
-- 最终 B 生效
-
-### 结论
-
-当前系统允许配置重叠 policy，不会在创建时禁止。  
-真正生效的是“命中后排序的第一条”。
-
-## 3. policy 生效后，怎么筛 backend
-
-当唯一 policy 选出来以后，调度器开始筛 backend。
+### 第三步：按条件过滤
 
 backend 必须同时满足下面条件，才会进入候选集：
 
-1. backend 已启用
+1. `backend.status == normal`
 2. backend 支持当前 endpoint
-3. backend 支持当前 model
-4. 如果 policy 指定了 `backend_pool`，backend 必须属于这个 pool
+3. backend 支持当前 model，或者 `model_mapping` 中存在该客户端 model 的映射
 
-这一步非常关键：  
-只有通过筛选的 backend，后面才会参与排序。没通过筛选的 backend，哪怕 `weight` 很高，也完全不会被选中。
+如果任一条件不满足，这个 backend 就不会参与本次请求。
 
-## 4. backend.pool 和 policy.backend_pool 是什么关系
+### 第四步：排序
 
-这两个字段是一套“后端分组限制”机制。
+候选集按以下规则排序：
 
-- `backend.pool`：backend 自己属于哪个组
-- `policy.backend_pool`：这条 policy 允许从哪个组里选 backend
+1. `weight` 更大的优先
+2. 如果 `weight` 相同，`id` 更小的优先
 
-### 示例 3：用 pool 限制候选 backend
+当前没有：
 
-有三个 backend：
+- sticky
+- pack
+- spread
+- rendezvous hashing
+- active request bias
 
-- A: `pool = default`, 支持 `gpt-4o`
-- B: `pool = image`, 支持 `gpt-image-2`
-- C: `pool = image`, 支持 `gpt-image-2`
+排序是稳定而直接的。
 
-有一条 policy：
+## 3. status 在调度里到底起什么作用
 
-- `pattern = gpt-image-*`
-- `endpoint = images`
-- `backend_pool = image`
+当前 backend 有三个状态：
+
+- `normal`
+- `abnormal`
+- `disabled`
+
+它们对调度的影响非常直接。
+
+### `normal`
+
+- 会参与调度。
+
+### `abnormal`
+
+- 不参与调度。
+- 只有在 `recover_at` 到期后，才会在下一次调度前被恢复回 `normal`。
+
+### `disabled`
+
+- 永远不参与调度。
+- 不会被自动恢复。
+- 只能由管理员在后台手动改回 `normal`。
+
+所以可以把状态理解成：
+
+```text
+normal   = 可选
+abnormal = 因运行态故障临时下线
+disabled = 因人工配置永久下线，直到再次启用
+```
+
+## 4. endpoint 是怎么匹配的
+
+backend 自己声明支持哪些 endpoint，字段是：
+
+- `endpoints []string`
+
+匹配逻辑支持：
+
+- 精确匹配，例如 `chat`
+- glob 匹配，例如 `*`
+
+实现上使用 `path.Match` 风格匹配，所以像 `chat`、`messages`、`*` 都能工作。
+
+示例：
+
+- backend A: `endpoints = ["chat", "responses"]`
+- backend B: `endpoints = ["messages"]`
+- backend C: `endpoints = ["*"]`
+
+请求：
+
+- `endpoint = chat`
+
+结果：
+
+- A 匹配
+- B 不匹配
+- C 匹配
+
+## 5. model 是怎么匹配的
+
+backend 的模型能力由两部分共同决定：
+
+- `models []string`
+- `model_mapping map[string]string`
+
+### 5.1 `models` 直接匹配
+
+`models` 支持：
+
+- 精确匹配，例如 `gpt-4o`
+- glob 匹配，例如 `claude-*`
+- `*`
+
+示例：
+
+- backend A: `models = ["gpt-4o", "gpt-4.1"]`
+- backend B: `models = ["gpt-image-*"]`
+- backend C: `models = ["*"]`
 
 请求：
 
 - `model = gpt-image-2`
-- `endpoint = images`
 
 结果：
 
-- A 不会参与，因为 pool 不匹配
-- B、C 进入候选集
+- A 不匹配
+- B 匹配
+- C 匹配
 
-如果 `backend_pool` 留空：
+### 5.2 `model_mapping` 精确映射
 
-- 就不会按 pool 限制
-- 所有满足 model / endpoint 的 backend 都可以参与
+如果 `models` 不匹配，调度器还会检查：
 
-## 5. endpoint 在 policy 里到底有什么用
+- `backend.model_mapping[client_model]`
 
-`policy.endpoint` 不是模型能力，而是“这条策略作用于哪类 API 请求”。
+规则：
 
-同一个模型名，在不同 endpoint 上可以走不同调度策略。
+- key 必须精确等于客户端请求的 model 名
+- value 必须非空
+- 只要命中，就认为 backend 支持这个客户端 model
 
-### 示例 4：同模型，不同 endpoint 用不同策略
+示例：
 
-有两条 policy：
+- `models = ["claude-sonnet-prod"]`
+- `model_mapping = { "claude-sonnet-4": "claude-sonnet-prod" }`
 
-- A: `pattern = gpt-4o`, `endpoint = chat`, `placement = sticky`
-- B: `pattern = gpt-4o`, `endpoint = responses`, `placement = spread`
+请求：
 
-请求 1：
-
-- `model = gpt-4o`
-- `endpoint = chat`
-
-结果：
-
-- 命中 A，使用 `sticky`
-
-请求 2：
-
-- `model = gpt-4o`
-- `endpoint = responses`
+- `model = claude-sonnet-4`
 
 结果：
 
-- 命中 B，使用 `spread`
+- 即使 `models` 里没有 `claude-sonnet-4`
+- backend 仍然会进入候选集
+- 转发给上游时，body 中的 `model` 会被改写成 `claude-sonnet-prod`
+
+### 5.3 `model_mapping` 不支持通配 key
+
+当前 `model_mapping` 的 key 不参与 glob 匹配，只做精确字符串匹配。
 
 所以：
 
-- `pattern` 决定匹配哪个模型
-- `endpoint` 决定匹配哪类接口
-- 两者一起决定命中哪条 policy
+- `"gpt-4o"` 可以
+- `"gpt-*"` 不会在映射层生效
 
-## 6. policy 决定 placement，client 还可以覆盖
+## 6. 当前没有哪些旧概念
 
-选出 policy 后，系统会得到一个最终的 placement policy。
+以下概念已经不属于当前调度实现：
 
-来源顺序：
+- model policy
+- priority
+- backend pool
+- placement policy
+- sticky / pack / spread
+- route mode override
+- route group
+- failover_enabled
 
-1. 如果 client key 设置了 `route_mode_override`，优先用 client 自己的覆盖值
-2. 否则用 model policy 的 `placement_policy`
-3. 如果都不合法，回退到 `sticky`
+如果你在旧文档、旧测试或旧记忆里看到这些词，应该以当前代码为准：现在它们都不参与请求调度。
 
-也就是说，client key 可以覆盖 policy 的调度方式，但不能绕过 backend 候选筛选逻辑。
+## 7. failover 是怎么发生的
 
-## 7. weight 在调度里到底什么时候生效
+调度器只负责给出有序候选列表。真正的 failover 发生在 app 层的代理循环里。
 
-`backend.weight` 是在 policy 生效并且 backend 已进入候选集之后，才开始影响排序。
+流程是：
+
+1. 取第一个候选 backend
+2. 发起上游请求
+3. 如果失败且还有下一个候选，就切到下一个
+4. 直到成功或候选耗尽
+
+### 会触发 failover 的情况
+
+当前实现里，下列情况都会尝试下一个候选：
+
+- 建连失败
+- 使用 SOCKS5 proxy 失败
+- 请求写入失败
+- 读取 response header 失败
+- 上游返回任意非 `2xx` 状态
+
+注意这里是“任意非 `2xx`”，不是只看 `429` 或 `5xx`。
+
+也就是说：
+
+- `301`
+- `400`
+- `401`
+- `429`
+- `500`
+
+都会在代理层触发 failover，只要还有下一候选。
+
+### 不会继续 failover 的情况
+
+- 当前 backend 已经成功返回 `2xx`
+- 没有更多候选 backend
+- 响应已经写给客户端之后发生中途流错误
+
+SSE 流开始输出后，不可能再无损切换到另一个 backend。
+
+## 8. failure 统计口径和 failover 口径不是一回事
+
+这里很容易混淆，必须分开看。
+
+### 代理层 failover 口径
+
+用于“要不要继续尝试下一个 backend”：
+
+- 任何非 `2xx`
+- 或网络/连接类错误
+
+### usage/dashboard failure 统计口径
+
+用于 usage log stats、dashboard、backend hourly failure 计数：
+
+- 所有 `5xx`
+- 所有 `4xx`，但排除 `400`
 
 这意味着：
 
-- `policy` 先决定“哪些 backend 有资格参与”
-- `weight` 再决定“这些合格 backend 里谁更容易排在前面”
+- `400` 会触发 failover，但不记入 failure 统计
+- `301` 会触发 failover，也不记入 failure 统计
+- `429` 会触发 failover，并记入 failure 统计
+- `502` 会触发 failover，并记入 failure 统计
 
-### 示例 5：weight 不能突破 policy 的限制
+## 9. 连续失败和 abnormal 是怎么配合的
 
-有三个 backend：
+backend 不是失败一次就立刻 abnormal。
 
-- A: `pool = image`, `weight = 10`
-- B: `pool = image`, `weight = 1`
-- C: `pool = default`, `weight = 100`
-
-policy：
-
-- `backend_pool = image`
-
-结果：
-
-- A 和 B 参与排序
-- C 完全不会参与
-- 即使 C 的 `weight = 100`，也不会被选
-
-### 示例 6：同一 pool 里 weight 影响优先级
-
-有两个 backend：
-
-- A: `pool = image`, `weight = 10`
-- B: `pool = image`, `weight = 1`
-
-在其它条件相同的情况下：
-
-- A 更容易排在 B 前面
-- 但不是“永远固定选 A”
-- 因为当前实现使用的是 rendezvous hashing，不是简单按权重轮询
-
-## 8. placement policy 怎么影响排序
-
-候选 backend 选出来后，会按 `placement policy` 计算排序分数。
-
-当前支持三种：
-
-- `sticky`
-- `pack`
-- `spread`
-
-### sticky
-
-```text
-route_key = client_api_key_hash + "|" + model
-```
-
-特点：
-
-- 同一 client key 请求同一 model，倾向稳定落到同一 backend
-- backend 数量变化时，只会部分迁移
-
-适合：
-
-- 希望命中缓存
-- 希望同一个客户端体验稳定
-
-### pack
-
-```text
-route_key = route_group + "|" + model
-```
-
-特点：
-
-- 同一 `route_group` 下，不同 client 请求同一 model，倾向落到同一 backend
-- 没设置 `route_group` 时，默认用 `shared`
-
-适合：
-
-- 希望把相同模型请求尽量集中
-- 希望减少冷启动或缓存碎片
-
-### spread
-
-```text
-route_key = client_api_key_hash + "|" + model
-score = rendezvous_score / (active_requests + 1)
-```
-
-特点：
-
-- 保留一定稳定性
-- 同时考虑活跃请求数
-- 更倾向把请求分配到当前更空闲的 backend
-
-适合：
-
-- 想把并发打散
-- 想减少热点节点
-
-## 9. 冷却期和 failover 是怎么配合的
-
-Token Gate 不做主动健康检查，只根据真实请求结果维护 backend 运行态。
-
-### 请求前的冷却筛选
-
-如果某个 backend 正在冷却期：
-
-- 它不会进入可用候选集
-
-如果存在至少一个非冷却 backend：
-
-- 只使用非冷却候选
-
-如果所有候选都在冷却：
-
-- 直接返回失败
-- 不会再把 cooling backend 当作兜底候选
-
-### 什么时候会触发 failover
-
-一个 backend 在首包前失败时，可以切到下一个候选。常见情况：
-
-- 建连失败
-- 请求发送失败
-- 上游返回可重试状态
-
-当前可重试状态主要包括：
-
-- `429`
-- `5xx`
-
-是否真的切下一个候选，还取决于命中的 policy 是否开启了 `failover_enabled`。
-
-### 连续失败多少次才进入 cooling
-
-当前不是失败一次就立刻进入 cooling。  
-backend 只有在“连续失败次数达到阈值”后，才会被标记为 cooling。
-
-这个阈值由环境变量控制：
+相关配置：
 
 - `TG_BACKEND_FAILS`
+- `TG_BACKEND_COOLDOWN`
 
-默认值：
+规则：
 
-- `3`
+1. 某次 backend 尝试失败
+2. `consecutive_failures += 1`
+3. 如果当前 backend 不是 `disabled`，并且连续失败数达到阈值：
+  - `status = abnormal`
+  - `recover_at = now + cooldown`
 
-也就是说，默认行为是：
+默认直觉是：
 
-- 第 1 次失败：只累计失败次数，不 cooling
-- 第 2 次失败：继续累计，不 cooling
-- 第 3 次失败：进入 cooling
+- 前几次失败只累计计数
+- 达阈值后才临时下线
 
-### 连续失败阈值示例
+成功一次后：
+
+- 失败计数清零
+- abnormal 标记清掉
+
+### 示例
 
 假设：
 
 - `TG_BACKEND_FAILS = 3`
-- `TG_BACKEND_COOLDOWN = 20s`
+- `TG_BACKEND_COOLDOWN = 30s`
 
 backend A 连续失败：
 
-1. 第 1 次失败：`consecutive_failures = 1`，不进入 cooling
-2. 第 2 次失败：`consecutive_failures = 2`，不进入 cooling
-3. 第 3 次失败：`consecutive_failures = 3`，进入 cooling，冷却 `20s * 3`
+1. 第 1 次失败：`consecutive_failures = 1`，仍然可能保持 `normal`
+2. 第 2 次失败：`consecutive_failures = 2`
+3. 第 3 次失败：进入 `abnormal`，`recover_at = now + 30s`
 
-如果之后又继续连续失败，冷却时间会继续按失败次数增长，但当前上限仍是 5 倍基础冷却时间。
+30 秒之后：
 
-### 示例 7：failover 开启
+- 下次有请求进入调度器时
+- `RecoverExpiredBackends` 会把它恢复成 `normal`
 
-候选顺序：
+## 10. 手工状态修改有什么特殊语义
 
-1. A
-2. B
-3. C
+管理员更新 backend 时，当前 API 只允许手工设置：
 
-policy：
+- `normal`
+- `disabled`
 
-- `failover_enabled = true`
+不允许直接把 backend 改成 `abnormal`。
 
-结果：
+这是刻意的边界：
 
-- 如果 A 连接失败，会尝试 B
-- 如果 B 返回 `429`，会尝试 C
-- 直到候选用尽
+- `abnormal` 是调度器管理的运行态
+- `disabled` 是人工配置态
 
-### 示例 8：failover 关闭
+如果管理员把一个 backend 改为 `normal`：
 
-候选顺序：
+- 会清空 `consecutive_failures`
+- 会清空 `recover_at`
 
-1. A
-2. B
+这等价于“人工恢复上线”。
 
-policy：
+## 11. 一个完整示例
 
-- `failover_enabled = false`
+假设有三个 backend：
 
-结果：
-
-- A 一旦失败，请求直接失败
-- 不会尝试 B
-
-## 10. 一次完整示例
-
-下面给一个完整的调度例子。
-
-### backend 配置
-
-- `bj-chat-1`
-  - `pool = default`
-  - `protocol = openai`
-  - `models = [gpt-4o, gpt-4.1]`
-  - `endpoints = [chat, responses]`
+- `edge-a`
+  - `status = normal`
   - `weight = 5`
+  - `models = ["gpt-4o"]`
+  - `endpoints = ["chat", "responses"]`
 
-- `bj-chat-2`
-  - `pool = default`
-  - `protocol = openai`
-  - `models = [gpt-4o, gpt-4.1]`
-  - `endpoints = [chat, responses]`
-  - `weight = 1`
-
-- `img-1`
-  - `pool = image`
-  - `protocol = openai`
-  - `models = [gpt-image-*]`
-  - `endpoints = [images]`
-  - `weight = 3`
-
-- `claude-1`
-  - `pool = claude`
-  - `protocol = anthropic`
-  - `models = [claude-*]`
-  - `endpoints = [messages]`
+- `edge-b`
+  - `status = normal`
   - `weight = 2`
+  - `models = ["gpt-4o"]`
+  - `endpoints = ["chat", "responses"]`
 
-### policy 配置
-
-- Policy A
-  - `pattern = gpt-4o`
-  - `endpoint = chat`
-  - `placement_policy = sticky`
-  - `backend_pool = default`
-  - `priority = 100`
-
-- Policy B
-  - `pattern = gpt-image-*`
-  - `endpoint = images`
-  - `placement_policy = spread`
-  - `backend_pool = image`
-  - `priority = 100`
-
-- Policy C
-  - `pattern = claude-*`
-  - `endpoint = messages`
-  - `placement_policy = sticky`
-  - `backend_pool = claude`
-  - `priority = 100`
-
-### 请求 1：聊天
+- `edge-c`
+  - `status = disabled`
+  - `weight = 100`
+  - `models = ["gpt-4o"]`
+  - `endpoints = ["chat", "responses"]`
 
 请求：
 
-- client key = `client-a`
-- endpoint = `chat`
-- model = `gpt-4o`
+- `POST /v1/chat/completions`
+- `model = gpt-4o`
 
 调度过程：
 
-1. 命中 Policy A
-2. 只允许 `pool = default`
-3. `img-1` 被排除
-4. `bj-chat-1` 和 `bj-chat-2` 进入候选
-5. 使用 `sticky`
-6. 再结合 weight 排序
-7. 大概率优先 `bj-chat-1`
+1. endpoint 识别为 `chat`
+2. model 识别为 `gpt-4o`
+3. `edge-c` 因 `disabled` 被排除
+4. `edge-a`、`edge-b` 都满足 endpoint/model/status
+5. 排序结果：
+  - `edge-a`
+  - `edge-b`
+6. 先尝试 `edge-a`
+7. 如果 `edge-a` 请求失败或返回非 `2xx`，就切到 `edge-b`
 
-### 请求 2：图片
+## 12. `/v1/models` 为什么可能和实际候选集不完全一样
 
-请求：
+`GET /v1/models` 会汇总所有 `status = normal` backend 暴露出的客户端可见模型，但它只是“可见模型集合”，不是完整调度结果。
 
-- client key = `client-a`
-- endpoint = `images`
-- model = `gpt-image-2`
+它不会表达：
 
-调度过程：
+- 某模型对应多少 backend
+- backend 的 weight 排序
+- 某 backend 是否刚好会在当前请求里首先命中
 
-1. 命中 Policy B
-2. 只允许 `pool = image`
-3. 只有 `img-1` 满足条件
-4. 最终只能发给 `img-1`
+所以：
 
-### 请求 3：Claude Messages
-
-请求：
-
-- client key = `client-a`
-- endpoint = `messages`
-- model = `claude-3-5-sonnet-latest`
-
-调度过程：
-
-1. 命中 Policy C
-2. 只允许 `pool = claude`
-3. 只有 `claude-1` 满足 model 和 endpoint
-4. 出站请求使用 backend 的 `X-Api-Key`，请求体和响应体不做格式转换
-
-## 11. 最容易混淆的几点
-
-### `backend.pool` 不是模型名
-
-它是后端分组名，只用于限制候选范围。
-
-### `policy.endpoint` 不是 backend 能力列表
-
-它只是“这条 policy 匹配哪类请求”。
-
-真正的 backend 能力还是看 backend 自己的：
-
-- `models`
-- `endpoints`
-
-### `weight` 不是 policy 级别配置
-
-它是 backend 自己的属性。  
-同一条 policy 命中的多个 backend，才会按各自 `weight` 比较。
-
-### `route_group` 不是 pool
-
-- `pool` 用来限制候选 backend 范围
-- `route_group` 只在 `pack` 模式下参与 route key 计算
-
-## 12. 推荐配置建议
-
-如果你当前场景比较简单，推荐这样理解和使用：
-
-### 简单场景
-
-条件：
-
-- 每个模型只对应一组 backend
-- 不区分供应商池、成本池、出口池
-
-建议：
-
-- `backend.pool` 可以不填
-- `policy.backend_pool` 可以留空
-- 主要靠 `pattern + endpoint + placement_policy`
-
-### 复杂场景
-
-条件：
-
-- 同一个模型在多组 backend 都存在
-- 需要区分高成本/低成本、不同出口、不同账号池
-
-建议：
-
-- backend 按业务含义打 `pool`
-- policy 明确指定 `backend_pool`
-- 再用 `weight` 调整组内优先级
+- `/v1/models` 更像是目录视图
+- 实际选路仍然由调度器按实时 backend 状态完成
 
 ## 13. 最终记忆版
 
 记住下面这句就够了：
 
 ```text
-policy 先决定规则和候选范围，
-backend 再在这个范围里按 placement、weight 和运行态竞争。
+当前 Token Gate 没有 policy 层。
+请求只会在 status=normal、支持该 endpoint 和 model 的 backends 之间，
+按 weight 从高到低排序，然后失败就自动切到下一个。
 ```
