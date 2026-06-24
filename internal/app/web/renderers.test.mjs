@@ -53,54 +53,82 @@ test("createResourceTableModel normalizes rows and columns for premium list page
   ]);
 });
 
-test("createQuickDetailSections limits inline expansion to concise summaries", () => {
+test("createQuickDetailSections keeps backend inline expansion focused on routing and capability metadata", () => {
   const sections = createQuickDetailSections("backends", {
-    id: 7,
     base_url: "https://edge.example.com/v1",
-    models: ["gpt-4o", "gpt-4.1"],
     endpoints: ["chat", "responses"],
-    model_count: 2,
-    endpoint_count: 2,
-    status: "normal",
     proxy: { name: "tokyo-egress" },
-    request_count: 42,
-    avg_latency_ms: 88,
-    last_used_at: "2026-06-19T13:00:00Z",
     model_mapping: { "gpt-4o": "gpt-4o-prod" },
   });
 
   assert.deepEqual(sections, [
     {
-      title: "Relationships",
-      tone: "primary",
+      title: "Routing",
+      tone: "success",
       items: [
         { label: "Proxy", value: "tokyo-egress" },
-        { label: "Status", value: "normal" },
+        { label: "Base URL", value: "https://edge.example.com/v1" },
       ],
     },
     {
       title: "Capabilities",
-      tone: "success",
-      items: [
-        { label: "Models", value: "2" },
-        { label: "Endpoints", value: "2" },
-      ],
-    },
-    {
-      title: "Usage",
-      tone: "warning",
-      items: [
-        { label: "Requests", value: "42" },
-        { label: "Avg latency", value: "88 ms" },
-        { label: "Last used", value: "2026-06-19T13:00:00Z" },
-      ],
-    },
-    {
-      title: "JSON Preview",
       tone: "neutral",
       items: [
-        { label: "Base URL", value: "https://edge.example.com/v1" },
+        { label: "Endpoints", value: "chat, responses" },
         { label: "Mapping", value: '"gpt-4o":"gpt-4o-prod"' },
+      ],
+    },
+  ]);
+});
+
+test("createQuickDetailSections surfaces backend console metadata in inline expansion", () => {
+  const sections = createQuickDetailSections("backends", {
+    console_username: "console-user",
+    console_password: "console-pass",
+    notes: "night shift",
+    proxy: { name: "tokyo-egress" },
+    base_url: "https://edge.example.com/v1",
+    model_mapping: { "gpt-4o": "gpt-4o-prod" },
+    endpoints: ["chat", "responses"],
+    last_used_at: "2026-06-19T13:00:00Z",
+    hourly_requests: 19,
+    hourly_failures: 2,
+    recent_stats: { window_minutes: 30, successes: 17, failures: 1 },
+  });
+
+  assert.deepEqual(sections, [
+    {
+      title: "Console Access",
+      tone: "primary",
+      items: [
+        { label: "Username", value: "console-user" },
+        { label: "Password", value: "set" },
+        { label: "Notes", value: "night shift" },
+      ],
+    },
+    {
+      title: "Routing",
+      tone: "success",
+      items: [
+        { label: "Proxy", value: "tokyo-egress" },
+        { label: "Base URL", value: "https://edge.example.com/v1" },
+      ],
+    },
+    {
+      title: "Capabilities",
+      tone: "neutral",
+      items: [
+        { label: "Endpoints", value: "chat, responses" },
+        { label: "Mapping", value: '"gpt-4o":"gpt-4o-prod"' },
+      ],
+    },
+    {
+      title: "Recent Usage",
+      tone: "warning",
+      items: [
+        { label: "Last used", value: "2026-06-19T13:00:00Z" },
+        { label: "1h", value: "19 req / 2 fail" },
+        { label: "30m", value: "17 ok / 1 fail (30m)" },
       ],
     },
   ]);

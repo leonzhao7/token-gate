@@ -84,13 +84,10 @@ test("renderBackendRow and renderClientRow forward display helpers and quick det
   };
   const displayUtils = {
     statusPill() {},
-    formatBackendRouting() {},
-    formatBackendCoverage() {},
-    backendProtocolLabel() {},
-    formatUsageCount() {},
+    formatTagList() {},
+    formatModelList() {},
+    formatHourlyCount() {},
     formatLatency() {},
-    formatDateTime() {},
-    formatBackendRecentStats() {},
     clientTokenDisplay(client) {
       return `token:${client.id}`;
     },

@@ -1688,6 +1688,9 @@ function createDisplayUtilsStub(overrides = {}) {
     formatBackendRouting() {
       return "normal";
     },
+    formatHourlyCount() {
+      return "0";
+    },
     formatBindingCount() {
       return "0 backends";
     },
@@ -1699,6 +1702,12 @@ function createDisplayUtilsStub(overrides = {}) {
     },
     formatLatency() {
       return "10 ms";
+    },
+    formatModelList() {
+      return "-";
+    },
+    formatTagList() {
+      return "-";
     },
     formatUsageCount() {
       return "0 requests";

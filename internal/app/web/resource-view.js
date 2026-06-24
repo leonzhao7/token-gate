@@ -154,17 +154,13 @@
     editing,
     quickDetails,
     statusPill,
-    formatBackendRouting,
-    formatBackendCoverage,
-    backendProtocolLabel,
-    formatUsageCount,
+    formatTagList = defaultListValue,
+    formatModelList = defaultListValue,
+    formatHourlyCount = defaultHourlyCount,
     formatLatency,
-    formatDateTime,
-    formatBackendRecentStats,
     tableActions,
     escapeHTML = defaultEscapeHTML,
   }) {
-    const recentStats = backend?.recent_stats || {};
     return `
       <tr class="${editing ? "is-editing" : ""} clickable-row" data-row-open="backend" data-row-id="${escapeHTML(backend.id)}" data-row-title="${escapeHTML(backend.name)}">
         <td>
@@ -172,30 +168,37 @@
             ${renderRowChevron(expanded)}
             <span>${escapeHTML(backend.name)}</span>
           </button>
-          <div class="cell-subtitle">${escapeHTML(backend.base_url)}</div>
         </td>
-        <td>
-          ${statusPill(backend.status || "normal", backend.status || "normal", "unknown")}
-          <div class="cell-subtitle">${escapeHTML(formatBackendRouting(backend))}</div>
-        </td>
-        <td>
-          <div>${escapeHTML(formatBackendCoverage(backend))}</div>
-          <div class="cell-subtitle">${escapeHTML(backendProtocolLabel(backend.protocol))}</div>
-        </td>
-        <td>${escapeHTML(formatUsageCount(backend.request_count))}</td>
+        <td>${escapeHTML(backend.console_url || "-")}</td>
+        <td>${statusPill(backend.status || "normal", backend.status || "normal", "unknown")}</td>
+        <td>${escapeHTML(formatTagList(backend.tags))}</td>
+        <td>${escapeHTML(formatModelList(backend.models))}</td>
+        <td>${escapeHTML(formatHourlyCount(backend.hourly_requests))}</td>
+        <td>${escapeHTML(formatHourlyCount(backend.hourly_failures))}</td>
         <td>${escapeHTML(formatLatency(backend.avg_latency_ms))}</td>
-        <td>${escapeHTML(formatDateTime(backend.last_used_at))}</td>
-        <td>${escapeHTML(formatBackendRecentStats(recentStats))}</td>
         <td>${tableActions("backend", backend.id)}</td>
       </tr>
       ${expanded ? `
         <tr class="detail-row">
-          <td colspan="8">
+          <td colspan="9">
             ${quickDetails}
           </td>
         </tr>
       ` : ""}
     `;
+  }
+
+  function defaultListValue(value) {
+    const items = Array.isArray(value) ? value.filter(Boolean) : [];
+    return items.length ? items.join(", ") : "-";
+  }
+
+  function defaultHourlyCount(value) {
+    const count = Number(value || 0);
+    if (!Number.isFinite(count) || count <= 0) {
+      return "0";
+    }
+    return String(Math.floor(count));
   }
 
   function renderClientRow({

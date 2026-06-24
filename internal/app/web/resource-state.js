@@ -117,7 +117,17 @@
       parts.push(source.name, source.address, source.username);
     }
     if (resourceKey === "backends") {
-      parts.push(source.name, source.base_url, source.status, ...ensureArray(source.models), ...ensureArray(source.endpoints));
+      parts.push(
+        source.name,
+        source.base_url,
+        source.console_url,
+        source.status,
+        source.console_username,
+        source.notes,
+        ...ensureArray(source.tags),
+        ...ensureArray(source.models),
+        ...ensureArray(source.endpoints),
+      );
     }
     if (resourceKey === "clients") {
       parts.push(source.name, source.token_prefix);

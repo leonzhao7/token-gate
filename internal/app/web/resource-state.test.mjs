@@ -76,6 +76,47 @@ test("applyResourceView searches backend fields across base url, status, models,
   );
 });
 
+test("applyResourceView searches backend console metadata fields", () => {
+  const items = [
+    {
+      id: 11,
+      name: "edge-east",
+      console_url: "https://console.east.example",
+      tags: ["hk", "priority"],
+      console_username: "east-admin",
+      notes: "night shift",
+      status: "normal",
+      models: ["gpt-5.4"],
+      updated_at: "2026-06-18T12:00:00Z",
+    },
+    {
+      id: 12,
+      name: "edge-west",
+      console_url: "https://console.west.example",
+      tags: ["us"],
+      console_username: "west-admin",
+      notes: "day shift",
+      status: "disabled",
+      models: ["claude-sonnet-4"],
+      updated_at: "2026-06-19T12:00:00Z",
+    },
+  ];
+
+  assert.deepEqual(
+    applyResourceView("backends", items, {
+      backends: { query: "night shift", filter: "normal", sort: "updated_desc" },
+    }).map((item) => item.id),
+    [11],
+  );
+
+  assert.deepEqual(
+    applyResourceView("backends", items, {
+      backends: { query: "console.west", filter: "disabled", sort: "updated_desc" },
+    }).map((item) => item.id),
+    [12],
+  );
+});
+
 test("applyResourceView preserves client search and name sorting behavior", () => {
   const items = [
     {

@@ -29,26 +29,24 @@
     const kind = String(resourceKey || "").trim();
     const source = record && typeof record === "object" ? record : {};
     if (kind === "backends") {
-      const modelCount = numericCount(source.model_count, source.models);
-      const endpointCount = numericCount(source.endpoint_count, source.endpoints);
       return compactSections([
-        detailSection("Relationships", "primary", [
+        detailSection("Console Access", "primary", [
+          detailItem("Username", source.console_username),
+          detailItem("Password", source.console_password ? "set" : ""),
+          detailItem("Notes", source.notes),
+        ]),
+        detailSection("Routing", "success", [
           detailItem("Proxy", source.proxy?.name),
-          detailItem("Status", source.status),
-        ]),
-        detailSection("Capabilities", "success", [
-          detailItem("Models", modelCount > 0 ? String(modelCount) : ""),
-          detailItem("Endpoints", endpointCount > 0 ? String(endpointCount) : ""),
-        ]),
-        detailSection("Usage", "warning", [
-          detailItem("Requests", finiteCount(source.request_count)),
-          detailItem("Avg latency", positiveRoundedMS(source.avg_latency_ms)),
-          detailItem("Last used", source.last_used_at),
-          detailItem("30m", source.recent_stats ? recentStatsPreview(source.recent_stats) : ""),
-        ]),
-        detailSection("JSON Preview", "neutral", [
           detailItem("Base URL", source.base_url),
+        ]),
+        detailSection("Capabilities", "neutral", [
+          detailItem("Endpoints", Array.isArray(source.endpoints) ? source.endpoints.join(", ") : ""),
           detailItem("Mapping", objectPreview(source.model_mapping)),
+        ]),
+        detailSection("Recent Usage", "warning", [
+          detailItem("Last used", source.last_used_at),
+          detailItem("1h", hourlySnapshot(source.hourly_requests, source.hourly_failures)),
+          detailItem("30m", source.recent_stats ? recentStatsPreview(source.recent_stats) : ""),
         ]),
       ]);
     }
@@ -140,6 +138,17 @@
       return "";
     }
     return `${hasSuccesses ? successes : 0} ok / ${hasFailures ? failures : 0} fail (30m)`;
+  }
+
+  function hourlySnapshot(requestsValue, failuresValue) {
+    const requests = Number(requestsValue);
+    const failures = Number(failuresValue);
+    const hasRequests = Number.isFinite(requests) && requests > 0;
+    const hasFailures = Number.isFinite(failures) && failures > 0;
+    if (!hasRequests && !hasFailures) {
+      return "";
+    }
+    return `${hasRequests ? Math.floor(requests) : 0} req / ${hasFailures ? Math.floor(failures) : 0} fail`;
   }
 
   function detailSection(title, tone, items) {

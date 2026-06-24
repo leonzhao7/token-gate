@@ -133,6 +133,9 @@ test("renderUsageLogRow and inline detail render expanded content", () => {
   assert.match(rowHTML, /expanded/);
   assert.match(rowHTML, /dt:2026-06-19T00:00:00Z/);
   assert.match(rowHTML, /gpt-5\.4/);
+  assert.match(rowHTML, /data-shell-icon="row-collapse"/);
+  assert.doesNotMatch(rowHTML, />展开</);
+  assert.doesNotMatch(rowHTML, />收起</);
   assert.doesNotMatch(rowHTML, /POST/);
   assert.doesNotMatch(rowHTML, /trace-9/);
 

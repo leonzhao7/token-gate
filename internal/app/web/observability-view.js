@@ -178,7 +178,7 @@
         >
           <span>
             <button class="row-title inline-row-toggle" data-toggle-usage-log="${escapeHTML(row.id)}" type="button">
-              <span class="chevron">${expanded ? "收起" : "展开"}</span>
+              ${renderRowChevron(expanded)}
               <span>${escapeHTML(formatDateTime(row.timestamp))}</span>
             </button>
           </span>
@@ -244,6 +244,18 @@
       return "-";
     }
     return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
+  }
+
+  function renderRowChevron(expanded) {
+    const iconName = expanded ? "row-collapse" : "row-expand";
+    const label = expanded ? "Collapse row" : "Expand row";
+    return `
+      <span class="chevron" aria-label="${label}">
+        <svg class="shell-icon row-chevron-icon" data-shell-icon="${iconName}" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="${expanded ? "m18 15-6-6-6 6" : "m6 9 6 6 6-6"}"></path>
+        </svg>
+      </span>
+    `;
   }
 
   function renderTimelineIcon(name) {

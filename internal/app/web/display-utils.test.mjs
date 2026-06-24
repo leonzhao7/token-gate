@@ -53,6 +53,15 @@ test("tableActions renders icon buttons for edit and delete", () => {
   assert.doesNotMatch(html, />编辑<|>删除</);
 });
 
+test("backend list helpers normalize empty and populated metadata values", () => {
+  assert.equal(DisplayUtils.formatTagList(["hk", "priority"]), "hk, priority");
+  assert.equal(DisplayUtils.formatTagList([]), "-");
+  assert.equal(DisplayUtils.formatModelList(["gpt-4o"]), "gpt-4o");
+  assert.equal(DisplayUtils.formatModelList(null), "-");
+  assert.equal(DisplayUtils.formatHourlyCount(7), "7");
+  assert.equal(DisplayUtils.formatHourlyCount(0), "0");
+});
+
 test("escapeHTML escapes reserved characters", () => {
   assert.equal(
     DisplayUtils.escapeHTML(`<'">&`),

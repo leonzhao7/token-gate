@@ -70,6 +70,24 @@
     return `${modelCount} models / ${endpointCount} endpoints`;
   }
 
+  function formatTagList(value) {
+    const tags = ensureArray(value).filter(Boolean);
+    return tags.length ? tags.join(", ") : "-";
+  }
+
+  function formatModelList(value) {
+    const models = ensureArray(value).filter(Boolean);
+    return models.length ? models.join(", ") : "-";
+  }
+
+  function formatHourlyCount(value) {
+    const count = Number(value || 0);
+    if (!Number.isFinite(count) || count <= 0) {
+      return "0";
+    }
+    return String(Math.floor(count));
+  }
+
   function formatLatency(value) {
     const latency = Number(value || 0);
     if (!Number.isFinite(latency) || latency <= 0) {
@@ -200,10 +218,13 @@
     formatBackendCoverage,
     formatBackendRecentStats,
     formatBackendRouting,
+    formatHourlyCount,
     formatBindingCount,
     formatDataSize,
     formatDateTime,
     formatLatency,
+    formatModelList,
+    formatTagList,
     formatUsageCount,
     renderDatalist,
     statusPill,

@@ -113,7 +113,7 @@ const RESOURCE_VIEW_CONFIG = {
     ],
   },
   backends: {
-    searchPlaceholder: "Search backends, base URL, models",
+    searchPlaceholder: "Search backends, console URL, tags, models",
     filterOptions: [
       { value: "all", label: "All status" },
       { value: "normal", label: "Normal" },
@@ -399,6 +399,11 @@ const resourceCrud = ResourceCrudUtils.createResourceCrud({
         model_mapping: "",
         weight: 1,
         status: "normal",
+        console_url: "",
+        tags: "",
+        console_username: "",
+        console_password: "",
+        notes: "",
       },
       assignEditValues(form, backend, helpers) {
         form.elements.name.value = backend.name || "";
@@ -407,6 +412,11 @@ const resourceCrud = ResourceCrudUtils.createResourceCrud({
         form.elements.base_url.value = backend.base_url || "";
         form.elements.api_key.value = backend.api_key || "";
         form.elements.api_key.placeholder = "Backend API key";
+        form.elements.console_url.value = backend.console_url || "";
+        form.elements.tags.value = (backend.tags || []).join(", ");
+        form.elements.console_username.value = backend.console_username || "";
+        form.elements.console_password.value = backend.console_password || "";
+        form.elements.notes.value = backend.notes || "";
         form.elements.proxy_id.value = String(backend.proxy_id || 0);
         form.elements.models.value = (backend.models || []).join(", ");
         form.elements.model_mapping.value = helpers.formatModelMappingInput(backend.model_mapping);
@@ -952,6 +962,11 @@ backendForm.addEventListener("submit", async (event) => {
     const currentBackend = editing
       ? state.backends.find((backend) => String(backend.id) === String(state.editingBackendID))
       : null;
+    data.console_url = String(data.console_url || "").trim();
+    data.tags = splitList(data.tags);
+    data.console_username = String(data.console_username || "").trim();
+    data.console_password = String(data.console_password || "").trim();
+    data.notes = String(data.notes || "").trim();
     data.models = splitList(data.models);
     data.model_mapping = parseModelMapping(data.model_mapping);
     data.endpoints = splitList(data.endpoints);
@@ -1622,10 +1637,10 @@ function renderBackends() {
     items: state.backends,
     state,
     container: backendList,
-    searchPlaceholder: "Search backends",
+    searchPlaceholder: RESOURCE_VIEW_CONFIG.backends.searchPlaceholder,
     emptyTitle: "还没有 Backend",
     emptyDescription: "先配置至少一个 OpenAI 或 Claude/Anthropic 上游节点，之后模型路由和故障切换才会生效。",
-    headers: ["Backend", "Routing", "Coverage", "Requests", "Avg Latency", "Last Used", "Recent 30m", "Actions"],
+    headers: ["Backend", "Console URL", "Status", "Tags", "Models", "Requests 1h", "Failures 1h", "Avg Latency", "Actions"],
     rowRenderer: renderBackendRow,
     resourceViewConfig: RESOURCE_VIEW_CONFIG,
     rendererUtils: RendererUtils,

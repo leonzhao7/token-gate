@@ -96,13 +96,13 @@ test("resource row renderers output expandable rows with actions", () => {
     backend: {
       id: 2,
       name: "edge-a",
-      base_url: "https://edge-a.example/v1",
+      console_url: "https://console.edge-a.example",
       status: "normal",
-      protocol: "openai",
-      request_count: 19,
+      tags: ["hk", "priority"],
+      models: ["gpt-4o"],
+      hourly_requests: 19,
+      hourly_failures: 1,
       avg_latency_ms: 41,
-      last_used_at: "2026-06-19T00:00:00Z",
-      recent_stats: { window_minutes: 30, successes: 18, failures: 1 },
     },
     expanded: false,
     editing: true,
@@ -110,26 +110,17 @@ test("resource row renderers output expandable rows with actions", () => {
     statusPill() {
       return "<span>enabled</span>";
     },
-    formatBackendRouting() {
-      return "direct";
+    formatTagList() {
+      return "hk, priority";
     },
-    formatBackendCoverage() {
-      return "2 models / 2 endpoints";
+    formatModelList() {
+      return "gpt-4o";
     },
-    backendProtocolLabel() {
-      return "OpenAI";
-    },
-    formatUsageCount() {
-      return "19 requests";
+    formatHourlyCount(value) {
+      return `${value}`;
     },
     formatLatency() {
       return "41 ms";
-    },
-    formatDateTime(value) {
-      return `dt:${value}`;
-    },
-    formatBackendRecentStats() {
-      return "30m 18 ok / 1 fail";
     },
     tableActions() {
       return "<div>actions</div>";
@@ -169,11 +160,55 @@ test("resource row renderers output expandable rows with actions", () => {
   assert.match(proxyRow, /data-shell-icon="row-collapse"/);
   assert.doesNotMatch(proxyRow, />收起</);
   assert.match(backendRow, /edge-a/);
-  assert.match(backendRow, /30m 18 ok \/ 1 fail/);
+  assert.match(backendRow, /https:\/\/console\.edge-a\.example/);
   assert.match(backendRow, /aria-expanded="false"/);
   assert.match(backendRow, /data-shell-icon="row-expand"/);
   assert.doesNotMatch(backendRow, />展开</);
   assert.match(clientRow, /client-v\.\.\.-key/);
+});
+
+test("renderBackendRow shows console url, tags, models, hourly counters, and average latency", () => {
+  const backendRow = renderBackendRow({
+    backend: {
+      id: 2,
+      name: "edge-a",
+      console_url: "https://console.edge-a.example",
+      status: "normal",
+      tags: ["hk", "priority"],
+      models: ["gpt-4o", "claude-sonnet-4"],
+      hourly_requests: 19,
+      hourly_failures: 2,
+      avg_latency_ms: 41,
+    },
+    expanded: false,
+    editing: true,
+    quickDetails: "",
+    statusPill() {
+      return "<span>normal</span>";
+    },
+    formatTagList() {
+      return "hk, priority";
+    },
+    formatModelList() {
+      return "gpt-4o, claude-sonnet-4";
+    },
+    formatHourlyCount(value) {
+      return `${value}`;
+    },
+    formatLatency() {
+      return "41 ms";
+    },
+    tableActions() {
+      return "<div>actions</div>";
+    },
+  });
+
+  assert.match(backendRow, /https:\/\/console\.edge-a\.example/);
+  assert.match(backendRow, /hk, priority/);
+  assert.match(backendRow, /gpt-4o, claude-sonnet-4/);
+  assert.match(backendRow, />19</);
+  assert.match(backendRow, />2</);
+  assert.match(backendRow, /41 ms/);
 });
 
 test("renderResourceTablePage renders empty and table states", () => {

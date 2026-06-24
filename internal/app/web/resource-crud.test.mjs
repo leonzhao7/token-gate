@@ -90,6 +90,11 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
       protocol: "anthropic",
       base_url: "https://edge-a.example",
       api_key: "secret",
+      console_url: "https://console.edge-a.example",
+      tags: ["hk", "priority"],
+      console_username: "console-user",
+      console_password: "console-pass",
+      notes: "night shift",
       proxy_id: 7,
       models: ["gpt-4.1", "claude-sonnet-4"],
       model_mapping: { "gpt-4": "gpt-4.1" },
@@ -147,6 +152,11 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
       protocol: createInput(),
       base_url: createInput(),
       api_key: createInput(),
+      console_url: createInput(),
+      tags: createInput(),
+      console_username: createInput(),
+      console_password: createInput(),
+      notes: createInput(),
       proxy_id: createInput(),
       models: createInput(),
       model_mapping: createInput(),
@@ -187,6 +197,11 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
         defaults: {
           protocol: "openai",
           api_key: { placeholder: "Backend API key" },
+          console_url: "",
+          tags: "",
+          console_username: "",
+          console_password: "",
+          notes: "",
           proxy_id: "0",
           model_mapping: "",
           weight: 1,
@@ -199,6 +214,11 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
           form.elements.base_url.value = item.base_url || "";
           form.elements.api_key.value = item.api_key || "";
           form.elements.api_key.placeholder = "Backend API key";
+          form.elements.console_url.value = item.console_url || "";
+          form.elements.tags.value = (item.tags || []).join(", ");
+          form.elements.console_username.value = item.console_username || "";
+          form.elements.console_password.value = item.console_password || "";
+          form.elements.notes.value = item.notes || "";
           form.elements.proxy_id.value = String(item.proxy_id || 0);
           form.elements.models.value = (item.models || []).join(", ");
           form.elements.model_mapping.value = helpers.formatModelMappingInput(item.model_mapping);
@@ -215,6 +235,11 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
   assert.equal(state.editingBackendID, null);
   assert.equal(backendForm.elements.protocol.value, "openai");
   assert.equal(backendForm.elements.api_key.placeholder, "Backend API key");
+  assert.equal(backendForm.elements.console_url.value, "");
+  assert.equal(backendForm.elements.tags.value, "");
+  assert.equal(backendForm.elements.console_username.value, "");
+  assert.equal(backendForm.elements.console_password.value, "");
+  assert.equal(backendForm.elements.notes.value, "");
   assert.equal(backendForm.elements.proxy_id.value, "0");
   assert.equal(backendForm.elements.weight.value, 1);
   assert.equal(backendForm.elements.status.value, "normal");
@@ -229,6 +254,11 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
   assert.equal(backendForm.elements.name.value, "edge-a");
   assert.equal(backendForm.elements.protocol.value, "anthropic");
   assert.equal(backendForm.elements.status.value, "disabled");
+  assert.equal(backendForm.elements.console_url.value, "https://console.edge-a.example");
+  assert.equal(backendForm.elements.tags.value, "hk, priority");
+  assert.equal(backendForm.elements.console_username.value, "console-user");
+  assert.equal(backendForm.elements.console_password.value, "console-pass");
+  assert.equal(backendForm.elements.notes.value, "night shift");
   assert.equal(backendForm.elements.models.value, "gpt-4.1, claude-sonnet-4");
   assert.equal(backendForm.elements.model_mapping.value, "gpt-4=gpt-4.1");
   assert.equal(backendForm.elements.endpoints.value, "responses, messages");
@@ -244,6 +274,11 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
   assert.equal(state.editingBackendID, null);
   assert.equal(backendForm.elements.protocol.value, "openai");
   assert.equal(backendForm.elements.status.value, "normal");
+  assert.equal(backendForm.elements.console_url.value, "");
+  assert.equal(backendForm.elements.tags.value, "");
+  assert.equal(backendForm.elements.console_username.value, "");
+  assert.equal(backendForm.elements.console_password.value, "");
+  assert.equal(backendForm.elements.notes.value, "");
   assert.equal(backendSubmitBtn.textContent, "新增 Backend");
   assert.equal(backendCancelBtn.classList.contains("hidden"), true);
   assert.equal(backendEditBanner.classList.contains("hidden"), true);

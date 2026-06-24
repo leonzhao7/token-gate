@@ -54,13 +54,10 @@
         ? buildQuickDetailMarkupFn("backends", backend)
         : "",
       statusPill: displayUtils.statusPill,
-      formatBackendRouting: displayUtils.formatBackendRouting,
-      formatBackendCoverage: displayUtils.formatBackendCoverage,
-      backendProtocolLabel: displayUtils.backendProtocolLabel,
-      formatUsageCount: displayUtils.formatUsageCount,
+      formatTagList: displayUtils.formatTagList,
+      formatModelList: displayUtils.formatModelList,
+      formatHourlyCount: displayUtils.formatHourlyCount,
       formatLatency: displayUtils.formatLatency,
-      formatDateTime: displayUtils.formatDateTime,
-      formatBackendRecentStats: displayUtils.formatBackendRecentStats,
       tableActions: displayUtils.tableActions,
       escapeHTML: displayUtils.escapeHTML,
     });
