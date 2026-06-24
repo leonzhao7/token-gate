@@ -26,6 +26,11 @@ type BackendRequestStats struct {
 	Failures  int
 }
 
+type BackendHourlyStats struct {
+	Requests int
+	Failures int
+}
+
 type ClientKeyUsageSummary struct {
 	UsageCount int
 	LastUsedAt time.Time
@@ -212,6 +217,11 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			protocol TEXT NOT NULL DEFAULT 'openai',
 			base_url TEXT NOT NULL,
 			api_key TEXT NOT NULL,
+			console_url TEXT NOT NULL DEFAULT '',
+			tag_list TEXT NOT NULL DEFAULT '[]',
+			console_username TEXT NOT NULL DEFAULT '',
+			console_password TEXT NOT NULL DEFAULT '',
+			notes TEXT NOT NULL DEFAULT '',
 			proxy_id INTEGER NOT NULL DEFAULT 0,
 			status TEXT NOT NULL DEFAULT 'normal',
 			consecutive_failures INTEGER NOT NULL DEFAULT 0,
@@ -311,6 +321,26 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err := ensureColumn(ctx, db, "backends", "recover_at", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate backends recover_at: %w", err)
+	}
+	if err := ensureColumn(ctx, db, "backends", "console_url", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate backends console_url: %w", err)
+	}
+	if err := ensureColumn(ctx, db, "backends", "tag_list", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate backends tag_list: %w", err)
+	}
+	if err := ensureColumn(ctx, db, "backends", "console_username", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate backends console_username: %w", err)
+	}
+	if err := ensureColumn(ctx, db, "backends", "console_password", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate backends console_password: %w", err)
+	}
+	if err := ensureColumn(ctx, db, "backends", "notes", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate backends notes: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_backends_status ON backends(status);`); err != nil {
 		_ = db.Close()
@@ -655,7 +685,7 @@ func (s *Store) DeleteSocksProxy(ctx context.Context, id int64) error {
 func (s *Store) ListBackends(ctx context.Context) ([]domain.Backend, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			b.id, b.name, b.protocol, b.base_url, b.api_key, b.proxy_id, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
+			b.id, b.name, b.protocol, b.base_url, b.api_key, b.console_url, b.tag_list, b.console_username, b.console_password, b.notes, b.proxy_id, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
 			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
 		FROM backends b
 		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
@@ -1227,6 +1257,43 @@ func (s *Store) BackendRequestStatsSince(ctx context.Context, since time.Time) (
 	return out, rows.Err()
 }
 
+func (s *Store) BackendHourlyStatsByIDs(ctx context.Context, ids []int64, since time.Time) (map[int64]BackendHourlyStats, error) {
+	if len(ids) == 0 {
+		return map[int64]BackendHourlyStats{}, nil
+	}
+
+	query := `SELECT backend_id, status_code FROM usage_logs WHERE backend_id IN (` + placeholders(len(ids)) + `) AND created_at >= ?`
+	args := make([]any, 0, len(ids)+1)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+	args = append(args, formatTime(since.UTC()))
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stats := make(map[int64]BackendHourlyStats, len(ids))
+	for rows.Next() {
+		var (
+			backendID  int64
+			statusCode int
+		)
+		if err := rows.Scan(&backendID, &statusCode); err != nil {
+			return nil, err
+		}
+		item := stats[backendID]
+		item.Requests++
+		if domain.IsBackendFailureStatus(statusCode) {
+			item.Failures++
+		}
+		stats[backendID] = item
+	}
+	return stats, rows.Err()
+}
+
 func (s *Store) ClientKeyUsageSummaryByIDs(ctx context.Context, ids []int64) (map[int64]ClientKeyUsageSummary, error) {
 	if len(ids) == 0 {
 		return map[int64]ClientKeyUsageSummary{}, nil
@@ -1392,7 +1459,7 @@ func (s *Store) BackendBindingCountByProxyIDs(ctx context.Context, ids []int64) 
 func (s *Store) ListBackendsPage(ctx context.Context, limit, offset int) ([]domain.Backend, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			b.id, b.name, b.protocol, b.base_url, b.api_key, b.proxy_id, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
+			b.id, b.name, b.protocol, b.base_url, b.api_key, b.console_url, b.tag_list, b.console_username, b.console_password, b.notes, b.proxy_id, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
 			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
 		FROM backends b
 		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
@@ -1421,13 +1488,18 @@ func (s *Store) CreateBackend(ctx context.Context, backend domain.Backend) (doma
 	backend.UpdatedAt = now
 
 	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO backends(name, protocol, base_url, api_key, proxy_id, status, consecutive_failures, recover_at, weight, model_list, model_mapping, endpoint_list, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO backends(name, protocol, base_url, api_key, console_url, tag_list, console_username, console_password, notes, proxy_id, status, consecutive_failures, recover_at, weight, model_list, model_mapping, endpoint_list, created_at, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		strings.TrimSpace(backend.Name),
 		domain.NormalizeBackendProtocol(backend.Protocol),
 		strings.TrimSpace(backend.BaseURL),
 		strings.TrimSpace(backend.APIKey),
+		strings.TrimSpace(backend.ConsoleURL),
+		mustEncodeList(backend.Tags),
+		strings.TrimSpace(backend.ConsoleUsername),
+		strings.TrimSpace(backend.ConsolePassword),
+		strings.TrimSpace(backend.Notes),
 		backend.ProxyID,
 		normalizeBackendStatus(backend.Status),
 		0,
@@ -1456,13 +1528,18 @@ func (s *Store) UpdateBackend(ctx context.Context, backend domain.Backend) (doma
 
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE backends
-		SET name = ?, protocol = ?, base_url = ?, api_key = ?, proxy_id = ?, status = ?, consecutive_failures = ?, recover_at = ?, weight = ?, model_list = ?, model_mapping = ?, endpoint_list = ?, updated_at = ?
+		SET name = ?, protocol = ?, base_url = ?, api_key = ?, console_url = ?, tag_list = ?, console_username = ?, console_password = ?, notes = ?, proxy_id = ?, status = ?, consecutive_failures = ?, recover_at = ?, weight = ?, model_list = ?, model_mapping = ?, endpoint_list = ?, updated_at = ?
 		WHERE id = ?
 	`,
 		strings.TrimSpace(backend.Name),
 		domain.NormalizeBackendProtocol(backend.Protocol),
 		strings.TrimSpace(backend.BaseURL),
 		strings.TrimSpace(backend.APIKey),
+		strings.TrimSpace(backend.ConsoleURL),
+		mustEncodeList(backend.Tags),
+		strings.TrimSpace(backend.ConsoleUsername),
+		strings.TrimSpace(backend.ConsolePassword),
+		strings.TrimSpace(backend.Notes),
 		backend.ProxyID,
 		normalizeBackendStatus(backend.Status),
 		backend.ConsecutiveFailures,
@@ -1483,7 +1560,7 @@ func (s *Store) UpdateBackend(ctx context.Context, backend domain.Backend) (doma
 func (s *Store) GetBackend(ctx context.Context, id int64) (domain.Backend, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT
-			b.id, b.name, b.protocol, b.base_url, b.api_key, b.proxy_id, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
+			b.id, b.name, b.protocol, b.base_url, b.api_key, b.console_url, b.tag_list, b.console_username, b.console_password, b.notes, b.proxy_id, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
 			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
 		FROM backends b
 		LEFT JOIN socks_proxies p ON p.id = b.proxy_id
@@ -2150,11 +2227,12 @@ func scanSocksProxy(s scanner) (domain.SocksProxy, error) {
 
 func scanBackend(s scanner) (domain.Backend, error) {
 	var (
-		backend                    domain.Backend
-		modelList, modelMappingRaw string
-		endpointList               string
-		createdAt, updatedAt       string
-		recoverAt                  string
+		backend                                   domain.Backend
+		modelList, modelMappingRaw, tagList       string
+		endpointList                              string
+		createdAt, updatedAt                      string
+		recoverAt, consoleURL                     string
+		consoleUsername, consolePassword, notes   string
 	)
 	err := s.Scan(
 		&backend.ID,
@@ -2162,6 +2240,11 @@ func scanBackend(s scanner) (domain.Backend, error) {
 		&backend.Protocol,
 		&backend.BaseURL,
 		&backend.APIKey,
+		&consoleURL,
+		&tagList,
+		&consoleUsername,
+		&consolePassword,
+		&notes,
 		&backend.ProxyID,
 		&backend.Status,
 		&backend.ConsecutiveFailures,
@@ -2179,6 +2262,11 @@ func scanBackend(s scanner) (domain.Backend, error) {
 	backend.Status = normalizeBackendStatus(backend.Status)
 	backend.RecoverAt = parseOptionalTime(recoverAt)
 	backend.Protocol = domain.NormalizeBackendProtocol(backend.Protocol)
+	backend.ConsoleURL = strings.TrimSpace(consoleURL)
+	backend.Tags = decodeList(tagList)
+	backend.ConsoleUsername = strings.TrimSpace(consoleUsername)
+	backend.ConsolePassword = strings.TrimSpace(consolePassword)
+	backend.Notes = strings.TrimSpace(notes)
 	backend.Models = decodeList(modelList)
 	backend.ModelMapping = decodeMap(modelMappingRaw)
 	backend.Endpoints = decodeList(endpointList)
@@ -2189,19 +2277,20 @@ func scanBackend(s scanner) (domain.Backend, error) {
 
 func scanBackendWithProxy(s scanner) (domain.Backend, error) {
 	var (
-		backend                    domain.Backend
-		modelList, modelMappingRaw string
-		endpointList               string
-		createdAt, updatedAt       string
-		recoverAt                  string
-		proxyID                    sql.NullInt64
-		proxyName                  sql.NullString
-		proxyAddress               sql.NullString
-		proxyUsername              sql.NullString
-		proxyPassword              sql.NullString
-		proxyEnabled               sql.NullInt64
-		proxyCreatedAt             sql.NullString
-		proxyUpdatedAt             sql.NullString
+		backend                                   domain.Backend
+		modelList, modelMappingRaw, tagList       string
+		endpointList                              string
+		createdAt, updatedAt                      string
+		recoverAt, consoleURL                     string
+		consoleUsername, consolePassword, notes   string
+		proxyID                                   sql.NullInt64
+		proxyName                                 sql.NullString
+		proxyAddress                              sql.NullString
+		proxyUsername                             sql.NullString
+		proxyPassword                             sql.NullString
+		proxyEnabled                              sql.NullInt64
+		proxyCreatedAt                            sql.NullString
+		proxyUpdatedAt                            sql.NullString
 	)
 	err := s.Scan(
 		&backend.ID,
@@ -2209,6 +2298,11 @@ func scanBackendWithProxy(s scanner) (domain.Backend, error) {
 		&backend.Protocol,
 		&backend.BaseURL,
 		&backend.APIKey,
+		&consoleURL,
+		&tagList,
+		&consoleUsername,
+		&consolePassword,
+		&notes,
 		&backend.ProxyID,
 		&backend.Status,
 		&backend.ConsecutiveFailures,
@@ -2235,6 +2329,11 @@ func scanBackendWithProxy(s scanner) (domain.Backend, error) {
 	backend.Status = normalizeBackendStatus(backend.Status)
 	backend.RecoverAt = parseOptionalTime(recoverAt)
 	backend.Protocol = domain.NormalizeBackendProtocol(backend.Protocol)
+	backend.ConsoleURL = strings.TrimSpace(consoleURL)
+	backend.Tags = decodeList(tagList)
+	backend.ConsoleUsername = strings.TrimSpace(consoleUsername)
+	backend.ConsolePassword = strings.TrimSpace(consolePassword)
+	backend.Notes = strings.TrimSpace(notes)
 	backend.Models = decodeList(modelList)
 	backend.ModelMapping = decodeMap(modelMappingRaw)
 	backend.Endpoints = decodeList(endpointList)
@@ -2359,6 +2458,17 @@ func countRows(ctx context.Context, db *sql.DB, table string) (int, error) {
 		return 0, err
 	}
 	return total, nil
+}
+
+func placeholders(count int) string {
+	if count <= 0 {
+		return ""
+	}
+	values := make([]string, count)
+	for index := range values {
+		values[index] = "?"
+	}
+	return strings.Join(values, ",")
 }
 
 func formatTime(value time.Time) string {
@@ -2524,7 +2634,7 @@ func (s *Store) listAuditEventsByColumn(ctx context.Context, column, value strin
 func (s *Store) listBackendsByProxyID(ctx context.Context, proxyID int64) ([]domain.Backend, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
-			b.id, b.name, b.protocol, b.base_url, b.api_key, b.proxy_id, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
+			b.id, b.name, b.protocol, b.base_url, b.api_key, b.console_url, b.tag_list, b.console_username, b.console_password, b.notes, b.proxy_id, b.status, b.consecutive_failures, b.recover_at, b.weight, b.model_list, b.model_mapping, b.endpoint_list, b.created_at, b.updated_at,
 			p.id, p.name, p.address, p.username, p.password, p.enabled, p.created_at, p.updated_at
 		FROM backends b
 		LEFT JOIN socks_proxies p ON p.id = b.proxy_id

@@ -191,12 +191,14 @@ type resourceDetailPayload struct {
 
 type backendView struct {
 	domain.Backend
-	RequestCount  int                `json:"request_count"`
-	AvgLatencyMS  float64            `json:"avg_latency_ms"`
-	LastUsedAt    *time.Time         `json:"last_used_at,omitempty"`
-	ModelCount    int                `json:"model_count"`
-	EndpointCount int                `json:"endpoint_count"`
-	RecentStats   backendRecentStats `json:"recent_stats"`
+	RequestCount   int                `json:"request_count"`
+	AvgLatencyMS   float64            `json:"avg_latency_ms"`
+	LastUsedAt     *time.Time         `json:"last_used_at,omitempty"`
+	ModelCount     int                `json:"model_count"`
+	EndpointCount  int                `json:"endpoint_count"`
+	HourlyRequests int                `json:"hourly_requests"`
+	HourlyFailures int                `json:"hourly_failures"`
+	RecentStats    backendRecentStats `json:"recent_stats"`
 }
 
 type clientKeyView struct {
@@ -673,7 +675,7 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, overviewResponse{
-		Backends:     ensureBackendViews(buildBackendViews(backends, summaries, stats)),
+		Backends:     ensureBackendViews(buildBackendViews(backends, summaries, stats, map[int64]store.BackendHourlyStats{})),
 		SocksProxies: len(proxies),
 		ClientKeys:   len(clients),
 		Events:       ensureAuditEvents(events),
@@ -1043,13 +1045,18 @@ func (a *App) handleListBackends(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	hourlyStats, err := a.store.BackendHourlyStatsByIDs(r.Context(), backendIDs(backends), time.Now().UTC().Add(-1*time.Hour))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	summaries, err := a.backendUsageSummaryMap(r.Context(), backends)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	response := buildBackendViews(backends, summaries, stats)
+	response := buildBackendViews(backends, summaries, stats, hourlyStats)
 	writeJSON(w, http.StatusOK, pagedResponse(ensureBackendViews(response), total, page, limit))
 }
 
@@ -1059,6 +1066,11 @@ func (a *App) handleCreateBackend(w http.ResponseWriter, r *http.Request) {
 		Protocol     string            `json:"protocol"`
 		BaseURL      string            `json:"base_url"`
 		APIKey       string            `json:"api_key"`
+		ConsoleURL   string            `json:"console_url"`
+		Tags         []string          `json:"tags"`
+		ConsoleUsername string         `json:"console_username"`
+		ConsolePassword string         `json:"console_password"`
+		Notes        string            `json:"notes"`
 		ProxyID      int64             `json:"proxy_id"`
 		Status       string            `json:"status"`
 		Weight       int               `json:"weight"`
@@ -1074,6 +1086,12 @@ func (a *App) handleCreateBackend(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if strings.TrimSpace(payload.ConsoleURL) != "" {
+		if err := validateURL(payload.ConsoleURL); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	if err := a.validateSocksProxyReference(r.Context(), payload.ProxyID); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1084,6 +1102,11 @@ func (a *App) handleCreateBackend(w http.ResponseWriter, r *http.Request) {
 		Protocol:     domain.NormalizeBackendProtocol(payload.Protocol),
 		BaseURL:      payload.BaseURL,
 		APIKey:       payload.APIKey,
+		ConsoleURL:   payload.ConsoleURL,
+		Tags:         payload.Tags,
+		ConsoleUsername: payload.ConsoleUsername,
+		ConsolePassword: payload.ConsolePassword,
+		Notes:        payload.Notes,
 		ProxyID:      payload.ProxyID,
 		Weight:       payload.Weight,
 		Models:       payload.Models,
@@ -1120,6 +1143,11 @@ func (a *App) handleUpdateBackend(w http.ResponseWriter, r *http.Request) {
 		Protocol     string            `json:"protocol"`
 		BaseURL      string            `json:"base_url"`
 		APIKey       string            `json:"api_key"`
+		ConsoleURL   string            `json:"console_url"`
+		Tags         []string          `json:"tags"`
+		ConsoleUsername string         `json:"console_username"`
+		ConsolePassword string         `json:"console_password"`
+		Notes        string            `json:"notes"`
 		ProxyID      int64             `json:"proxy_id"`
 		Status       string            `json:"status"`
 		Weight       int               `json:"weight"`
@@ -1135,6 +1163,12 @@ func (a *App) handleUpdateBackend(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if strings.TrimSpace(payload.ConsoleURL) != "" {
+		if err := validateURL(payload.ConsoleURL); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	if err := a.validateSocksProxyReference(r.Context(), payload.ProxyID); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1148,6 +1182,11 @@ func (a *App) handleUpdateBackend(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(payload.APIKey) != "" {
 		current.APIKey = payload.APIKey
 	}
+	current.ConsoleURL = payload.ConsoleURL
+	current.Tags = payload.Tags
+	current.ConsoleUsername = payload.ConsoleUsername
+	current.ConsolePassword = payload.ConsolePassword
+	current.Notes = payload.Notes
 	current.ProxyID = payload.ProxyID
 	switch payload.Status {
 	case "":
@@ -1206,14 +1245,21 @@ func (a *App) handleBackendDetail(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resourceDetailPayload{
 		Overview: []resourceDetailEntry{
 			detailEntry("name", "Name", detail.Backend.Name),
+			detailEntry("console_url", "Console URL", detail.Backend.ConsoleURL),
+			detailEntry("console_username", "Console Username", detail.Backend.ConsoleUsername),
+			detailEntry("console_password", "Console Password", secretPresenceValue(detail.Backend.ConsolePassword)),
 			detailEntry("status", "Status", detail.Backend.Status),
 			detailEntry("consecutive_failures", "Consecutive Failures", detail.Backend.ConsecutiveFailures),
 			detailEntry("recover_at", "Recover At", optionalTimePointer(detail.Backend.RecoverAt)),
+			detailEntry("proxy", "Proxy", backendProxyDisplay(detail.Backend)),
 			detailEntry("proxy_id", "Proxy ID", detail.Backend.ProxyID),
 			detailEntry("protocol", "Protocol", detail.Backend.Protocol),
 			detailEntry("weight", "Weight", detail.Backend.Weight),
 		},
 		Configuration: []resourceDetailEntry{
+			detailEntry("api_key", "API Key", secretPresenceValue(detail.Backend.APIKey)),
+			detailEntry("tags", "Tags", detail.Backend.Tags),
+			detailEntry("notes", "Notes", detail.Backend.Notes),
 			detailEntry("models", "Models", detail.Backend.Models),
 			detailEntry("model_mapping", "Model Mapping", detail.Backend.ModelMapping),
 			detailEntry("endpoints", "Endpoints", detail.Backend.Endpoints),
@@ -1224,7 +1270,7 @@ func (a *App) handleBackendDetail(w http.ResponseWriter, r *http.Request) {
 			detailEntry("created_at", "Created At", detail.Backend.CreatedAt),
 			detailEntry("updated_at", "Updated At", detail.Backend.UpdatedAt),
 		},
-		Raw: detail.Backend,
+		Raw: maskedBackendDetail(detail.Backend),
 		Activity: resourceDetailActivity{
 			Usage:     ensureUsageLogs(detail.Usage),
 			UsageLogs: ensureUsageLogs(detail.Usage),
@@ -1900,18 +1946,21 @@ func (a *App) backendUsageSummaryMap(ctx context.Context, backends []domain.Back
 	return out, nil
 }
 
-func buildBackendViews(backends []domain.Backend, summaries map[int64]backendUsageSummary, stats map[int64]store.BackendRequestStats) []backendView {
+func buildBackendViews(backends []domain.Backend, summaries map[int64]backendUsageSummary, stats map[int64]store.BackendRequestStats, hourlyStats map[int64]store.BackendHourlyStats) []backendView {
 	views := make([]backendView, 0, len(backends))
 	for _, backend := range backends {
 		stat := stats[backend.ID]
 		summary := summaries[backend.ID]
+		hourly := hourlyStats[backend.ID]
 		views = append(views, backendView{
-			Backend:       backend,
-			RequestCount:  summary.RequestCount,
-			AvgLatencyMS:  summary.AvgLatencyMS,
-			LastUsedAt:    summary.LastUsedAt,
-			ModelCount:    len(backend.Models),
-			EndpointCount: len(backend.Endpoints),
+			Backend:        backend,
+			RequestCount:   summary.RequestCount,
+			AvgLatencyMS:   summary.AvgLatencyMS,
+			LastUsedAt:     summary.LastUsedAt,
+			ModelCount:     len(backend.Models),
+			EndpointCount:  len(backend.Endpoints),
+			HourlyRequests: hourly.Requests,
+			HourlyFailures: hourly.Failures,
 			RecentStats: backendRecentStats{
 				WindowMinutes: 30,
 				Successes:     stat.Successes,
@@ -1920,6 +1969,17 @@ func buildBackendViews(backends []domain.Backend, summaries map[int64]backendUsa
 		})
 	}
 	return views
+}
+
+func backendIDs(values []domain.Backend) []int64 {
+	if len(values) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(values))
+	for _, value := range values {
+		ids = append(ids, value.ID)
+	}
+	return ids
 }
 
 func ensureSocksProxies(values []domain.SocksProxy) []domain.SocksProxy {
@@ -2170,4 +2230,38 @@ func nonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func secretPresenceValue(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return "set"
+}
+
+func backendProxyDisplay(backend domain.Backend) string {
+	if backend.ProxyID == 0 {
+		return "direct"
+	}
+	if backend.Proxy == nil {
+		return fmt.Sprintf("proxy #%d", backend.ProxyID)
+	}
+	label := strings.TrimSpace(backend.Proxy.Name)
+	if label == "" {
+		label = fmt.Sprintf("proxy #%d", backend.Proxy.ID)
+	}
+	if address := strings.TrimSpace(backend.Proxy.Address); address != "" {
+		label = fmt.Sprintf("%s (%s)", label, address)
+	}
+	if !backend.Proxy.Enabled {
+		label += " - disabled"
+	}
+	return label
+}
+
+func maskedBackendDetail(backend domain.Backend) domain.Backend {
+	copy := backend
+	copy.APIKey = secretPresenceValue(copy.APIKey)
+	copy.ConsolePassword = secretPresenceValue(copy.ConsolePassword)
+	return copy
 }

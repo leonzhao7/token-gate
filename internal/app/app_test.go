@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -1672,6 +1673,228 @@ func TestBackendListIncludesUsageAndRelationshipSummaries(t *testing.T) {
 	}
 }
 
+func TestAdminBackendCreateUpdateAndListIncludeConsoleMetadata(t *testing.T) {
+	application := newTestApp(t)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/admin/api/backends", strings.NewReader(`{
+		"name":"relay-a",
+		"base_url":"https://relay-a.local/v1",
+		"api_key":"relay-key",
+		"console_url":"https://console.relay-a.local",
+		"tags":["hk","priority"],
+		"console_username":"admin-a",
+		"console_password":"secret-a",
+		"notes":"primary relay",
+		"weight":1,
+		"models":["gpt-4o","claude-sonnet-4"],
+		"endpoints":["chat","messages"]
+	}`))
+	createReq.Header.Set("Authorization", "Bearer test-admin")
+	createRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(createRecorder, createReq)
+	if createRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected create status 201, got %d body=%s", createRecorder.Code, createRecorder.Body.String())
+	}
+
+	var created domain.Backend
+	if err := json.Unmarshal(createRecorder.Body.Bytes(), &created); err != nil {
+		t.Fatalf("unmarshal create backend: %v", err)
+	}
+	if created.ConsoleURL != "https://console.relay-a.local" || created.ConsoleUsername != "admin-a" {
+		t.Fatalf("expected created backend metadata, got %#v", created)
+	}
+	if !reflect.DeepEqual(created.Tags, []string{"hk", "priority"}) {
+		t.Fatalf("expected created backend tags, got %#v", created.Tags)
+	}
+	if created.Notes != "primary relay" {
+		t.Fatalf("expected created backend notes, got %#v", created)
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/admin/api/backends/"+strconv.FormatInt(created.ID, 10), strings.NewReader(`{
+		"name":"relay-a",
+		"protocol":"openai",
+		"base_url":"https://relay-a.local/v1",
+		"api_key":"relay-key",
+		"proxy_id":0,
+		"status":"normal",
+		"console_url":"https://console.relay-a-2.local",
+		"tags":["priority","vip"],
+		"console_username":"admin-b",
+		"console_password":"secret-b",
+		"notes":"updated relay",
+		"weight":1,
+		"models":["gpt-4o","claude-sonnet-4"],
+		"model_mapping":{},
+		"endpoints":["chat","messages"]
+	}`))
+	updateReq.Header.Set("Authorization", "Bearer test-admin")
+	updateRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(updateRecorder, updateReq)
+	if updateRecorder.Code != http.StatusOK {
+		t.Fatalf("expected update status 200, got %d body=%s", updateRecorder.Code, updateRecorder.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/api/backends", nil)
+	listReq.Header.Set("Authorization", "Bearer test-admin")
+	listRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(listRecorder, listReq)
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("expected list status 200, got %d body=%s", listRecorder.Code, listRecorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID              int64    `json:"id"`
+			ConsoleURL      string   `json:"console_url"`
+			Tags            []string `json:"tags"`
+			ConsoleUsername string   `json:"console_username"`
+			ConsolePassword string   `json:"console_password"`
+			Notes           string   `json:"notes"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(listRecorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal backend list: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one backend item, got %#v", payload.Items)
+	}
+	item := payload.Items[0]
+	if item.ID != created.ID || item.ConsoleURL != "https://console.relay-a-2.local" {
+		t.Fatalf("expected updated console url in list payload, got %#v", item)
+	}
+	if !reflect.DeepEqual(item.Tags, []string{"priority", "vip"}) {
+		t.Fatalf("expected updated tags in list payload, got %#v", item)
+	}
+	if item.ConsoleUsername != "admin-b" || item.ConsolePassword != "secret-b" || item.Notes != "updated relay" {
+		t.Fatalf("expected updated console metadata in list payload, got %#v", item)
+	}
+}
+
+func TestBackendListIncludesHourlyCountersAndDetailMetadata(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:            "relay-hourly",
+		BaseURL:         "https://relay-hourly.local/v1",
+		APIKey:          "hourly-key",
+		ConsoleURL:      "https://console.relay-hourly.local",
+		Tags:            []string{"night"},
+		ConsoleUsername: "console-user",
+		ConsolePassword: "console-pass",
+		Notes:           "night shift",
+		Weight:          1,
+		Models:          []string{"gpt-4o"},
+		Endpoints:       []string{domain.EndpointChat},
+	})
+
+	now := time.Now().UTC()
+	for index, statusCode := range []int{http.StatusOK, http.StatusBadGateway} {
+		if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+			RequestID:         fmt.Sprintf("hourly-%d", index),
+			ClientID:          1,
+			ClientName:        "hourly-client",
+			ClientTokenPrefix: "hour",
+			Method:            http.MethodPost,
+			Path:              "/v1/chat/completions",
+			Endpoint:          domain.EndpointChat,
+			Model:             "gpt-4o",
+			BackendID:         backend.ID,
+			BackendName:       backend.Name,
+			Attempts:          1,
+			StatusCode:        statusCode,
+			DurationMS:        90,
+			CreatedAt:         now.Add(-30 * time.Minute),
+		}); err != nil {
+			t.Fatalf("append hourly usage log %d: %v", index, err)
+		}
+	}
+	if err := application.store.AppendUsageLog(ctx, domain.UsageLog{
+		RequestID:         "outside-window",
+		ClientID:          1,
+		ClientName:        "hourly-client",
+		ClientTokenPrefix: "hour",
+		Method:            http.MethodPost,
+		Path:              "/v1/chat/completions",
+		Endpoint:          domain.EndpointChat,
+		Model:             "gpt-4o",
+		BackendID:         backend.ID,
+		BackendName:       backend.Name,
+		Attempts:          1,
+		StatusCode:        http.StatusBadGateway,
+		DurationMS:        90,
+		CreatedAt:         now.Add(-2 * time.Hour),
+	}); err != nil {
+		t.Fatalf("append stale usage log: %v", err)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/api/backends", nil)
+	listReq.Header.Set("Authorization", "Bearer test-admin")
+	listRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(listRecorder, listReq)
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("expected backend list status 200, got %d body=%s", listRecorder.Code, listRecorder.Body.String())
+	}
+
+	var listPayload struct {
+		Items []struct {
+			ID             int64   `json:"id"`
+			HourlyRequests int     `json:"hourly_requests"`
+			HourlyFailures int     `json:"hourly_failures"`
+			AvgLatencyMS   float64 `json:"avg_latency_ms"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(listRecorder.Body.Bytes(), &listPayload); err != nil {
+		t.Fatalf("unmarshal backend list: %v", err)
+	}
+	if len(listPayload.Items) != 1 {
+		t.Fatalf("expected one backend item, got %#v", listPayload.Items)
+	}
+	if listPayload.Items[0].HourlyRequests != 2 || listPayload.Items[0].HourlyFailures != 1 {
+		t.Fatalf("expected hourly counters 2/1, got %#v", listPayload.Items[0])
+	}
+
+	detailReq := httptest.NewRequest(http.MethodGet, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/detail", nil)
+	detailReq.Header.Set("Authorization", "Bearer test-admin")
+	detailRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(detailRecorder, detailReq)
+	if detailRecorder.Code != http.StatusOK {
+		t.Fatalf("expected detail status 200, got %d body=%s", detailRecorder.Code, detailRecorder.Body.String())
+	}
+
+	var detailPayload struct {
+		Overview      []resourceDetailEntry `json:"overview"`
+		Configuration []resourceDetailEntry `json:"configuration"`
+		Raw           domain.Backend        `json:"raw"`
+	}
+	if err := json.Unmarshal(detailRecorder.Body.Bytes(), &detailPayload); err != nil {
+		t.Fatalf("unmarshal backend detail: %v", err)
+	}
+	overview := detailEntriesToMap(detailPayload.Overview)
+	configuration := detailEntriesToMap(detailPayload.Configuration)
+	if overview["console_url"] != "https://console.relay-hourly.local" {
+		t.Fatalf("expected console url in overview, got %#v", overview)
+	}
+	if overview["console_username"] != "console-user" || overview["console_password"] != "set" {
+		t.Fatalf("expected console credentials in overview, got %#v", overview)
+	}
+	if overview["proxy"] != "direct" {
+		t.Fatalf("expected proxy summary in overview, got %#v", overview)
+	}
+	if configuration["api_key"] != "set" {
+		t.Fatalf("expected api key presence in configuration, got %#v", configuration)
+	}
+	if configuration["notes"] != "night shift" {
+		t.Fatalf("expected notes in configuration, got %#v", configuration)
+	}
+	if detailPayload.Raw.ConsoleURL != "https://console.relay-hourly.local" || detailPayload.Raw.Notes != "night shift" {
+		t.Fatalf("expected raw console metadata, got %#v", detailPayload.Raw)
+	}
+	if detailPayload.Raw.APIKey != "set" || detailPayload.Raw.ConsolePassword != "set" {
+		t.Fatalf("expected masked raw secrets, got %#v", detailPayload.Raw)
+	}
+}
+
 func TestUsageLogsEmptyList(t *testing.T) {
 	application := newTestApp(t)
 
@@ -3069,6 +3292,7 @@ func TestBackendDetailReturnsDrawerData(t *testing.T) {
 	}
 	metadata := detailEntriesToMap(payload.Metadata)
 	configuration := detailEntriesToMap(payload.Configuration)
+	overview := detailEntriesToMap(payload.Overview)
 	if metadata["id"] != float64(backend.ID) || payload.Raw.ID != backend.ID {
 		t.Fatalf("expected backend ids in payload, got metadata=%#v raw=%#v", metadata, payload.Raw)
 	}
@@ -3076,6 +3300,12 @@ func TestBackendDetailReturnsDrawerData(t *testing.T) {
 	modelMapping, _ := configuration["model_mapping"].(map[string]any)
 	if len(models) == 0 || modelMapping["alpha"] != "gpt-4o" {
 		t.Fatalf("expected backend configuration in payload, got %#v", configuration)
+	}
+	if overview["proxy"] != "drawer-proxy (127.0.0.1:1080)" {
+		t.Fatalf("expected backend proxy summary, got %#v", overview)
+	}
+	if configuration["api_key"] != "set" || payload.Raw.APIKey != "set" {
+		t.Fatalf("expected masked backend api key, got configuration=%#v raw=%#v", configuration, payload.Raw)
 	}
 	if !containsUsageLog(payload.Activity.Usage, func(entry domain.UsageLog) bool {
 		return entry.BackendID == backend.ID

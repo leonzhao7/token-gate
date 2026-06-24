@@ -39,6 +39,11 @@ type Backend struct {
 	Protocol            string            `json:"protocol"`
 	BaseURL             string            `json:"base_url"`
 	APIKey              string            `json:"api_key,omitempty"`
+	ConsoleURL          string            `json:"console_url"`
+	Tags                []string          `json:"tags"`
+	ConsoleUsername     string            `json:"console_username"`
+	ConsolePassword     string            `json:"console_password,omitempty"`
+	Notes               string            `json:"notes"`
 	ProxyID             int64             `json:"proxy_id"`
 	Proxy               *SocksProxy       `json:"proxy,omitempty"`
 	Status              string            `json:"status"`
