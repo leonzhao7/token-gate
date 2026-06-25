@@ -1,1 +1,0 @@
-import{_ as o}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{c as r,a as s,o as t}from"./index-aw23sfTA.js";const n={};function a(c,e){return t(),r("div",null,[...e[0]||(e[0]=[s("h1",null,"Proxies",-1)])])}const i=o(n,[["render",a]]);export{i as default};

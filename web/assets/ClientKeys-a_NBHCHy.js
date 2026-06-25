@@ -1,0 +1,1 @@
+import{D as a}from"./DefaultLayout-BjJNeY5e.js";import{d as s,c as o,w as n,o as l,a as t}from"./index-C3808sLE.js";const p=s({__name:"ClientKeys",setup(r){return(i,e)=>(l(),o(a,null,{default:n(()=>[...e[0]||(e[0]=[t("div",{class:"client-keys"},[t("h1",null,"Client Keys")],-1)])]),_:1}))}});export{p as default};

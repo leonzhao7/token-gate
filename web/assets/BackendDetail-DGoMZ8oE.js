@@ -1,1 +1,0 @@
-import{_ as t}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{c as a,a as n,o}from"./index-aw23sfTA.js";const r={};function c(s,e){return o(),a("div",null,[...e[0]||(e[0]=[n("h1",null,"Backend Detail",-1)])])}const f=t(r,[["render",c]]);export{f as default};
