@@ -12,8 +12,10 @@ export const useBackendsStore = defineStore('backends', () => {
     try {
       loading.value = true
       error.value = null
-      const response = await backendsApi.list(filters)
-      backends.value = response.items
+      // Fetch all backends by setting a high limit
+      const response = await backendsApi.list({ ...filters, limit: 1000 })
+      // Sort by weight descending
+      backends.value = response.items.sort((a, b) => (b.weight || 0) - (a.weight || 0))
     } catch (err: any) {
       error.value = err.response?.data?.error || 'Failed to load backends'
       console.error('Failed to fetch backends:', err)

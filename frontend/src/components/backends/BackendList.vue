@@ -17,6 +17,7 @@
         v-for="backend in backends"
         :key="backend.id"
         class="backend-card"
+        :class="getStatusClass(backend.status)"
       >
         <div class="backend-header">
           <div class="backend-title">
@@ -49,19 +50,19 @@
             <span class="info-label">Base URL:</span>
             <span class="info-value">{{ backend.base_url }}</span>
           </div>
-          <div class="info-item">
-            <span class="info-label">Proxy:</span>
+          <div v-if="backend.tags && backend.tags.length > 0" class="info-item">
+            <span class="info-label">Tags:</span>
             <span class="info-value">
-              {{ backend.proxy_id ? 'Enabled' : 'Direct' }}
+              <span v-for="tag in backend.tags" :key="tag" class="tag">{{ tag }}</span>
             </span>
+          </div>
+          <div v-if="backend.models && backend.models.length > 0" class="info-item">
+            <span class="info-label">Models:</span>
+            <span class="info-value">{{ backend.models.join(', ') }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">Weight:</span>
             <span class="info-value">{{ backend.weight }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">Priority:</span>
-            <span class="info-value">{{ backend.priority }}</span>
           </div>
         </div>
 
@@ -71,14 +72,14 @@
             <span class="stat-value">{{ backend.request_count || 0 }}</span>
           </div>
           <div class="stat-item">
-            <span class="stat-label">Errors</span>
-            <span class="stat-value error-count">{{ backend.error_count || 0 }}</span>
-          </div>
-          <div class="stat-item">
             <span class="stat-label">Avg Latency</span>
             <span class="stat-value">
-              {{ backend.avg_latency ? `${backend.avg_latency.toFixed(0)}ms` : 'N/A' }}
+              {{ backend.avg_latency_ms ? `${backend.avg_latency_ms.toFixed(0)}ms` : 'N/A' }}
             </span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">Failures</span>
+            <span class="stat-value error-count">{{ backend.consecutive_failures || 0 }}</span>
           </div>
         </div>
 
@@ -115,16 +116,27 @@ const emit = defineEmits<{
 
 const getStatusVariant = (status: string): 'success' | 'warning' | 'danger' | 'info' | 'default' => {
   switch (status) {
-    case 'healthy':
+    case 'normal':
       return 'success'
-    case 'degraded':
+    case 'abnormal':
       return 'warning'
-    case 'error':
-      return 'danger'
-    case 'checking':
-      return 'info'
+    case 'disable':
+      return 'default'
     default:
       return 'default'
+  }
+}
+
+const getStatusClass = (status: string): string => {
+  switch (status) {
+    case 'normal':
+      return 'status-normal'
+    case 'abnormal':
+      return 'status-abnormal'
+    case 'disable':
+      return 'status-disable'
+    default:
+      return ''
   }
 }
 
@@ -301,5 +313,34 @@ const formatTime = (timestamp: string) => {
 
 .detail-link:hover {
   opacity: 0.8;
+}
+
+/* Status background colors */
+.status-normal {
+  background: rgba(16, 185, 129, 0.05);
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.status-abnormal {
+  background: rgba(245, 158, 11, 0.05);
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.status-disable {
+  background: rgba(148, 163, 184, 0.05);
+  border-color: rgba(148, 163, 184, 0.2);
+  opacity: 0.7;
+}
+
+/* Tag styles */
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-right: 4px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 </style>
