@@ -11,7 +11,7 @@
 ```
 
 这会启动：
-- **Go 后端**: http://localhost:4000 (API)
+- **Go 后端**: http://localhost:5000 (API)
 - **Vue 前端**: http://localhost:5173 (带热重载)
 
 前端开发服务器会自动代理 `/admin/api/*` 请求到后端。
@@ -27,7 +27,7 @@
 这会：
 1. 构建前端（输出到 `web/` 目录）
 2. 启动 Go 服务器，嵌入前端静态文件
-3. 访问 http://localhost:4000 可看到完整应用
+3. 访问 http://localhost:5000/admin/ 可看到完整应用
 
 ## 项目结构
 
@@ -36,18 +36,61 @@ token-gate/
 ├── frontend/              # Vue 3 前端项目
 │   ├── src/
 │   │   ├── api/          # API 客户端
+│   │   │   ├── client.ts     # Axios 实例
+│   │   │   ├── types.ts      # API 类型定义
+│   │   │   ├── backends.ts   # Backends API
+│   │   │   ├── proxies.ts    # Proxies API
+│   │   │   ├── clientKeys.ts # Client Keys API
+│   │   │   ├── usageLogs.ts  # Usage Logs API
+│   │   │   ├── events.ts     # Events API
+│   │   │   ├── dashboard.ts  # Dashboard API
+│   │   │   └── config.ts     # Config API
 │   │   ├── components/   # UI 组件
+│   │   │   ├── ui/           # 通用 UI 组件
+│   │   │   ├── backends/     # Backends 组件
+│   │   │   ├── proxies/      # Proxies 组件
+│   │   │   ├── clientKeys/   # Client Keys 组件
+│   │   │   ├── usageLogs/    # Usage Logs 组件
+│   │   │   └── events/       # Events 组件
 │   │   ├── composables/  # Vue 组合式函数
-│   │   ├── pages/        # 页面视图
+│   │   │   └── useTheme.ts   # 主题切换
+│   │   ├── layouts/      # 布局组件
+│   │   │   └── DefaultLayout.vue
+│   │   ├── pages/        # 页面视图（6个完整页面）
+│   │   │   ├── Dashboard.vue     # 仪表盘
+│   │   │   ├── Backends.vue      # 后端管理
+│   │   │   ├── Proxies.vue       # 代理管理
+│   │   │   ├── ClientKeys.vue    # 客户端密钥
+│   │   │   ├── UsageLogs.vue     # 使用日志
+│   │   │   ├── Events.vue        # 审计事件
+│   │   │   ├── Settings.vue      # 系统设置
+│   │   │   └── BackendDetail.vue # 后端详情
 │   │   ├── router/       # 路由配置
+│   │   │   └── index.ts
 │   │   ├── stores/       # Pinia 状态管理
+│   │   │   ├── app.ts            # 应用状态
+│   │   │   ├── dashboard.ts      # 仪表盘状态
+│   │   │   ├── backends.ts       # Backends 状态
+│   │   │   ├── proxies.ts        # Proxies 状态
+│   │   │   ├── clientKeys.ts     # Client Keys 状态
+│   │   │   ├── usageLogs.ts      # Usage Logs 状态
+│   │   │   ├── events.ts         # Events 状态
+│   │   │   └── settings.ts       # Settings 状态
 │   │   ├── styles/       # 全局样式
-│   │   └── types/        # TypeScript 类型
+│   │   │   ├── variables.css     # CSS 变量（主题）
+│   │   │   └── global.css        # 全局样式
+│   │   └── main.ts       # 应用入口
+│   ├── vite.config.ts    # Vite 配置
 │   └── package.json
 │
 ├── web/                  # 前端构建产物（Git 跟踪）
+│   ├── index.html        # 入口 HTML
+│   └── assets/           # 静态资源（28个文件，340KB）
 ├── internal/             # Go 后端代码
+│   └── app/
+│       └── app.go        # 包含 //go:embed web/*
 ├── dev.sh               # 开发环境启动脚本
+└── start-prod.sh        # 生产环境启动脚本
 └── start-prod.sh        # 生产环境启动脚本
 ```
 
