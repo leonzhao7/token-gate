@@ -4,8 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Token Gate - AI Proxy Center</title>
-    <script type="module" crossorigin src="/assets/index-BdB25Mt8.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CKngPelj.css">
+    <script>
+      (function() {
+        const saved = localStorage.getItem('token-gate-theme') || 'system';
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = saved === 'system' ? (prefersDark ? 'dark' : 'light') : saved;
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-CUsVNEye.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-D5CauMaJ.css">
   </head>
   <body>
     <div id="app"></div>
