@@ -1,1 +1,0 @@
-import{D as a}from"./DefaultLayout-D78KufS3.js";import{d as o,k as t,w as r,o as l,b as s}from"./index-DSvOJZO4.js";const m=o({__name:"UsageLogs",setup(n){return(u,e)=>(l(),t(a,null,{default:r(()=>[...e[0]||(e[0]=[s("div",{class:"usage-logs"},[s("h1",null,"Usage Logs")],-1)])]),_:1}))}});export{m as default};

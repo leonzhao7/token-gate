@@ -1,1 +1,0 @@
-import{D as s}from"./DefaultLayout-D78KufS3.js";import{d as t,k as a,w as r,o as n,b as o}from"./index-DSvOJZO4.js";const f=t({__name:"Proxies",setup(l){return(i,e)=>(n(),a(s,null,{default:r(()=>[...e[0]||(e[0]=[o("div",{class:"proxies"},[o("h1",null,"SOCKS Proxies")],-1)])]),_:1}))}});export{f as default};

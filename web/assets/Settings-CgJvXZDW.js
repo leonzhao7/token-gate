@@ -1,1 +1,0 @@
-import{D as s}from"./DefaultLayout-D78KufS3.js";import{d as a,k as o,w as n,o as r,b as e}from"./index-DSvOJZO4.js";const f=a({__name:"Settings",setup(l){return(i,t)=>(r(),o(s,null,{default:n(()=>[...t[0]||(t[0]=[e("div",{class:"settings"},[e("h1",null,"Settings")],-1)])]),_:1}))}});export{f as default};

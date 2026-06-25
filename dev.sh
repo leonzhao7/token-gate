@@ -34,15 +34,15 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 # Start Go backend
-echo "🔧 Starting Go backend on :5000..."
-export TG_LISTEN_ADDR="${TG_LISTEN_ADDR:-:5000}"
-export TG_DB_PATH="${TG_DB_PATH:-$ROOT_DIR/token-gate.db}"
-export TG_LOG_LEVEL="${TG_LOG_LEVEL:-info}"
-export GOCACHE="${GOCACHE:-$ROOT_DIR/.gocache}"
-export GOMODCACHE="${GOMODCACHE:-/root/go/pkg/mod}"
-mkdir -p "$GOCACHE"
-exec go run ./cmd/token-gate &
-BACKEND_PID=$!
+#echo "🔧 Starting Go backend on :5000..."
+#export TG_LISTEN_ADDR="${TG_LISTEN_ADDR:-:5000}"
+#export TG_DB_PATH="${TG_DB_PATH:-$ROOT_DIR/token-gate.db}"
+#export TG_LOG_LEVEL="${TG_LOG_LEVEL:-info}"
+#export GOCACHE="${GOCACHE:-$ROOT_DIR/.gocache}"
+#export GOMODCACHE="${GOMODCACHE:-/root/go/pkg/mod}"
+#mkdir -p "$GOCACHE"
+#exec go run ./cmd/token-gate &
+#BACKEND_PID=$!
 
 # Wait for backend to be ready
 echo "⏳ Waiting for backend to start..."
