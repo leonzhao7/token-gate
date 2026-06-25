@@ -37,115 +37,91 @@
           <h2 class="section-title">Server Settings</h2>
 
           <div class="form-group">
-            <label class="form-label" for="server-host">Server Host</label>
+            <label class="form-label" for="listen-addr">Listen Address</label>
             <input
-              id="server-host"
-              v-model="formData.server_host"
+              id="listen-addr"
+              v-model="formData.listen_addr"
               type="text"
               class="form-input"
-              placeholder="0.0.0.0"
+              placeholder=":8080"
             />
+            <p class="form-hint">Server listen address (e.g., :8080 or 0.0.0.0:8080). ⚠️ Requires restart.</p>
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="server-port">Server Port</label>
+            <label class="form-label" for="db-path">Database Path</label>
             <input
-              id="server-port"
-              v-model.number="formData.server_port"
-              type="number"
+              id="db-path"
+              v-model="formData.db_path"
+              type="text"
               class="form-input"
-              placeholder="4000"
+              placeholder="./token-gate.db"
             />
-          </div>
-
-          <div class="form-group checkbox-group">
-            <label class="checkbox-label">
-              <input
-                v-model="formData.enable_admin"
-                type="checkbox"
-                class="form-checkbox"
-              />
-              <span>Enable Admin UI</span>
-            </label>
+            <p class="form-hint">SQLite database file path. ⚠️ Requires restart.</p>
           </div>
         </Card>
 
-        <!-- Routing Settings -->
+        <!-- Backend Management -->
         <Card class="settings-section">
-          <h2 class="section-title">Routing & Load Balancing</h2>
+          <h2 class="section-title">Backend Management</h2>
 
           <div class="form-group">
-            <label class="form-label" for="routing-strategy">Routing Strategy</label>
-            <select
-              id="routing-strategy"
-              v-model="formData.routing_strategy"
-              class="form-select"
-            >
-              <option value="round_robin">Round Robin</option>
-              <option value="weighted">Weighted</option>
-              <option value="priority">Priority-based</option>
-              <option value="least_latency">Least Latency</option>
-            </select>
-            <p class="form-hint">How requests are distributed across backends</p>
+            <label class="form-label" for="backend-cooldown">Backend Cooldown</label>
+            <input
+              id="backend-cooldown"
+              v-model="formData.backend_cooldown"
+              type="text"
+              class="form-input"
+              placeholder="10m"
+            />
+            <p class="form-hint">How long to wait before retrying a failed backend (e.g., 5m, 10m, 1h). ✓ Hot-reload.</p>
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="health-check-interval">Health Check Interval (seconds)</label>
+            <label class="form-label" for="backend-fails">Max Backend Failures</label>
             <input
-              id="health-check-interval"
-              v-model.number="formData.health_check_interval"
-              type="number"
-              min="10"
+              id="backend-fails"
+              v-model="formData.backend_fails"
+              type="text"
               class="form-input"
-              placeholder="60"
+              placeholder="3"
             />
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="max-retries">Max Retries</label>
-            <input
-              id="max-retries"
-              v-model.number="formData.max_retries"
-              type="number"
-              min="0"
-              max="5"
-              class="form-input"
-              placeholder="2"
-            />
+            <p class="form-hint">Number of consecutive failures before marking backend as unhealthy. ✓ Hot-reload.</p>
           </div>
         </Card>
 
-        <!-- Rate Limiting -->
+        <!-- Request Handling -->
         <Card class="settings-section">
-          <h2 class="section-title">Rate Limiting</h2>
+          <h2 class="section-title">Request Handling</h2>
 
           <div class="form-group">
-            <label class="form-label" for="global-rate-limit">Global Rate Limit (requests/minute)</label>
+            <label class="form-label" for="request-timeout">Request Timeout</label>
             <input
-              id="global-rate-limit"
-              v-model.number="formData.global_rate_limit"
-              type="number"
-              min="0"
+              id="request-timeout"
+              v-model="formData.request_timeout"
+              type="text"
               class="form-input"
-              placeholder="0 = unlimited"
+              placeholder="30s"
             />
+            <p class="form-hint">Maximum time to wait for upstream response (e.g., 30s, 1m, 2m). ✓ Hot-reload.</p>
           </div>
 
-          <div class="form-group checkbox-group">
-            <label class="checkbox-label">
-              <input
-                v-model="formData.enable_rate_limiting"
-                type="checkbox"
-                class="form-checkbox"
-              />
-              <span>Enable Rate Limiting</span>
-            </label>
+          <div class="form-group">
+            <label class="form-label" for="shutdown-timeout">Shutdown Timeout</label>
+            <input
+              id="shutdown-timeout"
+              v-model="formData.shutdown_timeout"
+              type="text"
+              class="form-input"
+              placeholder="10s"
+            />
+            <p class="form-hint">Graceful shutdown timeout (e.g., 10s, 30s). ⚠️ Requires restart.</p>
           </div>
         </Card>
 
-        <!-- Logging & Monitoring -->
+        <!-- Logging -->
         <Card class="settings-section">
-          <h2 class="section-title">Logging & Monitoring</h2>
+          <h2 class="section-title">Logging</h2>
 
           <div class="form-group">
             <label class="form-label" for="log-level">Log Level</label>
@@ -159,28 +135,7 @@
               <option value="warn">Warning</option>
               <option value="error">Error</option>
             </select>
-          </div>
-
-          <div class="form-group checkbox-group">
-            <label class="checkbox-label">
-              <input
-                v-model="formData.enable_usage_logging"
-                type="checkbox"
-                class="form-checkbox"
-              />
-              <span>Enable Usage Logging</span>
-            </label>
-          </div>
-
-          <div class="form-group checkbox-group">
-            <label class="checkbox-label">
-              <input
-                v-model="formData.enable_audit_logging"
-                type="checkbox"
-                class="form-checkbox"
-              />
-              <span>Enable Audit Logging</span>
-            </label>
+            <p class="form-hint">Control log verbosity. ✓ Hot-reload.</p>
           </div>
         </Card>
 
@@ -206,7 +161,7 @@ import Button from '@/components/ui/Button.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import LoadingSpinner from '@/components/ui/LoadingSpinner.vue'
 import { useSettingsStore } from '@/stores/settings'
-import type { UpdateConfigRequest } from '@/api'
+import type { Config } from '@/api'
 
 const settingsStore = useSettingsStore()
 
@@ -216,30 +171,30 @@ const error = ref(settingsStore.error)
 const saving = ref(false)
 const reloading = ref(false)
 
-const formData = ref<UpdateConfigRequest>({
-  server_host: '0.0.0.0',
-  server_port: 4000,
-  enable_admin: true,
-  routing_strategy: 'round_robin',
-  health_check_interval: 60,
-  max_retries: 2,
-  global_rate_limit: 0,
-  enable_rate_limiting: true,
+const formData = ref<Config>({
+  listen_addr: ':8080',
+  db_path: './token-gate.db',
   log_level: 'info',
-  enable_usage_logging: true,
-  enable_audit_logging: true
+  backend_cooldown: '10m',
+  backend_fails: '3',
+  request_timeout: '30s',
+  shutdown_timeout: '10s'
 })
 
 const loadSettings = async () => {
   await settingsStore.fetchConfig()
+  loading.value = settingsStore.loading
+  error.value = settingsStore.error
+  config.value = settingsStore.config
+
   if (settingsStore.config) {
     formData.value = { ...settingsStore.config }
   }
 }
 
 const resetForm = () => {
-  if (settingsStore.config) {
-    formData.value = { ...settingsStore.config }
+  if (config.value) {
+    formData.value = { ...config.value }
   }
 }
 
@@ -247,6 +202,7 @@ const handleSave = async () => {
   try {
     saving.value = true
     await settingsStore.updateConfig(formData.value)
+    config.value = settingsStore.config
     alert('Settings saved successfully!')
   } catch (err: any) {
     alert(err.message || 'Failed to save settings')
@@ -259,21 +215,16 @@ const handleReload = async () => {
   try {
     reloading.value = true
     await settingsStore.reloadConfig()
-    if (settingsStore.config) {
-      formData.value = { ...settingsStore.config }
-    }
-    alert('Configuration reloaded successfully!')
+    alert('Configuration reloaded!')
   } catch (err: any) {
-    alert(err.message || 'Failed to reload config')
+    alert(err.message || 'Failed to reload configuration')
   } finally {
     reloading.value = false
   }
 }
 
 watch(() => settingsStore.config, (newConfig) => {
-  if (newConfig) {
-    config.value = newConfig
-  }
+  config.value = newConfig
 })
 
 watch(() => settingsStore.loading, (newLoading) => {
@@ -303,7 +254,7 @@ onMounted(() => {
 }
 
 .page-header h1 {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 var(--spacing-xs) 0;
@@ -327,16 +278,14 @@ onMounted(() => {
 }
 
 .settings-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-lg);
+  padding: var(--spacing-xl);
 }
 
 .section-title {
   font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
-  margin: 0;
+  margin: 0 0 var(--spacing-lg) 0;
   padding-bottom: var(--spacing-md);
   border-bottom: 1px solid var(--border);
 }
@@ -345,6 +294,11 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+}
+
+.form-group:last-of-type {
+  margin-bottom: 0;
 }
 
 .form-label {

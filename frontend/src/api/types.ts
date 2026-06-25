@@ -153,17 +153,13 @@ export interface UsageData {
 }
 
 export interface Config {
-  server_host?: string
-  server_port?: number
-  enable_admin?: boolean
-  routing_strategy?: string
-  health_check_interval?: number
-  max_retries?: number
-  global_rate_limit?: number
-  enable_rate_limiting?: boolean
+  listen_addr?: string
+  db_path?: string
   log_level?: string
-  enable_usage_logging?: boolean
-  enable_audit_logging?: boolean
+  backend_cooldown?: string
+  backend_fails?: string
+  request_timeout?: string
+  shutdown_timeout?: string
 }
 
 // API Request Types
