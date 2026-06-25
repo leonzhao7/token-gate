@@ -56,24 +56,14 @@
           <code class="token-value">{{ maskToken(key.token) }}</code>
         </div>
 
-        <p v-if="key.description" class="key-description">{{ key.description }}</p>
-
         <div class="key-info">
           <div class="info-item">
-            <span class="info-label">Rate Limit:</span>
-            <span class="info-value">
-              {{ key.rate_limit ? `${key.rate_limit}/min` : 'Unlimited' }}
-            </span>
+            <span class="info-label">Status:</span>
+            <span class="info-value">{{ key.enabled ? 'Active' : 'Disabled' }}</span>
           </div>
-          <div class="info-item">
-            <span class="info-label">Quota:</span>
-            <span class="info-value">
-              {{ key.quota ? key.quota.toLocaleString() : 'Unlimited' }}
-            </span>
-          </div>
-          <div v-if="key.expires_at" class="info-item">
-            <span class="info-label">Expires:</span>
-            <span class="info-value">{{ formatExpiry(key.expires_at) }}</span>
+          <div v-if="key.allowed_models" class="info-item">
+            <span class="info-label">Models:</span>
+            <span class="info-value">{{ key.allowed_models }}</span>
           </div>
         </div>
 
@@ -145,20 +135,6 @@ const formatTime = (timestamp: string) => {
   if (diffHours < 24) return `${diffHours}h ago`
   const diffDays = Math.floor(diffHours / 24)
   return `${diffDays}d ago`
-}
-
-const formatExpiry = (timestamp: string) => {
-  const date = new Date(timestamp)
-  const now = new Date()
-
-  if (date < now) return '❌ Expired'
-
-  const diffMs = date.getTime() - now.getTime()
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  if (diffDays < 1) return '⚠️ Expires today'
-  if (diffDays < 7) return `⚠️ ${diffDays}d left`
-  return date.toLocaleDateString()
 }
 </script>
 
@@ -264,13 +240,6 @@ const formatExpiry = (timestamp: string) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.key-description {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin: 0;
-  line-height: 1.5;
 }
 
 .key-info {

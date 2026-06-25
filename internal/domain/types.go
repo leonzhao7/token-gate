@@ -23,14 +23,15 @@ const (
 )
 
 type ClientKey struct {
-	ID          int64     `json:"id"`
-	Name        string    `json:"name"`
-	TokenHash   string    `json:"-"`
-	Token       string    `json:"token,omitempty"`
-	TokenPrefix string    `json:"token_prefix"`
-	Enabled     bool      `json:"enabled"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID            int64     `json:"id"`
+	Name          string    `json:"name"`
+	TokenHash     string    `json:"-"`
+	Token         string    `json:"token,omitempty"`
+	TokenPrefix   string    `json:"token_prefix"`
+	AllowedModels string    `json:"allowed_models"`
+	Enabled       bool      `json:"enabled"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type Backend struct {

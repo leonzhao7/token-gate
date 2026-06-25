@@ -53,17 +53,24 @@ export interface ClientKey {
   token: string
   token_prefix?: string
   masked_token?: string
-  description?: string
-  rate_limit?: number
-  quota?: number
   allowed_models?: string
-  expires_at?: string
   enabled: boolean
   created_at: string
   updated_at: string
   usage_count?: number
-  total_requests?: number
   last_used_at?: string
+}
+
+export interface CreateClientKeyRequest {
+  name: string
+  allowed_models?: string
+  enabled?: boolean
+}
+
+export interface UpdateClientKeyRequest {
+  name?: string
+  allowed_models?: string
+  enabled?: boolean
 }
 
 export interface UsageLog {
@@ -184,18 +191,6 @@ export interface CreateProxyRequest {
 }
 
 export interface UpdateProxyRequest extends Partial<CreateProxyRequest> {}
-
-export interface CreateClientKeyRequest {
-  name: string
-  description?: string
-  rate_limit?: number
-  quota?: number
-  allowed_models?: string
-  expires_at?: string
-  enabled?: boolean
-}
-
-export interface UpdateClientKeyRequest extends Partial<CreateClientKeyRequest> {}
 
 export interface UpdateConfigRequest extends Partial<Config> {}
 

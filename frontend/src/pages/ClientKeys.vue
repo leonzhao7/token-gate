@@ -24,7 +24,6 @@
             <option value="">All Keys</option>
             <option value="active">Active</option>
             <option value="disabled">Disabled</option>
-            <option value="expired">Expired</option>
           </select>
           <Button
             variant="secondary"
@@ -155,17 +154,14 @@ const filteredKeys = computed(() => {
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()
     result = result.filter(k =>
-      k.name.toLowerCase().includes(query) ||
-      k.description?.toLowerCase().includes(query)
+      k.name.toLowerCase().includes(query)
     )
   }
 
   if (statusFilter.value === 'active') {
-    result = result.filter(k => k.enabled && (!k.expires_at || new Date(k.expires_at) > new Date()))
+    result = result.filter(k => k.enabled)
   } else if (statusFilter.value === 'disabled') {
     result = result.filter(k => !k.enabled)
-  } else if (statusFilter.value === 'expired') {
-    result = result.filter(k => k.expires_at && new Date(k.expires_at) <= new Date())
   }
 
   return result

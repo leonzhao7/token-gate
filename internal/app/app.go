@@ -1350,9 +1350,10 @@ func (a *App) handleListClientKeys(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleCreateClientKey(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		Name    string `json:"name"`
-		Token   string `json:"token"`
-		Enabled bool   `json:"enabled"`
+		Name          string `json:"name"`
+		Token         string `json:"token"`
+		AllowedModels string `json:"allowed_models"`
+		Enabled       bool   `json:"enabled"`
 	}
 	if err := decodeJSON(r, &payload); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -1370,11 +1371,12 @@ func (a *App) handleCreateClientKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client, err := a.store.CreateClientKey(r.Context(), domain.ClientKey{
-		Name:        payload.Name,
-		TokenHash:   store.HashToken(token),
-		Token:       token,
-		TokenPrefix: tokenPrefix(token),
-		Enabled:     payload.Enabled,
+		Name:          payload.Name,
+		TokenHash:     store.HashToken(token),
+		Token:         token,
+		TokenPrefix:   tokenPrefix(token),
+		AllowedModels: payload.AllowedModels,
+		Enabled:       payload.Enabled,
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -1405,9 +1407,10 @@ func (a *App) handleUpdateClientKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload struct {
-		Name    string `json:"name"`
-		Token   string `json:"token"`
-		Enabled bool   `json:"enabled"`
+		Name          string `json:"name"`
+		Token         string `json:"token"`
+		AllowedModels string `json:"allowed_models"`
+		Enabled       bool   `json:"enabled"`
 	}
 	if err := decodeJSON(r, &payload); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -1415,6 +1418,7 @@ func (a *App) handleUpdateClientKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client.Name = payload.Name
+	client.AllowedModels = payload.AllowedModels
 	client.Enabled = payload.Enabled
 
 	issuedToken := ""

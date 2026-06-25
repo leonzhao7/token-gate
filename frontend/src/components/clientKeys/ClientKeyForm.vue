@@ -1,8 +1,6 @@
 <template>
   <form @submit.prevent="handleSubmit" class="client-key-form">
     <div class="form-section">
-      <h3 class="section-title">Key Information</h3>
-
       <div class="form-group">
         <label class="form-label" for="name">Name *</label>
         <input
@@ -16,64 +14,15 @@
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="description">Description</label>
-        <textarea
-          id="description"
-          v-model="formData.description"
-          class="form-textarea"
-          placeholder="Optional description"
-          rows="3"
-        />
-      </div>
-    </div>
-
-    <div class="form-section">
-      <h3 class="section-title">Limits & Restrictions</h3>
-
-      <div class="form-group">
-        <label class="form-label" for="rate-limit">Rate Limit (requests/minute)</label>
-        <input
-          id="rate-limit"
-          v-model.number="formData.rate_limit"
-          type="number"
-          min="0"
-          class="form-input"
-          placeholder="0 = unlimited"
-        />
-      </div>
-
-      <div class="form-group">
-        <label class="form-label" for="quota">Quota (total requests)</label>
-        <input
-          id="quota"
-          v-model.number="formData.quota"
-          type="number"
-          min="0"
-          class="form-input"
-          placeholder="0 = unlimited"
-        />
-      </div>
-
-      <div class="form-group">
         <label class="form-label" for="allowed-models">Allowed Models</label>
         <input
           id="allowed-models"
           v-model="formData.allowed_models"
           type="text"
           class="form-input"
-          placeholder="gpt-4,gpt-3.5-turbo (comma-separated, empty = all)"
+          placeholder="e.g., claude-opus-4-6,claude-sonnet-4-6 (comma-separated, empty = all)"
         />
-      </div>
-
-      <div class="form-group">
-        <label class="form-label" for="expires-at">Expiration Date</label>
-        <input
-          id="expires-at"
-          v-model="formData.expires_at"
-          type="datetime-local"
-          class="form-input"
-        />
-        <p class="form-hint">Leave empty for no expiration</p>
+        <p class="form-hint">Leave empty to allow all models</p>
       </div>
 
       <div class="form-group checkbox-group">
@@ -122,11 +71,7 @@ const emit = defineEmits<{
 
 const formData = ref<CreateClientKeyRequest>({
   name: '',
-  description: '',
-  rate_limit: 0,
-  quota: 0,
   allowed_models: '',
-  expires_at: '',
   enabled: true
 })
 
@@ -143,11 +88,7 @@ watch(() => props.clientKey, (clientKey) => {
   if (clientKey) {
     formData.value = {
       name: clientKey.name,
-      description: clientKey.description || '',
-      rate_limit: clientKey.rate_limit || 0,
-      quota: clientKey.quota || 0,
       allowed_models: clientKey.allowed_models || '',
-      expires_at: clientKey.expires_at || '',
       enabled: clientKey.enabled
     }
   }
@@ -167,13 +108,6 @@ watch(() => props.clientKey, (clientKey) => {
   gap: var(--spacing-lg);
 }
 
-.section-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-sm);
-}
-
 .form-group {
   display: flex;
   flex-direction: column;
@@ -186,8 +120,7 @@ watch(() => props.clientKey, (clientKey) => {
   color: var(--text-secondary);
 }
 
-.form-input,
-.form-textarea {
+.form-input {
   padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -197,27 +130,20 @@ watch(() => props.clientKey, (clientKey) => {
   transition: all 150ms ease;
 }
 
-.form-textarea {
-  resize: vertical;
-  min-height: 80px;
-  font-family: inherit;
-}
-
-.form-input:focus,
-.form-textarea:focus {
+.form-input:focus {
   outline: none;
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.1);
 }
 
-.form-input::placeholder,
-.form-textarea::placeholder {
+.form-input::placeholder {
   color: var(--text-tertiary);
 }
 
 .form-hint {
   font-size: 12px;
   color: var(--text-tertiary);
+  margin: 0;
 }
 
 .checkbox-group {

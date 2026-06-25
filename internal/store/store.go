@@ -195,6 +195,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			token_hash TEXT NOT NULL UNIQUE,
 			token TEXT NOT NULL DEFAULT '',
 			token_prefix TEXT NOT NULL,
+			allowed_models TEXT NOT NULL DEFAULT '',
 			enabled INTEGER NOT NULL DEFAULT 1,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
@@ -297,6 +298,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err := ensureColumn(ctx, db, "client_keys", "token", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate client_keys token: %w", err)
+	}
+	if err := ensureColumn(ctx, db, "client_keys", "allowed_models", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate client_keys allowed_models: %w", err)
 	}
 	if err := ensureColumn(ctx, db, "backends", "proxy_id", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		_ = db.Close()
@@ -434,7 +439,7 @@ func HashToken(token string) string {
 
 func (s *Store) FindClientKeyByToken(ctx context.Context, token string) (*domain.ClientKey, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, name, token_hash, token, token_prefix, enabled, created_at, updated_at
+		SELECT id, name, token_hash, token, token_prefix, allowed_models, enabled, created_at, updated_at
 		FROM client_keys
 		WHERE token_hash = ? AND enabled = 1
 	`, HashToken(strings.TrimSpace(token)))
@@ -451,7 +456,7 @@ func (s *Store) FindClientKeyByToken(ctx context.Context, token string) (*domain
 
 func (s *Store) ListClientKeys(ctx context.Context) ([]domain.ClientKey, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, token_hash, token, token_prefix, enabled, created_at, updated_at
+		SELECT id, name, token_hash, token, token_prefix, allowed_models, enabled, created_at, updated_at
 		FROM client_keys
 		ORDER BY id DESC
 	`)
@@ -477,7 +482,7 @@ func (s *Store) CountClientKeys(ctx context.Context) (int, error) {
 
 func (s *Store) ListClientKeysPage(ctx context.Context, limit, offset int) ([]domain.ClientKey, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, token_hash, token, token_prefix, enabled, created_at, updated_at
+		SELECT id, name, token_hash, token, token_prefix, allowed_models, enabled, created_at, updated_at
 		FROM client_keys
 		ORDER BY id DESC
 		LIMIT ? OFFSET ?
@@ -504,13 +509,14 @@ func (s *Store) CreateClientKey(ctx context.Context, client domain.ClientKey) (d
 	client.UpdatedAt = now
 
 	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO client_keys(name, token_hash, token, token_prefix, enabled, created_at, updated_at)
-		VALUES(?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO client_keys(name, token_hash, token, token_prefix, allowed_models, enabled, created_at, updated_at)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		strings.TrimSpace(client.Name),
 		client.TokenHash,
 		strings.TrimSpace(client.Token),
 		client.TokenPrefix,
+		client.AllowedModels,
 		boolToInt(client.Enabled),
 		formatTime(now),
 		formatTime(now),
@@ -529,13 +535,14 @@ func (s *Store) UpdateClientKey(ctx context.Context, client domain.ClientKey) (d
 
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE client_keys
-		SET name = ?, token_hash = ?, token = ?, token_prefix = ?, enabled = ?, updated_at = ?
+		SET name = ?, token_hash = ?, token = ?, token_prefix = ?, allowed_models = ?, enabled = ?, updated_at = ?
 		WHERE id = ?
 	`,
 		strings.TrimSpace(client.Name),
 		client.TokenHash,
 		strings.TrimSpace(client.Token),
 		client.TokenPrefix,
+		client.AllowedModels,
 		boolToInt(client.Enabled),
 		formatTime(now),
 		client.ID,
@@ -548,7 +555,7 @@ func (s *Store) UpdateClientKey(ctx context.Context, client domain.ClientKey) (d
 
 func (s *Store) GetClientKey(ctx context.Context, id int64) (domain.ClientKey, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, name, token_hash, token, token_prefix, enabled, created_at, updated_at
+		SELECT id, name, token_hash, token, token_prefix, allowed_models, enabled, created_at, updated_at
 		FROM client_keys
 		WHERE id = ?
 	`, id)
@@ -2187,6 +2194,7 @@ func scanClientKey(s scanner) (domain.ClientKey, error) {
 		&client.TokenHash,
 		&client.Token,
 		&client.TokenPrefix,
+		&client.AllowedModels,
 		&enabled,
 		&createdAt,
 		&updatedAt,
