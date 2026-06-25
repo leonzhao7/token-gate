@@ -2112,10 +2112,11 @@ func parsePageQuery(r *http.Request) (int, int) {
 	if page < 1 {
 		page = 1
 	}
-	switch limit {
-	case 10, 20, 50:
-	default:
+	if limit <= 0 {
 		limit = 10
+	}
+	if limit > 10000 {
+		limit = 10000
 	}
 	return page, limit
 }
