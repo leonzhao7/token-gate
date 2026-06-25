@@ -22,9 +22,9 @@
           />
           <select v-model="statusFilter" class="filter-select">
             <option value="">All Status</option>
-            <option value="normal">Normal</option>
-            <option value="abnormal">Abnormal</option>
-            <option value="disable">Disable</option>
+            <option value="normal">Active</option>
+            <option value="abnormal">Cooldown</option>
+            <option value="disabled">Disable</option>
           </select>
           <Button
             variant="secondary"

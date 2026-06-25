@@ -32,35 +32,6 @@
 
       <!-- Settings Form -->
       <form v-else @submit.prevent="handleSave" class="settings-form">
-        <!-- Server Settings -->
-        <Card class="settings-section">
-          <h2 class="section-title">Server Settings</h2>
-
-          <div class="form-group">
-            <label class="form-label" for="listen-addr">Listen Address</label>
-            <input
-              id="listen-addr"
-              v-model="formData.listen_addr"
-              type="text"
-              class="form-input"
-              placeholder=":8080"
-            />
-            <p class="form-hint">Server listen address (e.g., :8080 or 0.0.0.0:8080). ⚠️ Requires restart.</p>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="db-path">Database Path</label>
-            <input
-              id="db-path"
-              v-model="formData.db_path"
-              type="text"
-              class="form-input"
-              placeholder="./token-gate.db"
-            />
-            <p class="form-hint">SQLite database file path. ⚠️ Requires restart.</p>
-          </div>
-        </Card>
-
         <!-- Backend Management -->
         <Card class="settings-section">
           <h2 class="section-title">Backend Management</h2>
@@ -104,18 +75,6 @@
               placeholder="30s"
             />
             <p class="form-hint">Maximum time to wait for upstream response (e.g., 30s, 1m, 2m). ✓ Hot-reload.</p>
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="shutdown-timeout">Shutdown Timeout</label>
-            <input
-              id="shutdown-timeout"
-              v-model="formData.shutdown_timeout"
-              type="text"
-              class="form-input"
-              placeholder="10s"
-            />
-            <p class="form-hint">Graceful shutdown timeout (e.g., 10s, 30s). ⚠️ Requires restart.</p>
           </div>
         </Card>
 
@@ -215,7 +174,6 @@ const handleReload = async () => {
   try {
     reloading.value = true
     await settingsStore.reloadConfig()
-    alert('Configuration reloaded!')
   } catch (err: any) {
     alert(err.message || 'Failed to reload configuration')
   } finally {

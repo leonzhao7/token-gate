@@ -120,7 +120,7 @@ const getStatusVariant = (status: string): 'success' | 'warning' | 'danger' | 'i
       return 'success'
     case 'abnormal':
       return 'warning'
-    case 'disable':
+    case 'disabled':
       return 'default'
     default:
       return 'default'
@@ -133,7 +133,7 @@ const getStatusClass = (status: string): string => {
       return 'status-normal'
     case 'abnormal':
       return 'status-abnormal'
-    case 'disable':
+    case 'disabled':
       return 'status-disable'
     default:
       return ''

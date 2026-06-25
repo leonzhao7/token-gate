@@ -4,6 +4,9 @@ import (
 	"os"
 	"strconv"
 	"time"
+	"context"
+
+	"token-gate/internal/store"
 )
 
 type Config struct {
@@ -26,6 +29,33 @@ func Load() Config {
 		RequestTimeout:  getDuration("TG_REQUEST_TIMEOUT", 30*time.Second),
 		ShutdownTimeout: getDuration("TG_SHUTDOWN_TIMEOUT", 10*time.Second),
 	}
+}
+
+func LoadDatabase(ctx context.Context, st *store.Store) (Config, error) {
+	cfg := Load()
+	settings, err := st.GetAllSettings(ctx)
+	if err != nil {
+		return cfg, err
+	}
+	if log_level, ok := settings["log_level"]; ok {
+		cfg.LogLevel = log_level
+	}
+	if cooldown, ok := settings["backend_cooldown"]; ok {
+		if d, err := time.ParseDuration(cooldown); err == nil {
+			cfg.BackendCooldown = d
+		}
+	}
+	if fails, ok := settings["backend_fails"]; ok {
+		if n, err := strconv.Atoi(fails); err == nil {
+			cfg.BackendFails = n
+		}
+	}
+	if timeout, ok := settings["request_timeout"]; ok {
+		if d, err := time.ParseDuration(timeout); err == nil {
+			cfg.RequestTimeout = d
+		}
+	}
+	return cfg, nil
 }
 
 func getenv(key, fallback string) string {

@@ -229,8 +229,13 @@ type backendUsageSummary struct {
 	LastUsedAt   *time.Time
 }
 
-func New(ctx context.Context, cfg config.Config) (*App, error) {
-	st, err := store.Open(ctx, cfg.DBPath)
+func New(ctx context.Context, dbPath string) (*App, error) {
+	st, err := store.Open(ctx, dbPath)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, err := config.LoadDatabase(ctx, st)
 	if err != nil {
 		return nil, err
 	}
