@@ -1,1 +1,0 @@
-import{D as t}from"./DefaultLayout-BjJNeY5e.js";import{d as o,c as n,w as s,o as l,a as e}from"./index-C3808sLE.js";const u=o({__name:"BackendDetail",setup(r){return(c,a)=>(l(),n(t,null,{default:s(()=>[...a[0]||(a[0]=[e("div",{class:"backend-detail"},[e("h1",null,"Backend Detail")],-1)])]),_:1}))}});export{u as default};

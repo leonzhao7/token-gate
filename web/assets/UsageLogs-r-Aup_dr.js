@@ -1,1 +1,0 @@
-import{D as s}from"./DefaultLayout-BjJNeY5e.js";import{d as o,c as t,w as r,o as l,a as e}from"./index-C3808sLE.js";const f=o({__name:"UsageLogs",setup(n){return(u,a)=>(l(),t(s,null,{default:r(()=>[...a[0]||(a[0]=[e("div",{class:"usage-logs"},[e("h1",null,"Usage Logs")],-1)])]),_:1}))}});export{f as default};

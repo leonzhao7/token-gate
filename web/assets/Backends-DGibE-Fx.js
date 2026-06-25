@@ -1,0 +1,1 @@
+import{D as s}from"./DefaultLayout-D78KufS3.js";import{d as t,k as o,w as n,o as r,b as a}from"./index-DSvOJZO4.js";const p=t({__name:"Backends",setup(l){return(c,e)=>(r(),o(s,null,{default:n(()=>[...e[0]||(e[0]=[a("div",{class:"backends"},[a("h1",null,"Backends")],-1)])]),_:1}))}});export{p as default};

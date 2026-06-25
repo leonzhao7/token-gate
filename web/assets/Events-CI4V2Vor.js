@@ -1,1 +1,0 @@
-import{D as a}from"./DefaultLayout-BjJNeY5e.js";import{d as s,c as o,w as n,o as r,a as t}from"./index-C3808sLE.js";const d=s({__name:"Events",setup(l){return(u,e)=>(r(),o(a,null,{default:n(()=>[...e[0]||(e[0]=[t("div",{class:"events"},[t("h1",null,"Audit Events")],-1)])]),_:1}))}});export{d as default};

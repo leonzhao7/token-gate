@@ -1,0 +1,1 @@
+import{D as s}from"./DefaultLayout-D78KufS3.js";import{d as a,k as o,w as n,o as l,b as t}from"./index-DSvOJZO4.js";const c=a({__name:"ClientKeys",setup(r){return(i,e)=>(l(),o(s,null,{default:n(()=>[...e[0]||(e[0]=[t("div",{class:"client-keys"},[t("h1",null,"Client Keys")],-1)])]),_:1}))}});export{c as default};
