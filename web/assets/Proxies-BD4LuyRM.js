@@ -1,1 +1,0 @@
-import{D as a}from"./DefaultLayout-Cizq8r14.js";import{d as s,j as t,w as r,o as n,a as o}from"./index-BZvNRwak.js";const f=s({__name:"Proxies",setup(l){return(i,e)=>(n(),t(a,null,{default:r(()=>[...e[0]||(e[0]=[o("div",{class:"proxies"},[o("h1",null,"SOCKS Proxies")],-1)])]),_:1}))}});export{f as default};

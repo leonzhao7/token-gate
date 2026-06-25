@@ -1,0 +1,1 @@
+import{D as s}from"./DefaultLayout-Me2-fJ6q.js";import{d as a,j as o,w as n,o as r,a as e}from"./index-sGegSj0R.js";const f=a({__name:"Settings",setup(l){return(i,t)=>(r(),o(s,null,{default:n(()=>[...t[0]||(t[0]=[e("div",{class:"settings"},[e("h1",null,"Settings")],-1)])]),_:1}))}});export{f as default};
