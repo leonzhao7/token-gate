@@ -1,0 +1,1 @@
+import{_ as o}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{c as s,a as r,o as t}from"./index-aw23sfTA.js";const a={};function n(c,e){return t(),s("div",null,[...e[0]||(e[0]=[r("h1",null,"Usage Logs",-1)])])}const _=o(a,[["render",n]]);export{_ as default};
