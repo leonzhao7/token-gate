@@ -19,13 +19,23 @@
             type="text"
             class="search-input"
             placeholder="Search backends..."
+            @input="handleSearch"
           />
-          <select v-model="statusFilter" class="filter-select">
+          <select v-model="statusFilter" class="filter-select" @change="handleFilterChange">
             <option value="">All Status</option>
-            <option value="normal">Active</option>
-            <option value="abnormal">Cooldown</option>
-            <option value="disabled">Disable</option>
+            <option value="normal">Normal</option>
+            <option value="abnormal">Abnormal</option>
+            <option value="disable">Disable</option>
           </select>
+          <div class="filter-group">
+            <label class="filter-label">Per Page</label>
+            <select v-model.number="pageSize" class="filter-select" @change="handlePageSizeChange">
+              <option :value="10">10</option>
+              <option :value="25">25</option>
+              <option :value="50">50</option>
+              <option :value="100">100</option>
+            </select>
+          </div>
           <Button
             variant="secondary"
             size="sm"
@@ -52,11 +62,25 @@
       <!-- Backend List -->
       <BackendList
         v-else
-        :backends="filteredBackends"
+        :backends="paginatedBackends"
         @create="showCreateModal = true"
         @edit="handleEdit"
         @delete="handleDelete"
       />
+
+      <!-- Pagination -->
+      <Pagination
+        v-if="totalPages > 1"
+        :current-page="currentPage"
+        :total-pages="totalPages"
+        @change="handlePageChange"
+      />
+
+      <div v-if="filteredBackends.length > 0" class="backends-footer">
+        <span class="backends-count">
+          Showing {{ paginatedBackends.length }} of {{ filteredBackends.length }} backends
+        </span>
+      </div>
 
       <!-- Create/Edit Modal -->
       <Modal
@@ -107,6 +131,7 @@ import Button from '@/components/ui/Button.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import LoadingSpinner from '@/components/ui/LoadingSpinner.vue'
 import Modal from '@/components/ui/Modal.vue'
+import Pagination from '@/components/ui/Pagination.vue'
 import BackendList from '@/components/backends/BackendList.vue'
 import BackendForm from '@/components/backends/BackendForm.vue'
 import { useBackendsStore } from '@/stores/backends'
@@ -121,6 +146,8 @@ const error = computed(() => backendsStore.error)
 const searchQuery = ref('')
 const statusFilter = ref('')
 const proxies = ref<SocksProxy[]>([])
+const currentPage = ref(1)
+const pageSize = ref(25)
 
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
@@ -147,8 +174,34 @@ const filteredBackends = computed(() => {
   return result
 })
 
+const totalPages = computed(() => {
+  return Math.ceil(filteredBackends.value.length / pageSize.value)
+})
+
+const paginatedBackends = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return filteredBackends.value.slice(start, end)
+})
+
 const refreshBackends = async () => {
   await backendsStore.fetchBackends()
+}
+
+const handlePageChange = (page: number) => {
+  currentPage.value = page
+}
+
+const handlePageSizeChange = () => {
+  currentPage.value = 1
+}
+
+const handleSearch = () => {
+  currentPage.value = 1
+}
+
+const handleFilterChange = () => {
+  currentPage.value = 1
 }
 
 const loadProxies = async () => {
@@ -297,5 +350,28 @@ onMounted(() => {
   justify-content: flex-end;
   gap: var(--spacing-md);
   margin-top: var(--spacing-lg);
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.filter-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.backends-footer {
+  display: flex;
+  justify-content: center;
+  padding: var(--spacing-lg) 0;
+}
+
+.backends-count {
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 </style>
