@@ -53,15 +53,11 @@
 
         <div class="key-token">
           <span class="token-label">Token:</span>
-          <code class="token-value">{{ maskToken(key.token) }}</code>
+          <code class="token-value">{{ key.token }}</code>
         </div>
 
         <div class="key-info">
           <div class="info-item">
-            <span class="info-label">Status:</span>
-            <span class="info-value">{{ key.enabled ? 'Active' : 'Disabled' }}</span>
-          </div>
-          <div v-if="key.allowed_models" class="info-item">
             <span class="info-label">Models:</span>
             <span class="info-value">{{ key.allowed_models }}</span>
           </div>
