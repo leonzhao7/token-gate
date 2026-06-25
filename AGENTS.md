@@ -98,6 +98,31 @@
   - added backend admin API coverage for console metadata, hourly counters, and backend detail payloads
   - updated backend admin UI modal/search/list/quick-detail rendering for relay-station-oriented metadata
   - completed the backend console-metadata spec end-to-end, including:
+- **Frontend UI Redesign (2026-06-24/25) - IN PROGRESS**:
+  - **Completed Tasks**:
+    - Task 1: Project scaffolding - Vue 3.4+ + TypeScript 5+ + Vite 5+ setup
+    - Task 2: Theme system - Light/Dark mode with CSS Variables
+    - Task 3: Router & Store - Vue Router 4 + Pinia with lazy-loaded pages
+    - Created startup scripts: `dev.sh` (development), `start-prod.sh` (production)
+    - Added `FRONTEND.md` development guide
+  - **Architecture**:
+    - Independent Vue 3 project in `frontend/` directory
+    - Build artifacts output to `web/` for Go embed
+    - Vercel/Linear design style with Dark/Light theme support
+    - API proxy: frontend dev server `:5173` proxies `/admin/api/*` to Go backend `:4000`
+  - **Next Tasks** (from implementation plan):
+    - Task 4: API Client Layer (Axios, interceptors, TypeScript types)
+    - Task 5: Layout Components (Sidebar, Topbar, responsive layout)
+    - Task 6: Base UI Component Library (Button, Input, Table, Dialog, etc.)
+    - Task 7-12: Page implementations (Dashboard, Backends, Proxies, Client Keys, Usage Logs, Events)
+    - Task 13: Settings Page & Backend API (config management, hot-reload)
+    - Task 14: Build Integration & Go Embed verification
+    - Task 15: Polish & Optimization
+  - **Design & Plan Documents**:
+    - Design spec: `docs/superpowers/specs/2026-06-24-frontend-redesign-design.md`
+    - Implementation plan: `docs/superpowers/plans/2026-06-24-frontend-redesign.md`
+
+
     - backend search text and toolbar copy for console URL / tags / notes
     - backend expanded-row recent usage snapshot
     - backend detail proxy + API-key presence fields
