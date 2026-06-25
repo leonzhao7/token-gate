@@ -52,7 +52,7 @@
           <div class="info-item">
             <span class="info-label">Proxy:</span>
             <span class="info-value">
-              {{ backend.socks_proxy_id ? 'Enabled' : 'Direct' }}
+              {{ backend.proxy_id ? 'Enabled' : 'Direct' }}
             </span>
           </div>
           <div class="info-item">
@@ -68,7 +68,7 @@
         <div class="backend-stats">
           <div class="stat-item">
             <span class="stat-label">Requests</span>
-            <span class="stat-value">{{ backend.total_requests || 0 }}</span>
+            <span class="stat-value">{{ backend.request_count || 0 }}</span>
           </div>
           <div class="stat-item">
             <span class="stat-label">Errors</span>

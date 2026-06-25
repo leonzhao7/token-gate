@@ -19,7 +19,7 @@
             <th>Backend</th>
             <th>Status</th>
             <th>Latency</th>
-            <th>Tokens</th>
+            <th>Bytes</th>
           </tr>
         </thead>
         <tbody>
@@ -35,7 +35,7 @@
                 <div class="time-secondary">{{ formatDate(log.created_at) }}</div>
               </td>
               <td>
-                <div class="client-name">{{ log.client_key_name || 'Unknown' }}</div>
+                <div class="client-name">{{ log.client_name || log.client_key_name || 'Unknown' }}</div>
               </td>
               <td>
                 <code class="model-code">{{ log.model }}</code>
@@ -50,12 +50,12 @@
                 />
               </td>
               <td>
-                <span class="latency-value">{{ log.latency_ms }}ms</span>
+                <span class="latency-value">{{ log.duration_ms || log.latency_ms }}ms</span>
               </td>
               <td>
                 <div class="tokens-cell">
-                  <span class="token-count">{{ log.prompt_tokens + log.completion_tokens }}</span>
-                  <span class="token-detail">({{ log.prompt_tokens }}/{{ log.completion_tokens }})</span>
+                  <span class="token-count">{{ formatBytes((log.request_bytes || 0) + (log.response_bytes || 0)) }}</span>
+                  <span class="token-detail">({{ formatBytes(log.request_bytes || 0) }}/{{ formatBytes(log.response_bytes || 0) }})</span>
                 </div>
               </td>
             </tr>
@@ -69,7 +69,7 @@
                     </div>
                     <div class="detail-item">
                       <span class="detail-label">IP Address:</span>
-                      <span class="detail-value">{{ log.ip_address }}</span>
+                      <span class="detail-value">{{ log.client_ip || log.ip_address }}</span>
                     </div>
                     <div class="detail-item">
                       <span class="detail-label">User Agent:</span>
@@ -127,6 +127,13 @@ const formatTime = (timestamp: string) => {
 const formatDate = (timestamp: string) => {
   const date = new Date(timestamp)
   return date.toLocaleDateString()
+}
+
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return '0'
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
 }
 </script>
 

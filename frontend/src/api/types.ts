@@ -3,36 +3,46 @@
 export interface Backend {
   id: number
   name: string
-  url: string
+  base_url: string
   api_key: string
   protocol: 'openai' | 'anthropic'
   weight: number
-  status: 'normal' | 'abnormal' | 'disabled'
+  priority?: number
+  max_requests_per_minute?: number
+  enabled?: boolean
+  status: string
   consecutive_failures: number
-  recover_at: string | null
-  model_mapping: Record<string, string>
-  socks_proxy_id: number | null
+  model_mapping: string | Record<string, any>
+  proxy_id: number | null
+  socks_proxy_id?: number | null  // alias
   console_url?: string
   console_username?: string
-  console_password?: string
   tags?: string[]
   notes?: string
   created_at: string
   updated_at: string
-  // List view extra fields
+  request_count?: number
+  avg_latency_ms?: number
+  avg_latency?: number
+  last_used_at?: string
+  model_count?: number
+  endpoint_count?: number
   hourly_requests?: number
   hourly_failures?: number
-  avg_latency_ms?: number
-  last_used_at?: string
+  total_requests?: number
+  error_count?: number
+  models?: string[]
+  endpoints?: string[]
+  proxy?: SocksProxy
 }
 
 export interface SocksProxy {
   id: number
   name: string
-  address: string
-  port: number
+  address: string  // Full address like "host:port" or "socks5://host:port"
   username?: string
   password?: string
+  enabled: boolean
   created_at: string
   updated_at: string
 }
@@ -41,37 +51,80 @@ export interface ClientKey {
   id: number
   name: string
   token: string
+  token_prefix?: string
+  masked_token?: string
+  description?: string
+  rate_limit?: number
+  quota?: number
+  allowed_models?: string
+  expires_at?: string
+  enabled: boolean
   created_at: string
   updated_at: string
   usage_count?: number
+  total_requests?: number
   last_used_at?: string
 }
 
 export interface UsageLog {
   id: number
-  client_key_id: number
+  request_id: string
+  client_id: number
+  client_name?: string
+  client_token_prefix?: string
+  client_key_id?: number
   client_key_name?: string
+  method: string
+  path: string
+  query?: string
   endpoint: string
   model: string
   backend_id: number | null
   backend_name?: string
-  backend_status?: string
+  proxy_id?: number | null
+  proxy_name?: string
   status_code: number
-  latency_ms: number
-  input_tokens: number
-  output_tokens: number
-  total_tokens: number
+  status_family?: string
+  duration_ms: number
+  latency_ms?: number
+  request_bytes?: number
+  response_bytes?: number
+  request_body_preview?: string
+  response_body_preview?: string
+  request_headers_json?: string
+  response_headers_json?: string
+  is_stream?: boolean
+  attempts?: number
+  trace_id?: string
   error_message?: string
+  client_ip?: string
+  ip_address?: string
+  user_agent?: string
+  preview_truncated?: boolean
   created_at: string
 }
 
 export interface AuditEvent {
   id: number
-  action: string
-  resource_type: string
-  resource_id: number
-  details: Record<string, any>
+  level: string  // warn, info, error
+  type: string  // backend_failover, proxy_retry, etc.
+  category: string
+  severity: string
+  actor?: string
+  resource_type?: string
+  resource_id?: number
+  resource_name?: string
+  message: string
+  client_name?: string
+  model?: string
+  endpoint?: string
+  backend_name?: string
+  details?: string  // JSON string
+  ip_address?: string
   created_at: string
+
+  // Backward compatibility aliases
+  action?: string  // Maps to type
 }
 
 export interface DashboardSummary {
@@ -93,57 +146,56 @@ export interface UsageData {
 }
 
 export interface Config {
-  listen_addr: string
-  db_path: string
-  log_level: string
-  backend_cooldown: string
-  backend_fails: number
-  request_timeout: string
-  shutdown_timeout: string
+  server_host?: string
+  server_port?: number
+  enable_admin?: boolean
+  routing_strategy?: string
+  health_check_interval?: number
+  max_retries?: number
+  global_rate_limit?: number
+  enable_rate_limiting?: boolean
+  log_level?: string
+  enable_usage_logging?: boolean
+  enable_audit_logging?: boolean
 }
 
 // API Request Types
 
 export interface CreateBackendRequest {
   name: string
-  url: string
+  base_url: string  // Changed from 'url' to match backend API
   api_key: string
-  protocol: 'openai' | 'anthropic'
-  weight: number
-  status?: 'normal' | 'disabled'
-  model_mapping: Record<string, string>
+  model_mapping?: string  // JSON string or empty
   socks_proxy_id?: number | null
-  console_url?: string
-  console_username?: string
-  console_password?: string
-  tags?: string[]
-  notes?: string
+  weight?: number
+  priority?: number
+  max_requests_per_minute?: number
+  enabled?: boolean
 }
 
-export interface UpdateBackendRequest extends Partial<CreateBackendRequest> {
-  id: number
-}
+export interface UpdateBackendRequest extends Partial<CreateBackendRequest> {}
 
 export interface CreateProxyRequest {
   name: string
-  address: string
-  port: number
+  address: string  // Full address like "socks5://host:port"
   username?: string
   password?: string
+  enabled?: boolean
 }
 
-export interface UpdateProxyRequest extends Partial<CreateProxyRequest> {
-  id: number
-}
+export interface UpdateProxyRequest extends Partial<CreateProxyRequest> {}
 
 export interface CreateClientKeyRequest {
   name: string
+  description?: string
+  rate_limit?: number
+  quota?: number
+  allowed_models?: string
+  expires_at?: string
+  enabled?: boolean
 }
 
-export interface UpdateClientKeyRequest {
-  id: number
-  name: string
-}
+export interface UpdateClientKeyRequest extends Partial<CreateClientKeyRequest> {}
 
 export interface UpdateConfigRequest extends Partial<Config> {}
 

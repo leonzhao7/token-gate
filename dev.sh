@@ -9,6 +9,8 @@ export http_proxy=
 export https_proxy=
 export ALL_PROXY=
 
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="$PROJECT_ROOT/frontend"
 
@@ -34,15 +36,16 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 # Start Go backend
-#echo "🔧 Starting Go backend on :5000..."
-#export TG_LISTEN_ADDR="${TG_LISTEN_ADDR:-:5000}"
-#export TG_DB_PATH="${TG_DB_PATH:-$ROOT_DIR/token-gate.db}"
-#export TG_LOG_LEVEL="${TG_LOG_LEVEL:-info}"
-#export GOCACHE="${GOCACHE:-$ROOT_DIR/.gocache}"
-#export GOMODCACHE="${GOMODCACHE:-/root/go/pkg/mod}"
-#mkdir -p "$GOCACHE"
-#exec go run ./cmd/token-gate &
-#BACKEND_PID=$!
+echo "🔧 Starting Go backend on :5000..."
+cd "$ROOT_DIR"
+export TG_LISTEN_ADDR="${TG_LISTEN_ADDR:-:4000}"
+export TG_DB_PATH="${TG_DB_PATH:-$ROOT_DIR/token-gate.db}"
+export TG_LOG_LEVEL="${TG_LOG_LEVEL:-info}"
+export GOCACHE="${GOCACHE:-$ROOT_DIR/.gocache}"
+export GOMODCACHE="${GOMODCACHE:-/root/go/pkg/mod}"
+mkdir -p "$GOCACHE"
+go run ./cmd/token-gate &
+BACKEND_PID=$!
 
 # Wait for backend to be ready
 echo "⏳ Waiting for backend to start..."
@@ -58,7 +61,7 @@ cd "$PROJECT_ROOT"
 
 echo ""
 echo "✅ Services running:"
-echo "   - Backend:  http://localhost:5000"
+echo "   - Backend:  http://localhost:4000"
 echo "   - Frontend: http://localhost:6173"
 echo ""
 echo "Press Ctrl+C to stop all services"

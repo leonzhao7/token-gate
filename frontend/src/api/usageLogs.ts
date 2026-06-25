@@ -23,13 +23,8 @@ export const usageLogsApi = {
     if (filters?.page) params.append('page', filters.page.toString())
     if (filters?.limit) params.append('limit', filters.limit.toString())
 
-    const { data } = await apiClient.get<UsageLog[]>('/usage-logs', { params })
-    return {
-      items: data,
-      total: data.length,
-      page: filters?.page || 1,
-      limit: filters?.limit || 50
-    }
+    const { data } = await apiClient.get<ListResponse<UsageLog>>('/usage-logs', { params })
+    return data
   },
 
   // Get usage log detail

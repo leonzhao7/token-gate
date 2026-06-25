@@ -4,7 +4,7 @@
       <EmptyState
         icon="📋"
         title="No events"
-        description="Activity events will appear here as you manage resources"
+        description="System events will appear here as the service runs"
       />
     </div>
 
@@ -15,37 +15,48 @@
         class="timeline-item"
       >
         <div class="timeline-marker">
-          <div :class="['timeline-dot', `timeline-dot-${getActionType(event.action)}`]"></div>
+          <div :class="['timeline-dot', `timeline-dot-${getSeverityType(event.severity || event.level)}`]"></div>
           <div class="timeline-line"></div>
         </div>
 
         <div class="timeline-content">
           <div class="event-header">
             <div class="event-title">
-              <span class="event-icon">{{ getActionIcon(event.action) }}</span>
-              <span class="event-action">{{ formatAction(event.action) }}</span>
-              <span class="event-resource">{{ event.resource_type }}</span>
-              <span v-if="event.resource_name" class="event-name">{{ event.resource_name }}</span>
+              <span class="event-icon">{{ getSeverityIcon(event.severity || event.level) }}</span>
+              <span class="event-action">{{ formatType(event.type) }}</span>
+              <span v-if="event.category" class="event-resource">{{ event.category }}</span>
             </div>
             <div class="event-time">{{ formatTime(event.created_at) }}</div>
           </div>
 
-          <div v-if="event.details" class="event-details">
+          <div class="event-message">
+            {{ event.message }}
+          </div>
+
+          <div v-if="hasEventDetails(event)" class="event-details">
             <div class="details-grid">
-              <div
-                v-for="(value, key) in parseDetails(event.details)"
-                :key="key"
-                class="detail-item"
-              >
-                <span class="detail-key">{{ key }}:</span>
-                <span class="detail-value">{{ value }}</span>
+              <div v-if="event.client_name" class="detail-item">
+                <span class="detail-key">Client:</span>
+                <span class="detail-value">{{ event.client_name }}</span>
+              </div>
+              <div v-if="event.model" class="detail-item">
+                <span class="detail-key">Model:</span>
+                <span class="detail-value">{{ event.model }}</span>
+              </div>
+              <div v-if="event.endpoint" class="detail-item">
+                <span class="detail-key">Endpoint:</span>
+                <span class="detail-value">{{ event.endpoint }}</span>
+              </div>
+              <div v-if="event.backend_name" class="detail-item">
+                <span class="detail-key">Backend:</span>
+                <span class="detail-value">{{ event.backend_name }}</span>
               </div>
             </div>
           </div>
 
           <div class="event-footer">
-            <span class="event-user">by {{ event.user || 'System' }}</span>
-            <span v-if="event.ip_address" class="event-ip">from {{ event.ip_address }}</span>
+            <span class="event-level">{{ event.level }}</span>
+            <span v-if="event.resource_type" class="event-type">{{ event.resource_type }}</span>
           </div>
         </div>
       </div>
@@ -63,28 +74,33 @@ interface Props {
 
 defineProps<Props>()
 
-const getActionType = (action: string): 'create' | 'update' | 'delete' | 'default' => {
-  if (action.includes('create') || action.includes('add')) return 'create'
-  if (action.includes('update') || action.includes('edit') || action.includes('modify')) return 'update'
-  if (action.includes('delete') || action.includes('remove')) return 'delete'
+const getSeverityType = (severity: string): 'warn' | 'error' | 'info' | 'default' => {
+  const s = severity?.toLowerCase()
+  if (s === 'warn' || s === 'warning') return 'warn'
+  if (s === 'error') return 'error'
+  if (s === 'info') return 'info'
   return 'default'
 }
 
-const getActionIcon = (action: string): string => {
-  const type = getActionType(action)
+const getSeverityIcon = (severity: string): string => {
+  const type = getSeverityType(severity)
   switch (type) {
-    case 'create': return '➕'
-    case 'update': return '✏️'
-    case 'delete': return '🗑️'
+    case 'error': return '❌'
+    case 'warn': return '⚠️'
+    case 'info': return 'ℹ️'
     default: return '📝'
   }
 }
 
-const formatAction = (action: string): string => {
-  return action
+const formatType = (type: string): string => {
+  return type
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ')
+}
+
+const hasEventDetails = (event: AuditEvent): boolean => {
+  return !!(event.client_name || event.model || event.endpoint || event.backend_name)
 }
 
 const formatTime = (timestamp: string) => {
@@ -100,14 +116,6 @@ const formatTime = (timestamp: string) => {
   const diffDays = Math.floor(diffHours / 24)
   if (diffDays < 7) return `${diffDays}d ago`
   return date.toLocaleDateString()
-}
-
-const parseDetails = (details: string): Record<string, any> => {
-  try {
-    return JSON.parse(details)
-  } catch {
-    return {}
-  }
 }
 </script>
 
@@ -152,19 +160,19 @@ const parseDetails = (details: string): Record<string, any> => {
   z-index: 1;
 }
 
-.timeline-dot-create {
-  background: var(--success);
-  box-shadow: 0 0 0 2px var(--success);
-}
-
-.timeline-dot-update {
-  background: var(--info);
-  box-shadow: 0 0 0 2px var(--info);
-}
-
-.timeline-dot-delete {
+.timeline-dot-error {
   background: var(--danger);
   box-shadow: 0 0 0 2px var(--danger);
+}
+
+.timeline-dot-warn {
+  background: var(--warning);
+  box-shadow: 0 0 0 2px var(--warning);
+}
+
+.timeline-dot-info {
+  background: var(--info);
+  box-shadow: 0 0 0 2px var(--info);
 }
 
 .timeline-dot-default {
@@ -218,16 +226,17 @@ const parseDetails = (details: string): Record<string, any> => {
   border-radius: var(--radius-sm);
 }
 
-.event-name {
-  font-size: 14px;
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
 .event-time {
   font-size: 13px;
   color: var(--text-tertiary);
   white-space: nowrap;
+}
+
+.event-message {
+  font-size: 14px;
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin-bottom: var(--spacing-sm);
 }
 
 .event-details {
@@ -265,10 +274,11 @@ const parseDetails = (details: string): Record<string, any> => {
   color: var(--text-tertiary);
 }
 
-.event-user,
-.event-ip {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.event-level,
+.event-type {
+  text-transform: uppercase;
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.5px;
 }
 </style>

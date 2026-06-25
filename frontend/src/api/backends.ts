@@ -16,16 +16,8 @@ export const backendsApi = {
     if (filters?.page) params.append('page', filters.page.toString())
     if (filters?.limit) params.append('limit', filters.limit.toString())
 
-    const { data } = await apiClient.get<Backend[]>('/backends', { params })
-
-    // Note: Current API returns array directly, not paginated
-    // We'll wrap it for future pagination support
-    return {
-      items: data,
-      total: data.length,
-      page: filters?.page || 1,
-      limit: filters?.limit || 50
-    }
+    const { data } = await apiClient.get<ListResponse<Backend>>('/backends', { params })
+    return data
   },
 
   // Get backend detail

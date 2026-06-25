@@ -9,13 +9,8 @@ import type {
 export const proxiesApi = {
   // List proxies
   async list(): Promise<ListResponse<SocksProxy>> {
-    const { data } = await apiClient.get<SocksProxy[]>('/socks-proxies')
-    return {
-      items: data,
-      total: data.length,
-      page: 1,
-      limit: 50
-    }
+    const { data } = await apiClient.get<ListResponse<SocksProxy>>('/socks-proxies')
+    return data
   },
 
   // Get proxy detail

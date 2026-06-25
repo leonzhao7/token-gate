@@ -80,7 +80,7 @@
         <div class="key-stats">
           <div class="stat-item">
             <span class="stat-label">Total Requests</span>
-            <span class="stat-value">{{ key.total_requests || 0 }}</span>
+            <span class="stat-value">{{ key.usage_count || key.total_requests || 0 }}</span>
           </div>
           <div class="stat-item">
             <span class="stat-label">Last Used</span>

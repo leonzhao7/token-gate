@@ -9,13 +9,8 @@ import type {
 export const clientKeysApi = {
   // List client keys
   async list(): Promise<ListResponse<ClientKey>> {
-    const { data } = await apiClient.get<ClientKey[]>('/client-keys')
-    return {
-      items: data,
-      total: data.length,
-      page: 1,
-      limit: 50
-    }
+    const { data } = await apiClient.get<ListResponse<ClientKey>>('/client-keys')
+    return data
   },
 
   // Get client key detail
