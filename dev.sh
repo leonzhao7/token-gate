@@ -3,7 +3,11 @@
 # Token Gate - Development Startup Script
 # Starts both Go backend and Vue frontend dev server
 
-set -e
+# set -e
+
+export http_proxy=
+export https_proxy=
+export ALL_PROXY=
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="$PROJECT_ROOT/frontend"
@@ -30,8 +34,14 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 # Start Go backend
-echo "🔧 Starting Go backend on :4000..."
-go run ./cmd/token-gate &
+echo "🔧 Starting Go backend on :5000..."
+export TG_LISTEN_ADDR="${TG_LISTEN_ADDR:-:5000}"
+export TG_DB_PATH="${TG_DB_PATH:-$ROOT_DIR/token-gate.db}"
+export TG_LOG_LEVEL="${TG_LOG_LEVEL:-info}"
+export GOCACHE="${GOCACHE:-$ROOT_DIR/.gocache}"
+export GOMODCACHE="${GOMODCACHE:-/root/go/pkg/mod}"
+mkdir -p "$GOCACHE"
+exec go run ./cmd/token-gate &
 BACKEND_PID=$!
 
 # Wait for backend to be ready
@@ -48,7 +58,7 @@ cd "$PROJECT_ROOT"
 
 echo ""
 echo "✅ Services running:"
-echo "   - Backend:  http://localhost:4000"
+echo "   - Backend:  http://localhost:5000"
 echo "   - Frontend: http://localhost:5173"
 echo ""
 echo "Press Ctrl+C to stop all services"
