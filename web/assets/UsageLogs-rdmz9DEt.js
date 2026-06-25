@@ -1,1 +1,0 @@
-import{D as s}from"./DefaultLayout-Me2-fJ6q.js";import{d as o,j as t,w as r,o as l,a as e}from"./index-sGegSj0R.js";const m=o({__name:"UsageLogs",setup(n){return(u,a)=>(l(),t(s,null,{default:r(()=>[...a[0]||(a[0]=[e("div",{class:"usage-logs"},[e("h1",null,"Usage Logs")],-1)])]),_:1}))}});export{m as default};
