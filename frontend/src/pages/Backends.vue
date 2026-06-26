@@ -40,7 +40,7 @@
             <option value="">All Status</option>
             <option value="normal">Normal</option>
             <option value="abnormal">Abnormal</option>
-            <option value="disable">Disable</option>
+            <option value="disabled">Disabled</option>
           </select>
           <div class="filter-group">
             <label class="filter-label">Per Page</label>
@@ -81,6 +81,7 @@
         @create="showCreateModal = true"
         @edit="handleEdit"
         @delete="handleDelete"
+        @toggle-status="handleToggleStatus"
       />
 
       <!-- Pagination -->
@@ -283,6 +284,33 @@ const handleEdit = (backend: Backend) => {
 const handleDelete = (backend: Backend) => {
   deletingBackend.value = backend
   showDeleteModal.value = true
+}
+
+const handleToggleStatus = async (backend: Backend) => {
+  const nextStatus = (() => {
+    switch (backend.status) {
+      case 'normal': return 'disabled'
+      case 'disabled': return 'normal'
+      case 'abnormal': return 'disabled'
+      default: return 'disabled'
+    }
+  })()
+  try {
+    await backendsApi.update(backend.id, {
+      name: backend.name,
+      base_url: backend.base_url,
+      api_key: backend.api_key || '',
+      status: nextStatus,
+      weight: backend.weight,
+      models: backend.models,
+      tags: backend.tags,
+      protocol: backend.protocol,
+      proxy_id: backend.proxy?.id || 0,
+    } as any)
+    await backendsStore.fetchBackends()
+  } catch (err: any) {
+    alert(err.message || 'Status update failed')
+  }
 }
 
 const handleSubmit = async (data: CreateBackendRequest) => {

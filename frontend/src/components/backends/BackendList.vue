@@ -42,10 +42,13 @@
                 <span class="name-text">{{ backend.name }}</span>
               </div>
             </div>
-            <div class="col col-status">
+            <div class="col col-status" @click.stop>
               <StatusBadge
                 :variant="getStatusVariant(backend.status)"
                 :label="backend.status"
+                class="clickable-badge"
+                :title="`Click to ${getNextStatus(backend.status) === 'disabled' ? 'disable' : 'enable'}`"
+                @click="$emit('toggle-status', backend)"
               />
             </div>
             <div class="col col-protocol">
@@ -218,6 +221,7 @@ const emit = defineEmits<{
   create: []
   edit: [backend: Backend]
   delete: [backend: Backend]
+  'toggle-status': [backend: Backend]
 }>()
 
 const expandedId = ref<number | null>(null)
@@ -232,10 +236,23 @@ const getStatusVariant = (status: string): 'success' | 'warning' | 'danger' | 'i
       return 'success'
     case 'abnormal':
       return 'warning'
-    case 'disable':
+    case 'disabled':
       return 'default'
     default:
       return 'default'
+  }
+}
+
+const getNextStatus = (status: string): string => {
+  switch (status) {
+    case 'normal':
+      return 'disabled'
+    case 'disabled':
+      return 'normal'
+    case 'abnormal':
+      return 'disabled'
+    default:
+      return 'disabled'
   }
 }
 
@@ -245,7 +262,7 @@ const getStatusClass = (status: string): string => {
       return 'status-normal'
     case 'abnormal':
       return 'status-abnormal'
-    case 'disable':
+    case 'disabled':
       return 'status-disable'
     default:
       return ''
@@ -481,6 +498,20 @@ const formatTime = (timestamp: string) => {
   font-size: 12px;
   word-break: break-all;
   user-select: all;
+}
+
+.clickable-badge {
+  cursor: pointer;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.clickable-badge:hover {
+  opacity: 0.8;
+  transform: scale(1.05);
+}
+
+.clickable-badge:active {
+  transform: scale(0.95);
 }
 
 .action-btn {

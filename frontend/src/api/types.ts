@@ -176,7 +176,9 @@ export interface CreateBackendRequest {
   enabled?: boolean
 }
 
-export interface UpdateBackendRequest extends Partial<CreateBackendRequest> {}
+export interface UpdateBackendRequest extends Partial<CreateBackendRequest> {
+  status?: string
+}
 
 export interface BackendImportExportItem {
   name: string
