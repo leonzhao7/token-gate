@@ -6,14 +6,23 @@
           <h1>Usage Logs</h1>
           <p class="page-description">Monitor API request logs and usage patterns</p>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          @click="refreshLogs"
-          :loading="loading"
-        >
-          🔄 Refresh
-        </Button>
+        <div class="header-actions">
+          <Button
+            variant="secondary"
+            size="sm"
+            @click="refreshLogs"
+            :loading="loading"
+          >
+            🔄 Refresh
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            @click="showClearModal = true"
+          >
+            Clear
+          </Button>
+        </div>
       </div>
 
       <!-- Filters -->
@@ -101,6 +110,26 @@
           </span>
         </div>
       </template>
+
+      <Modal
+        :show="showClearModal"
+        title="Clear Usage Logs"
+        width="500px"
+        @close="showClearModal = false"
+      >
+        <div class="clear-confirmation">
+          <p>Are you sure you want to clear all usage logs?</p>
+          <p class="warning-text">This permanently deletes every usage log, not just the current page or filters.</p>
+          <div class="modal-actions">
+            <Button variant="secondary" @click="showClearModal = false">
+              Cancel
+            </Button>
+            <Button variant="danger" :loading="clearing" @click="confirmClearLogs">
+              Clear Logs
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   </DefaultLayout>
 </template>
@@ -112,6 +141,7 @@ import Card from '@/components/ui/Card.vue'
 import Button from '@/components/ui/Button.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import LoadingSpinner from '@/components/ui/LoadingSpinner.vue'
+import Modal from '@/components/ui/Modal.vue'
 import Pagination from '@/components/ui/Pagination.vue'
 import UsageLogsTable from '@/components/usageLogs/UsageLogsTable.vue'
 import { useUsageLogsStore } from '@/stores/usageLogs'
@@ -125,6 +155,8 @@ const loading = computed(() => logsStore.loading)
 const error = computed(() => logsStore.error)
 
 const pageSize = ref(50)
+const showClearModal = ref(false)
+const clearing = ref(false)
 const filters = ref({
   time_range: '24h',
   status: '',
@@ -162,6 +194,19 @@ const handlePageSizeChange = () => {
   refreshLogs()
 }
 
+const confirmClearLogs = async () => {
+  try {
+    clearing.value = true
+    await logsStore.clearLogs()
+    showClearModal.value = false
+    await refreshLogs()
+  } catch (err: any) {
+    alert(err.message || 'Clear usage logs failed')
+  } finally {
+    clearing.value = false
+  }
+}
+
 onMounted(() => {
   logsStore.setLimit(pageSize.value)
   refreshLogs()
@@ -192,6 +237,12 @@ onMounted(() => {
   font-size: 14px;
   color: var(--text-secondary);
   margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
 }
 
 .filters-card {
@@ -245,5 +296,29 @@ onMounted(() => {
 .logs-count {
   font-size: 14px;
   color: var(--text-secondary);
+}
+
+.clear-confirmation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.clear-confirmation p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.warning-text {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-lg);
 }
 </style>

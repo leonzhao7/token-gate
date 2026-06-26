@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"token-gate/internal/config"
 	"token-gate/internal/domain"
 	"token-gate/internal/proxy"
 	"token-gate/internal/store"
@@ -3049,6 +3048,48 @@ func TestEventsFilterByCategoryAndDateRange(t *testing.T) {
 	}
 }
 
+func TestClearEventsDeletesAllAuditEvents(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	for _, event := range []domain.AuditEvent{
+		{Level: "warn", Type: "backend", Message: "backend event"},
+		{Level: "info", Type: "client_key", Message: "client key event"},
+	} {
+		if err := application.store.AppendAuditEvent(ctx, event); err != nil {
+			t.Fatalf("append audit event: %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/admin/api/events", nil)
+	req.Header.Set("Authorization", "Bearer test-admin")
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Cleared bool  `json:"cleared"`
+		Deleted int64 `json:"deleted"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal clear events response: %v", err)
+	}
+	if !payload.Cleared || payload.Deleted != 2 {
+		t.Fatalf("unexpected clear events payload: %#v", payload)
+	}
+
+	remaining, err := application.store.CountAuditEvents(ctx)
+	if err != nil {
+		t.Fatalf("count audit events after clear: %v", err)
+	}
+	if remaining != 0 {
+		t.Fatalf("expected no audit events after clear, got %d", remaining)
+	}
+}
+
 func TestEventDetailReturnsDrawerPayload(t *testing.T) {
 	application := newTestApp(t)
 	ctx := context.Background()
@@ -3970,13 +4011,7 @@ func (f *failoverFixture) recordsSnapshot() []upstreamRecord {
 func newTestApp(t *testing.T) *App {
 	t.Helper()
 
-	application, err := New(context.Background(), config.Config{
-		ListenAddr:      ":0",
-		DBPath:          t.TempDir() + "/app.db",
-		BackendCooldown: time.Minute,
-		RequestTimeout:  time.Second,
-		ShutdownTimeout: time.Second,
-	})
+	application, err := New(context.Background(), t.TempDir()+"/app.db")
 	if err != nil {
 		t.Fatalf("new app: %v", err)
 	}

@@ -1745,6 +1745,14 @@ func (s *Store) GetAuditEvent(ctx context.Context, id int64) (domain.AuditEvent,
 	return scanAuditEvent(row)
 }
 
+func (s *Store) ClearAuditEvents(ctx context.Context) (int64, error) {
+	result, err := s.db.ExecContext(ctx, `DELETE FROM audit_events`)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 func (s *Store) EventSummary(ctx context.Context, filter EventFilter) (EventSummary, error) {
 	where, args := eventFilterClause(filter)
 	rows, err := s.db.QueryContext(ctx, `

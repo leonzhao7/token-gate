@@ -29,6 +29,24 @@ export const useUsageLogsStore = defineStore('usageLogs', () => {
     }
   }
 
+  const clearLogs = async () => {
+    try {
+      loading.value = true
+      error.value = null
+      await usageLogsApi.clear()
+      logs.value = []
+      total.value = 0
+      page.value = 1
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || 'Failed to clear usage logs'
+      error.value = errorMsg
+      console.error('Failed to clear usage logs:', err)
+      throw new Error(errorMsg)
+    } finally {
+      loading.value = false
+    }
+  }
+
   const setPage = (newPage: number) => {
     page.value = newPage
   }
@@ -46,6 +64,7 @@ export const useUsageLogsStore = defineStore('usageLogs', () => {
     loading,
     error,
     fetchLogs,
+    clearLogs,
     setPage,
     setLimit
   }

@@ -2,7 +2,8 @@ import apiClient from './client'
 import type {
   UsageLog,
   UsageLogFilters,
-  ListResponse
+  ListResponse,
+  ClearResponse
 } from './types'
 
 export const usageLogsApi = {
@@ -39,5 +40,11 @@ export const usageLogsApi = {
     if (filters?.start_time) params.append('start_time', filters.start_time)
     if (filters?.end_time) params.append('end_time', filters.end_time)
     await apiClient.delete('/usage-logs', { params })
+  },
+
+  // Clear all usage logs
+  async clear(): Promise<ClearResponse> {
+    const { data } = await apiClient.delete<ClearResponse>('/usage-logs')
+    return data
   }
 }

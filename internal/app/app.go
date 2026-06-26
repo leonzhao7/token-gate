@@ -309,6 +309,7 @@ func (a *App) routes() {
 	a.mux.Handle("GET /admin/api/events", http.HandlerFunc(a.handleListEvents))
 	a.mux.Handle("GET /admin/api/events/summary", http.HandlerFunc(a.handleEventSummary))
 	a.mux.Handle("GET /admin/api/events/{id}", http.HandlerFunc(a.handleEventDetail))
+	a.mux.Handle("DELETE /admin/api/events", http.HandlerFunc(a.handleClearEvents))
 	a.mux.Handle("GET /admin/api/usage-logs", http.HandlerFunc(a.handleListUsageLogs))
 	a.mux.Handle("GET /admin/api/usage-logs/stats", http.HandlerFunc(a.handleUsageLogStats))
 	a.mux.Handle("GET /admin/api/usage-logs/{id}", http.HandlerFunc(a.handleGetUsageLog))
@@ -1579,6 +1580,18 @@ func (a *App) handleEventDetail(w http.ResponseWriter, r *http.Request) {
 		},
 		"raw":      event,
 		"activity": map[string]any{},
+	})
+}
+
+func (a *App) handleClearEvents(w http.ResponseWriter, r *http.Request) {
+	deleted, err := a.store.ClearAuditEvents(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"cleared": true,
+		"deleted": deleted,
 	})
 }
 

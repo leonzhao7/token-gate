@@ -29,6 +29,24 @@ export const useEventsStore = defineStore('events', () => {
     }
   }
 
+  const clearEvents = async () => {
+    try {
+      loading.value = true
+      error.value = null
+      await eventsApi.clear()
+      events.value = []
+      total.value = 0
+      page.value = 1
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || 'Failed to clear events'
+      error.value = errorMsg
+      console.error('Failed to clear events:', err)
+      throw new Error(errorMsg)
+    } finally {
+      loading.value = false
+    }
+  }
+
   const setPage = (newPage: number) => {
     page.value = newPage
   }
@@ -46,6 +64,7 @@ export const useEventsStore = defineStore('events', () => {
     loading,
     error,
     fetchEvents,
+    clearEvents,
     setPage,
     setLimit
   }

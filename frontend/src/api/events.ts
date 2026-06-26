@@ -2,7 +2,8 @@ import apiClient from './client'
 import type {
   AuditEvent,
   EventFilters,
-  ListResponse
+  ListResponse,
+  ClearResponse
 } from './types'
 
 export const eventsApi = {
@@ -23,6 +24,12 @@ export const eventsApi = {
   // Get event detail
   async get(id: number): Promise<AuditEvent> {
     const { data } = await apiClient.get<AuditEvent>(`/events/${id}`)
+    return data
+  },
+
+  // Clear all events
+  async clear(): Promise<ClearResponse> {
+    const { data } = await apiClient.delete<ClearResponse>('/events')
     return data
   }
 }

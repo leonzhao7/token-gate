@@ -230,3 +230,8 @@ export interface ApiError {
   error: string
   details?: Record<string, any>
 }
+
+export interface ClearResponse {
+  cleared: boolean
+  deleted: number
+}
