@@ -178,6 +178,34 @@ export interface CreateBackendRequest {
 
 export interface UpdateBackendRequest extends Partial<CreateBackendRequest> {}
 
+export interface BackendImportExportItem {
+  name: string
+  protocol: 'openai' | 'anthropic'
+  base_url: string
+  api_key: string
+  console_url?: string
+  tags?: string[]
+  console_username?: string
+  console_password?: string
+  notes?: string
+  proxy_id: number
+  status: string
+  consecutive_failures: number
+  weight: number
+  models: string[]
+  model_mapping: Record<string, string>
+  endpoints: string[]
+}
+
+export interface BackendImportExportPayload {
+  backends: BackendImportExportItem[]
+}
+
+export interface BackendImportResponse {
+  imported: number
+  backends: Backend[]
+}
+
 export interface CreateProxyRequest {
   name: string
   address: string  // Full address like "socks5://host:port"

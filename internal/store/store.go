@@ -1534,6 +1534,69 @@ func (s *Store) CreateBackend(ctx context.Context, backend domain.Backend) (doma
 	return s.GetBackend(ctx, backend.ID)
 }
 
+func (s *Store) ImportBackends(ctx context.Context, backends []domain.Backend) ([]domain.Backend, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	now := time.Now().UTC()
+	created := make([]domain.Backend, 0, len(backends))
+	for _, backend := range backends {
+		backend.Name = strings.TrimSpace(backend.Name)
+		backend.Protocol = domain.NormalizeBackendProtocol(backend.Protocol)
+		backend.BaseURL = strings.TrimSpace(backend.BaseURL)
+		backend.APIKey = strings.TrimSpace(backend.APIKey)
+		backend.ConsoleURL = strings.TrimSpace(backend.ConsoleURL)
+		backend.ConsoleUsername = strings.TrimSpace(backend.ConsoleUsername)
+		backend.ConsolePassword = strings.TrimSpace(backend.ConsolePassword)
+		backend.Notes = strings.TrimSpace(backend.Notes)
+		backend.Status = normalizeBackendStatus(backend.Status)
+		backend.Weight = normalizeWeight(backend.Weight)
+		result, err := tx.ExecContext(ctx, `
+			INSERT INTO backends(name, protocol, base_url, api_key, console_url, tag_list, console_username, console_password, notes, proxy_id, status, consecutive_failures, recover_at, weight, model_list, model_mapping, endpoint_list, created_at, updated_at)
+			VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`,
+			backend.Name,
+			backend.Protocol,
+			backend.BaseURL,
+			backend.APIKey,
+			backend.ConsoleURL,
+			mustEncodeList(backend.Tags),
+			backend.ConsoleUsername,
+			backend.ConsolePassword,
+			backend.Notes,
+			backend.ProxyID,
+			backend.Status,
+			backend.ConsecutiveFailures,
+			"",
+			backend.Weight,
+			mustEncodeList(backend.Models),
+			mustEncodeMap(backend.ModelMapping),
+			mustEncodeList(backend.Endpoints),
+			formatTime(now),
+			formatTime(now),
+		)
+		if err != nil {
+			return nil, err
+		}
+		id, err := result.LastInsertId()
+		if err != nil {
+			return nil, err
+		}
+		backend.ID = id
+		backend.CreatedAt = now
+		backend.UpdatedAt = now
+		backend.RecoverAt = nil
+		created = append(created, backend)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
 func (s *Store) UpdateBackend(ctx context.Context, backend domain.Backend) (domain.Backend, error) {
 	now := time.Now().UTC()
 	backend.UpdatedAt = now

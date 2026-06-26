@@ -366,6 +366,213 @@ func TestCreateBackendDefaultsToNormalStatus(t *testing.T) {
 	}
 }
 
+func TestExportBackendsIncludesImportablePersistedFieldsOnly(t *testing.T) {
+	application := newTestApp(t)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:                "edge-export",
+		Protocol:            domain.BackendProtocolAnthropic,
+		BaseURL:             "https://edge-export.local/v1",
+		APIKey:              "edge-export-key",
+		ConsoleURL:          "https://console.edge-export.local",
+		Tags:                []string{"primary", "paid"},
+		ConsoleUsername:     "operator",
+		ConsolePassword:     "console-secret",
+		Notes:               "export me",
+		Status:              domain.BackendStatusAbnormal,
+		ConsecutiveFailures: 3,
+		Weight:              9,
+		Models:              []string{"claude-3-5-sonnet"},
+		ModelMapping:        map[string]string{"claude-public": "claude-3-5-sonnet"},
+		Endpoints:           []string{domain.EndpointMessages},
+	})
+	recoverAt := time.Now().UTC().Add(time.Hour)
+	backend.Status = domain.BackendStatusAbnormal
+	backend.ConsecutiveFailures = 3
+	backend.RecoverAt = &recoverAt
+	_, err := application.store.UpdateBackend(context.Background(), backend)
+	if err != nil {
+		t.Fatalf("update backend failure state: %v", err)
+	}
+	createTestBackend(t, application, domain.Backend{
+		Name:      "edge-empty-tags",
+		Protocol:  domain.BackendProtocolOpenAI,
+		BaseURL:   "https://edge-empty-tags.local/v1",
+		APIKey:    "edge-empty-tags-key",
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/backends/export", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload map[string][]map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal export payload: %v", err)
+	}
+	if len(payload["backends"]) != 2 {
+		t.Fatalf("expected two exported backends, got %#v", payload)
+	}
+	var exported map[string]any
+	var emptyTagsExport map[string]any
+	for _, item := range payload["backends"] {
+		switch item["name"] {
+		case "edge-export":
+			exported = item
+		case "edge-empty-tags":
+			emptyTagsExport = item
+		}
+	}
+	if exported == nil || emptyTagsExport == nil {
+		t.Fatalf("expected both exported backends, got %#v", payload["backends"])
+	}
+	for _, key := range []string{"id", "created_at", "updated_at", "recover_at", "proxy", "request_count", "avg_latency_ms", "hourly_requests"} {
+		if _, ok := exported[key]; ok {
+			t.Fatalf("export should not include %q: %#v", key, exported)
+		}
+	}
+	if exported["name"] != "edge-export" || exported["api_key"] != "edge-export-key" || exported["status"] != domain.BackendStatusAbnormal {
+		t.Fatalf("unexpected exported backend payload: %#v", exported)
+	}
+	if exported["consecutive_failures"].(float64) != 3 {
+		t.Fatalf("expected exported consecutive_failures=3, got %#v", exported)
+	}
+	tags, ok := emptyTagsExport["tags"]
+	if !ok {
+		t.Fatalf("expected empty tags field to be exported, got %#v", emptyTagsExport)
+	}
+	tagList, ok := tags.([]any)
+	if !ok || len(tagList) != 0 {
+		t.Fatalf("expected tags to be an empty array, got %#v", tags)
+	}
+}
+
+func TestImportBackendsRejectsExistingNameAndRollsBack(t *testing.T) {
+	application := newTestApp(t)
+	createTestBackend(t, application, domain.Backend{
+		Name:      "existing",
+		Protocol:  domain.BackendProtocolOpenAI,
+		BaseURL:   "https://existing.local/v1",
+		APIKey:    "existing-key",
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/import", strings.NewReader(`{
+		"backends": [
+			{
+				"name": "new-backend",
+				"protocol": "openai",
+				"base_url": "https://new.local/v1",
+				"api_key": "new-key",
+				"proxy_id": 0,
+				"status": "normal",
+				"consecutive_failures": 0,
+				"weight": 2,
+				"models": ["gpt-4o"],
+				"model_mapping": {},
+				"endpoints": ["chat"]
+			},
+			{
+				"name": "existing",
+				"protocol": "openai",
+				"base_url": "https://duplicate.local/v1",
+				"api_key": "duplicate-key",
+				"proxy_id": 0,
+				"status": "normal",
+				"consecutive_failures": 0,
+				"weight": 3,
+				"models": ["gpt-4o"],
+				"model_mapping": {},
+				"endpoints": ["chat"]
+			}
+		]
+	}`))
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "backend name already exists") {
+		t.Fatalf("expected duplicate name error, got %s", recorder.Body.String())
+	}
+	backends, err := application.store.ListBackends(context.Background())
+	if err != nil {
+		t.Fatalf("list backends: %v", err)
+	}
+	if len(backends) != 1 || backends[0].Name != "existing" {
+		t.Fatalf("expected import rollback with only existing backend, got %#v", backends)
+	}
+}
+
+func TestImportBackendsCreatesRecordsWithoutMetadataFields(t *testing.T) {
+	application := newTestApp(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/import", strings.NewReader(`{
+		"backends": [
+			{
+				"name": "imported",
+				"protocol": "anthropic",
+				"base_url": "https://imported.local/v1",
+				"api_key": "imported-key",
+				"console_url": "https://console.imported.local",
+				"tags": ["imported"],
+				"console_username": "operator",
+				"console_password": "console-secret",
+				"notes": "created from import",
+				"proxy_id": 0,
+				"status": "abnormal",
+				"consecutive_failures": 2,
+				"weight": 8,
+				"models": ["claude-3-5-sonnet"],
+				"model_mapping": {"public-claude":"claude-3-5-sonnet"},
+				"endpoints": ["messages"]
+			}
+		]
+	}`))
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Imported int `json:"imported"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal import response: %v", err)
+	}
+	if payload.Imported != 1 {
+		t.Fatalf("expected imported=1, got %#v", payload)
+	}
+
+	backends, err := application.store.ListBackends(context.Background())
+	if err != nil {
+		t.Fatalf("list backends: %v", err)
+	}
+	if len(backends) != 1 {
+		t.Fatalf("expected one imported backend, got %#v", backends)
+	}
+	backend := backends[0]
+	if backend.Name != "imported" || backend.Protocol != domain.BackendProtocolAnthropic || backend.Status != domain.BackendStatusAbnormal {
+		t.Fatalf("unexpected imported backend: %#v", backend)
+	}
+	if backend.ConsecutiveFailures != 2 || backend.RecoverAt != nil {
+		t.Fatalf("expected persisted failures and empty recover_at, got %#v", backend)
+	}
+	if backend.CreatedAt.IsZero() || backend.UpdatedAt.IsZero() {
+		t.Fatalf("expected store-generated timestamps, got %#v", backend)
+	}
+}
+
 func TestUpdateBackendRejectsAbnormalStatus(t *testing.T) {
 	application := newTestApp(t)
 	backend := createTestBackend(t, application, domain.Backend{

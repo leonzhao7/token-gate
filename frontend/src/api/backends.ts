@@ -4,7 +4,9 @@ import type {
   CreateBackendRequest,
   UpdateBackendRequest,
   BackendFilters,
-  ListResponse
+  ListResponse,
+  BackendImportExportPayload,
+  BackendImportResponse
 } from './types'
 
 export const backendsApi = {
@@ -41,5 +43,15 @@ export const backendsApi = {
   // Delete backend
   async delete(id: number): Promise<void> {
     await apiClient.delete(`/backends/${id}`)
+  },
+
+  async exportAll(): Promise<BackendImportExportPayload> {
+    const { data } = await apiClient.get<BackendImportExportPayload>('/backends/export')
+    return data
+  },
+
+  async importAll(payload: BackendImportExportPayload): Promise<BackendImportResponse> {
+    const { data } = await apiClient.post<BackendImportResponse>('/backends/import', payload)
+    return data
   }
 }

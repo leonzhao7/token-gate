@@ -36,7 +36,7 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 # Start Go backend
-echo "🔧 Starting Go backend on :5000..."
+echo "🔧 Starting Go backend on :4000..."
 cd "$ROOT_DIR"
 export TG_LISTEN_ADDR="${TG_LISTEN_ADDR:-:4000}"
 export TG_DB_PATH="${TG_DB_PATH:-$ROOT_DIR/token-gate.db}"

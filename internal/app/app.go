@@ -223,6 +223,29 @@ type backendRecentStats struct {
 	Failures      int `json:"failures"`
 }
 
+type backendImportExportPayload struct {
+	Backends []backendImportExportItem `json:"backends"`
+}
+
+type backendImportExportItem struct {
+	Name                string            `json:"name"`
+	Protocol            string            `json:"protocol"`
+	BaseURL             string            `json:"base_url"`
+	APIKey              string            `json:"api_key"`
+	ConsoleURL          string            `json:"console_url"`
+	Tags                []string          `json:"tags"`
+	ConsoleUsername     string            `json:"console_username"`
+	ConsolePassword     string            `json:"console_password"`
+	Notes               string            `json:"notes"`
+	ProxyID             int64             `json:"proxy_id"`
+	Status              string            `json:"status"`
+	ConsecutiveFailures int               `json:"consecutive_failures"`
+	Weight              int               `json:"weight"`
+	Models              []string          `json:"models"`
+	ModelMapping        map[string]string `json:"model_mapping"`
+	Endpoints           []string          `json:"endpoints"`
+}
+
 type backendUsageSummary struct {
 	RequestCount int
 	AvgLatencyMS float64
@@ -297,8 +320,10 @@ func (a *App) routes() {
 	a.mux.Handle("PUT /admin/api/socks-proxies/{id}", http.HandlerFunc(a.handleUpdateSocksProxy))
 	a.mux.Handle("DELETE /admin/api/socks-proxies/{id}", http.HandlerFunc(a.handleDeleteSocksProxy))
 	a.mux.Handle("GET /admin/api/backends", http.HandlerFunc(a.handleListBackends))
+	a.mux.Handle("GET /admin/api/backends/export", http.HandlerFunc(a.handleExportBackends))
 	a.mux.Handle("GET /admin/api/backends/{id}/detail", http.HandlerFunc(a.handleBackendDetail))
 	a.mux.Handle("POST /admin/api/backends", http.HandlerFunc(a.handleCreateBackend))
+	a.mux.Handle("POST /admin/api/backends/import", http.HandlerFunc(a.handleImportBackends))
 	a.mux.Handle("PUT /admin/api/backends/{id}", http.HandlerFunc(a.handleUpdateBackend))
 	a.mux.Handle("DELETE /admin/api/backends/{id}", http.HandlerFunc(a.handleDeleteBackend))
 	a.mux.Handle("GET /admin/api/client-keys", http.HandlerFunc(a.handleListClientKeys))
@@ -1106,6 +1131,42 @@ func (a *App) handleListBackends(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, pagedResponse(ensureBackendViews(response), total, page, limit))
 }
 
+func (a *App) handleExportBackends(w http.ResponseWriter, r *http.Request) {
+	backends, err := a.store.ListBackends(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	items := make([]backendImportExportItem, 0, len(backends))
+	for _, backend := range backends {
+		items = append(items, backendToImportExportItem(backend))
+	}
+	w.Header().Set("Content-Disposition", `attachment; filename="token-gate-backends.json"`)
+	writeJSON(w, http.StatusOK, backendImportExportPayload{Backends: items})
+}
+
+func (a *App) handleImportBackends(w http.ResponseWriter, r *http.Request) {
+	var payload backendImportExportPayload
+	if err := decodeJSON(r, &payload); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	backends, err := a.validateBackendImportPayload(r.Context(), payload)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	imported, err := a.store.ImportBackends(r.Context(), backends)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"imported": len(imported),
+		"backends": imported,
+	})
+}
+
 func (a *App) handleCreateBackend(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Name         string            `json:"name"`
@@ -1262,6 +1323,97 @@ func (a *App) handleUpdateBackend(w http.ResponseWriter, r *http.Request) {
 		BackendName: backend.Name,
 	})
 	writeJSON(w, http.StatusOK, backend)
+}
+
+func (a *App) validateBackendImportPayload(ctx context.Context, payload backendImportExportPayload) ([]domain.Backend, error) {
+	existing, err := a.store.ListBackends(ctx)
+	if err != nil {
+		return nil, err
+	}
+	existingNames := make(map[string]struct{}, len(existing))
+	for _, backend := range existing {
+		existingNames[strings.ToLower(strings.TrimSpace(backend.Name))] = struct{}{}
+	}
+
+	seenNames := make(map[string]struct{}, len(payload.Backends))
+	backends := make([]domain.Backend, 0, len(payload.Backends))
+	for i, item := range payload.Backends {
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			return nil, fmt.Errorf("backend %d name is required", i+1)
+		}
+		nameKey := strings.ToLower(name)
+		if _, ok := seenNames[nameKey]; ok {
+			return nil, fmt.Errorf("duplicate backend name in import: %s", name)
+		}
+		seenNames[nameKey] = struct{}{}
+		if _, ok := existingNames[nameKey]; ok {
+			return nil, fmt.Errorf("backend name already exists: %s", name)
+		}
+		if err := validateURL(item.BaseURL); err != nil {
+			return nil, fmt.Errorf("backend %q base_url: %w", name, err)
+		}
+		if strings.TrimSpace(item.ConsoleURL) != "" {
+			if err := validateURL(item.ConsoleURL); err != nil {
+				return nil, fmt.Errorf("backend %q console_url: %w", name, err)
+			}
+		}
+		if err := a.validateSocksProxyReference(ctx, item.ProxyID); err != nil {
+			return nil, fmt.Errorf("backend %q: %w", name, err)
+		}
+		status := strings.ToLower(strings.TrimSpace(item.Status))
+		if status == "" {
+			status = domain.BackendStatusNormal
+		}
+		switch status {
+		case domain.BackendStatusNormal, domain.BackendStatusAbnormal, domain.BackendStatusDisabled:
+		default:
+			return nil, fmt.Errorf("backend %q invalid status", name)
+		}
+		if item.ConsecutiveFailures < 0 {
+			return nil, fmt.Errorf("backend %q consecutive_failures must be >= 0", name)
+		}
+		backends = append(backends, domain.Backend{
+			Name:                name,
+			Protocol:            domain.NormalizeBackendProtocol(item.Protocol),
+			BaseURL:             item.BaseURL,
+			APIKey:              item.APIKey,
+			ConsoleURL:          item.ConsoleURL,
+			Tags:                item.Tags,
+			ConsoleUsername:     item.ConsoleUsername,
+			ConsolePassword:     item.ConsolePassword,
+			Notes:               item.Notes,
+			ProxyID:             item.ProxyID,
+			Status:              status,
+			ConsecutiveFailures: item.ConsecutiveFailures,
+			Weight:              item.Weight,
+			Models:              item.Models,
+			ModelMapping:        item.ModelMapping,
+			Endpoints:           item.Endpoints,
+		})
+	}
+	return backends, nil
+}
+
+func backendToImportExportItem(backend domain.Backend) backendImportExportItem {
+	return backendImportExportItem{
+		Name:                backend.Name,
+		Protocol:            domain.NormalizeBackendProtocol(backend.Protocol),
+		BaseURL:             backend.BaseURL,
+		APIKey:              backend.APIKey,
+		ConsoleURL:          backend.ConsoleURL,
+		Tags:                backend.Tags,
+		ConsoleUsername:     backend.ConsoleUsername,
+		ConsolePassword:     backend.ConsolePassword,
+		Notes:               backend.Notes,
+		ProxyID:             backend.ProxyID,
+		Status:              backend.Status,
+		ConsecutiveFailures: backend.ConsecutiveFailures,
+		Weight:              backend.Weight,
+		Models:              backend.Models,
+		ModelMapping:        backend.ModelMapping,
+		Endpoints:           backend.Endpoints,
+	}
 }
 
 func (a *App) handleDeleteBackend(w http.ResponseWriter, r *http.Request) {

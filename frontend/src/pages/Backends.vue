@@ -6,9 +6,24 @@
           <h1>Backends</h1>
           <p class="page-description">Manage AI backend configurations and routing</p>
         </div>
-        <Button @click="showCreateModal = true" size="md">
-          ➕ Add Backend
-        </Button>
+        <div class="header-actions">
+          <Button variant="secondary" size="sm" :loading="exporting" @click="exportBackends">
+            Export
+          </Button>
+          <Button variant="secondary" size="sm" :loading="importing" @click="openImportPicker">
+            Import
+          </Button>
+          <Button @click="showCreateModal = true" size="md">
+            ➕ Add Backend
+          </Button>
+          <input
+            ref="importFileInput"
+            class="file-input"
+            type="file"
+            accept="application/json,.json"
+            @change="handleImportFile"
+          />
+        </div>
       </div>
 
       <!-- Search & Filters -->
@@ -135,7 +150,7 @@ import Pagination from '@/components/ui/Pagination.vue'
 import BackendList from '@/components/backends/BackendList.vue'
 import BackendForm from '@/components/backends/BackendForm.vue'
 import { useBackendsStore } from '@/stores/backends'
-import { proxiesApi, type Backend, type CreateBackendRequest, type SocksProxy } from '@/api'
+import { backendsApi, proxiesApi, type Backend, type CreateBackendRequest, type SocksProxy } from '@/api'
 
 const backendsStore = useBackendsStore()
 
@@ -155,6 +170,9 @@ const showDeleteModal = ref(false)
 const editingBackend = ref<Backend | null>(null)
 const deletingBackend = ref<Backend | null>(null)
 const submitting = ref(false)
+const exporting = ref(false)
+const importing = ref(false)
+const importFileInput = ref<HTMLInputElement | null>(null)
 
 const filteredBackends = computed(() => {
   let result = backends.value
@@ -186,6 +204,50 @@ const paginatedBackends = computed(() => {
 
 const refreshBackends = async () => {
   await backendsStore.fetchBackends()
+}
+
+const exportBackends = async () => {
+  try {
+    exporting.value = true
+    const payload = await backendsApi.exportAll()
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'token-gate-backends.json'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (err: any) {
+    alert(err.response?.data?.error || err.message || 'Export failed')
+  } finally {
+    exporting.value = false
+  }
+}
+
+const openImportPicker = () => {
+  importFileInput.value?.click()
+}
+
+const handleImportFile = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+
+  try {
+    importing.value = true
+    const payload = JSON.parse(await file.text())
+    const response = await backendsApi.importAll(payload)
+    alert(`Imported ${response.imported} backends`)
+    await refreshBackends()
+    currentPage.value = 1
+  } catch (err: any) {
+    alert(err.response?.data?.error || err.message || 'Import failed')
+  } finally {
+    importing.value = false
+  }
 }
 
 const handlePageChange = (page: number) => {
@@ -289,6 +351,16 @@ onMounted(() => {
   font-size: 14px;
   color: var(--text-secondary);
   margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.file-input {
+  display: none;
 }
 
 .filters-card {
