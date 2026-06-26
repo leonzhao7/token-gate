@@ -96,6 +96,9 @@ export interface UsageLog {
   latency_ms?: number
   request_bytes?: number
   response_bytes?: number
+  input_tokens?: number
+  input_cache_tokens?: number
+  output_tokens?: number
   request_body_preview?: string
   response_body_preview?: string
   request_headers_json?: string
