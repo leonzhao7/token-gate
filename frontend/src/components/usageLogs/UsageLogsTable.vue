@@ -19,6 +19,7 @@
             <th>Backend</th>
             <th>Status</th>
             <th>Latency</th>
+            <th>Tokens</th>
             <th>Bytes</th>
           </tr>
         </thead>
@@ -54,13 +55,22 @@
               </td>
               <td>
                 <div class="tokens-cell">
+                  <span class="token-count">{{ formatTokenCount(log.input_tokens) }}</span>
+                  <span class="token-detail">
+                    Cache {{ formatTokenCount(log.input_cache_tokens) }} · Out
+                    {{ formatTokenCount(log.output_tokens) }}
+                  </span>
+                </div>
+              </td>
+              <td>
+                <div class="tokens-cell">
                   <span class="token-count">{{ formatBytes((log.request_bytes || 0) + (log.response_bytes || 0)) }}</span>
                   <span class="token-detail">({{ formatBytes(log.request_bytes || 0) }}/{{ formatBytes(log.response_bytes || 0) }})</span>
                 </div>
               </td>
             </tr>
             <tr v-if="expandedRows.has(log.id)" class="expanded-row">
-              <td colspan="8">
+              <td colspan="9">
                 <div class="expanded-content">
                   <div class="detail-grid">
                     <div class="detail-item">
@@ -74,6 +84,18 @@
                     <div class="detail-item">
                       <span class="detail-label">User Agent:</span>
                       <span class="detail-value">{{ log.user_agent || 'N/A' }}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="detail-label">Input Tokens:</span>
+                      <span class="detail-value">{{ formatTokenCount(log.input_tokens) }}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="detail-label">Cache Tokens:</span>
+                      <span class="detail-value">{{ formatTokenCount(log.input_cache_tokens) }}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="detail-label">Output Tokens:</span>
+                      <span class="detail-value">{{ formatTokenCount(log.output_tokens) }}</span>
                     </div>
                     <div v-if="log.error_message" class="detail-item full-width">
                       <span class="detail-label">Error:</span>
@@ -140,6 +162,14 @@ const formatBytes = (bytes: number): string => {
   if (bytes < 1024) return `${bytes}B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+}
+
+const formatTokenCount = (value?: number): string => {
+  const count = Number(value ?? 0)
+  if (!Number.isFinite(count) || count <= 0) return '0'
+  if (count < 1000) return String(Math.round(count))
+  if (count < 1_000_000) return `${(count / 1000).toFixed(1)}K`
+  return `${(count / 1_000_000).toFixed(1)}M`
 }
 </script>
 
@@ -256,6 +286,7 @@ const formatBytes = (bytes: number): string => {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 136px;
 }
 
 .token-count {
@@ -264,7 +295,8 @@ const formatBytes = (bytes: number): string => {
 
 .token-detail {
   font-size: 12px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .expanded-row {
