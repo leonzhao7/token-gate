@@ -76,7 +76,7 @@
             </div>
             <div class="col col-latency">
               <span class="metric-value">
-                {{ backend.avg_latency_ms ? `${backend.avg_latency_ms.toFixed(0)}ms` : 'N/A' }}
+                {{ formatLatencySeconds(backend.avg_latency_ms, 'N/A') }}
               </span>
             </div>
             <div class="col col-actions" @click.stop>
@@ -169,7 +169,7 @@
                 <div class="detail-item">
                   <span class="detail-label">Avg Latency</span>
                   <span class="detail-value">
-                    {{ backend.avg_latency_ms ? `${backend.avg_latency_ms.toFixed(0)}ms` : 'N/A' }}
+                    {{ formatLatencySeconds(backend.avg_latency_ms, 'N/A') }}
                   </span>
                 </div>
                 <div v-if="backend.hourly_requests !== undefined" class="detail-item">
@@ -210,6 +210,7 @@ import StatusBadge from '@/components/ui/StatusBadge.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Button from '@/components/ui/Button.vue'
 import type { Backend } from '@/api'
+import { formatLatencySeconds } from '@/utils/latency'
 
 interface Props {
   backends: Backend[]

@@ -50,7 +50,7 @@
                 />
               </td>
               <td>
-                <span class="latency-value">{{ log.duration_ms || log.latency_ms }}ms</span>
+                <span class="latency-value">{{ formatLogLatency(log) }}</span>
               </td>
               <td>
                 <div class="tokens-cell">
@@ -95,6 +95,7 @@ import { ref } from 'vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import type { UsageLog } from '@/api'
+import { formatLatencySeconds } from '@/utils/latency'
 
 interface Props {
   logs: UsageLog[]
@@ -117,6 +118,11 @@ const getStatusVariant = (statusCode: number): 'success' | 'warning' | 'danger' 
   if (statusCode >= 400 && statusCode < 500) return 'warning'
   if (statusCode >= 500) return 'danger'
   return 'default'
+}
+
+const formatLogLatency = (log: UsageLog) => {
+  const latencyMs = log.duration_ms > 0 ? log.duration_ms : log.latency_ms
+  return formatLatencySeconds(latencyMs)
 }
 
 const formatTime = (timestamp: string) => {
