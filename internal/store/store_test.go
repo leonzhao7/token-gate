@@ -87,6 +87,172 @@ func TestCreateBackendPersistsConsoleMetadata(t *testing.T) {
 	}
 }
 
+func TestOpenCreatesBackendHourlyModelStatsTable(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+
+	row := st.db.QueryRow(`
+		SELECT name
+		FROM sqlite_master
+		WHERE type = 'table' AND name = 'backend_hourly_model_stats'
+	`)
+
+	var name string
+	if err := row.Scan(&name); err != nil {
+		t.Fatalf("expected backend_hourly_model_stats table to exist: %v", err)
+	}
+	if name != "backend_hourly_model_stats" {
+		t.Fatalf("unexpected table name %q", name)
+	}
+}
+
+func TestAppendUsageLogAggregatesBackendHourlyModelStats(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	ctx := context.Background()
+
+	createdAt := time.Date(2026, 6, 26, 7, 23, 0, 0, time.UTC)
+	for _, entry := range []domain.UsageLog{
+		{
+			RequestID:     "agg-success",
+			BackendID:     11,
+			BackendName:   "alpha",
+			Model:         "gpt-4o",
+			StatusCode:    200,
+			DurationMS:    120,
+			RequestBytes:  100,
+			ResponseBytes: 300,
+			CreatedAt:     createdAt,
+		},
+		{
+			RequestID:   "agg-failure",
+			BackendID:   11,
+			BackendName: "alpha",
+			Model:       "gpt-4o",
+			StatusCode:  502,
+			DurationMS:  999,
+			CreatedAt:   createdAt.Add(5 * time.Minute),
+		},
+	} {
+		if err := st.AppendUsageLog(ctx, entry); err != nil {
+			t.Fatalf("AppendUsageLog(%s): %v", entry.RequestID, err)
+		}
+	}
+
+	result, err := st.ListBackendHourlyModelStats(ctx, BackendHourlyModelStatsFilter{
+		BackendName: "alpha",
+		Model:       "gpt-4o",
+	})
+	if err != nil {
+		t.Fatalf("ListBackendHourlyModelStats: %v", err)
+	}
+	if len(result.Rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(result.Rows))
+	}
+	row := result.Rows[0]
+	if row.Successes != 1 || row.Failures != 1 {
+		t.Fatalf("unexpected counts: %#v", row)
+	}
+	if row.SuccessDurationMSSum != 120 {
+		t.Fatalf("expected success duration sum 120, got %d", row.SuccessDurationMSSum)
+	}
+	if row.SuccessRequestBytes != 100 || row.SuccessResponseBytes != 300 {
+		t.Fatalf("unexpected byte sums: %#v", row)
+	}
+	if row.HourStart != time.Date(2026, 6, 26, 7, 0, 0, 0, time.UTC) {
+		t.Fatalf("unexpected hour bucket %s", row.HourStart)
+	}
+}
+
+func TestListBackendHourlyModelStatsFiltersAndBuildsScope(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	ctx := context.Background()
+
+	entries := []domain.UsageLog{
+		{
+			RequestID:     "scope-1",
+			BackendID:     11,
+			BackendName:   "alpha",
+			Model:         "gpt-4o",
+			StatusCode:    200,
+			DurationMS:    100,
+			RequestBytes:  10,
+			ResponseBytes: 20,
+			CreatedAt:     time.Date(2026, 6, 26, 7, 10, 0, 0, time.UTC),
+		},
+		{
+			RequestID:   "scope-2",
+			BackendID:   11,
+			BackendName: "alpha",
+			Model:       "gpt-4.1",
+			StatusCode:  502,
+			CreatedAt:   time.Date(2026, 6, 26, 8, 5, 0, 0, time.UTC),
+		},
+		{
+			RequestID:     "scope-3",
+			BackendID:     22,
+			BackendName:   "beta",
+			Model:         "gpt-4o",
+			StatusCode:    200,
+			DurationMS:    200,
+			RequestBytes:  30,
+			ResponseBytes: 40,
+			CreatedAt:     time.Date(2026, 6, 26, 9, 15, 0, 0, time.UTC),
+		},
+	}
+	for _, entry := range entries {
+		if err := st.AppendUsageLog(ctx, entry); err != nil {
+			t.Fatalf("AppendUsageLog(%s): %v", entry.RequestID, err)
+		}
+	}
+
+	result, err := st.ListBackendHourlyModelStats(ctx, BackendHourlyModelStatsFilter{
+		StartHour: time.Date(2026, 6, 26, 8, 0, 0, 0, time.UTC),
+		EndHour:   time.Date(2026, 6, 26, 9, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("ListBackendHourlyModelStats: %v", err)
+	}
+
+	if len(result.Rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(result.Rows))
+	}
+	if !reflect.DeepEqual(result.Backends, []BackendRef{
+		{ID: 11, Name: "alpha"},
+		{ID: 22, Name: "beta"},
+	}) {
+		t.Fatalf("unexpected backends: %#v", result.Backends)
+	}
+	if !reflect.DeepEqual(result.Models, []string{"gpt-4.1", "gpt-4o"}) {
+		t.Fatalf("unexpected models: %#v", result.Models)
+	}
+	if result.RangeStart == nil || !result.RangeStart.Equal(time.Date(2026, 6, 26, 8, 0, 0, 0, time.UTC)) {
+		t.Fatalf("unexpected range start: %v", result.RangeStart)
+	}
+	if result.RangeEnd == nil || !result.RangeEnd.Equal(time.Date(2026, 6, 26, 9, 0, 0, 0, time.UTC)) {
+		t.Fatalf("unexpected range end: %v", result.RangeEnd)
+	}
+}
+
+func TestListBackendHourlyModelStatsReturnsEmptyScopeWhenNoRowsMatch(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+
+	result, err := st.ListBackendHourlyModelStats(context.Background(), BackendHourlyModelStatsFilter{
+		BackendName: "missing",
+	})
+	if err != nil {
+		t.Fatalf("ListBackendHourlyModelStats: %v", err)
+	}
+	if len(result.Rows) != 0 || len(result.Backends) != 0 || len(result.Models) != 0 {
+		t.Fatalf("expected empty result, got %#v", result)
+	}
+	if result.RangeStart != nil || result.RangeEnd != nil {
+		t.Fatalf("expected nil range for empty result, got %v %v", result.RangeStart, result.RangeEnd)
+	}
+}
+
 func TestOpenMigratesLegacyBackendsBeforeCreatingStatusIndex(t *testing.T) {
 	dbPath := t.TempDir() + "/legacy.db"
 	db, err := sql.Open("sqlite3", dbPath)

@@ -2982,6 +2982,176 @@ func TestUsageLogStatsReturnsFilteredMetrics(t *testing.T) {
 	}
 }
 
+func TestBackendHourlyModelStatsEndpointReturnsRowsAndScope(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	for _, entry := range []domain.UsageLog{
+		{
+			RequestID:     "api-1",
+			BackendID:     11,
+			BackendName:   "alpha",
+			Model:         "gpt-4o",
+			StatusCode:    200,
+			DurationMS:    100,
+			RequestBytes:  10,
+			ResponseBytes: 20,
+			CreatedAt:     time.Date(2026, 6, 26, 7, 15, 0, 0, time.UTC),
+		},
+		{
+			RequestID:   "api-2",
+			BackendID:   22,
+			BackendName: "beta",
+			Model:       "gpt-4.1",
+			StatusCode:  502,
+			CreatedAt:   time.Date(2026, 6, 26, 8, 15, 0, 0, time.UTC),
+		},
+	} {
+		if err := application.store.AppendUsageLog(ctx, entry); err != nil {
+			t.Fatalf("AppendUsageLog(%s): %v", entry.RequestID, err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/backend-hourly-model-stats?start_hour=2026-06-26T07:00:00Z&end_hour=2026-06-26T08:00:00Z", nil)
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Query struct {
+			Backend   *string `json:"backend"`
+			Model     *string `json:"model"`
+			StartHour *string `json:"start_hour"`
+			EndHour   *string `json:"end_hour"`
+		} `json:"query"`
+		Scope struct {
+			Backends []struct {
+				ID   int64  `json:"id"`
+				Name string `json:"name"`
+			} `json:"backends"`
+			Models    []string `json:"models"`
+			TimeRange struct {
+				StartHour *string `json:"start_hour"`
+				EndHour   *string `json:"end_hour"`
+				Timezone  string  `json:"timezone"`
+			} `json:"time_range"`
+		} `json:"scope"`
+		Items []struct {
+			BackendID            int64   `json:"backend_id"`
+			Backend              string  `json:"backend"`
+			Model                string  `json:"model"`
+			Hour                 string  `json:"hour"`
+			Requests             int     `json:"requests"`
+			Successes            int     `json:"successes"`
+			Failures             int     `json:"failures"`
+			SuccessAvgDurationMS float64 `json:"success_avg_duration_ms"`
+			SuccessRequestBytes  int64   `json:"success_request_bytes"`
+			SuccessResponseBytes int64   `json:"success_response_bytes"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if payload.Query.StartHour == nil || *payload.Query.StartHour != "2026-06-26T07:00:00Z" {
+		t.Fatalf("unexpected query start hour: %#v", payload.Query)
+	}
+	if payload.Query.EndHour == nil || *payload.Query.EndHour != "2026-06-26T08:00:00Z" {
+		t.Fatalf("unexpected query end hour: %#v", payload.Query)
+	}
+	if len(payload.Scope.Backends) != 2 || len(payload.Scope.Models) != 2 {
+		t.Fatalf("unexpected scope: %#v", payload.Scope)
+	}
+	if payload.Scope.TimeRange.Timezone != "UTC" {
+		t.Fatalf("expected UTC timezone, got %#v", payload.Scope.TimeRange)
+	}
+	if len(payload.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(payload.Items))
+	}
+	if payload.Items[0].Requests != payload.Items[0].Successes+payload.Items[0].Failures {
+		t.Fatalf("requests should equal successes + failures: %#v", payload.Items[0])
+	}
+}
+
+func TestBackendHourlyModelStatsEndpointRejectsInvalidHours(t *testing.T) {
+	application := newTestApp(t)
+
+	for _, path := range []string{
+		"/admin/api/backend-hourly-model-stats?start_hour=not-a-time",
+		"/admin/api/backend-hourly-model-stats?start_hour=2026-06-26T07:30:00Z",
+		"/admin/api/backend-hourly-model-stats?start_hour=2026-06-26T08:00:00Z&end_hour=2026-06-26T07:00:00Z",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		recorder := httptest.NewRecorder()
+
+		application.Handler().ServeHTTP(recorder, req)
+
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("%s expected 400, got %d body=%s", path, recorder.Code, recorder.Body.String())
+		}
+	}
+}
+
+func TestBackendHourlyModelStatsEndpointAppliesBackendAndModelFilters(t *testing.T) {
+	application := newTestApp(t)
+	ctx := context.Background()
+
+	for _, entry := range []domain.UsageLog{
+		{
+			RequestID:     "filter-1",
+			BackendID:     11,
+			BackendName:   "alpha",
+			Model:         "gpt-4o",
+			StatusCode:    200,
+			DurationMS:    50,
+			RequestBytes:  1,
+			ResponseBytes: 2,
+			CreatedAt:     time.Date(2026, 6, 26, 7, 0, 0, 0, time.UTC),
+		},
+		{
+			RequestID:   "filter-2",
+			BackendID:   22,
+			BackendName: "beta",
+			Model:       "gpt-4.1",
+			StatusCode:  200,
+			DurationMS:  70,
+			CreatedAt:   time.Date(2026, 6, 26, 7, 0, 0, 0, time.UTC),
+		},
+	} {
+		if err := application.store.AppendUsageLog(ctx, entry); err != nil {
+			t.Fatalf("AppendUsageLog(%s): %v", entry.RequestID, err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/backend-hourly-model-stats?backend=alpha&model=gpt-4o", nil)
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			Backend string `json:"backend"`
+			Model   string `json:"model"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(payload.Items))
+	}
+	if payload.Items[0].Backend != "alpha" || payload.Items[0].Model != "gpt-4o" {
+		t.Fatalf("unexpected filtered item: %#v", payload.Items[0])
+	}
+}
+
 func TestUsageLogsQueryMatchesTraceIDAndPath(t *testing.T) {
 	application := newTestApp(t)
 	ctx := context.Background()

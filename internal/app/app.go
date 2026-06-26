@@ -98,6 +98,49 @@ type dashboardUsageResponse struct {
 	Series []dashboardUsagePoint `json:"series"`
 }
 
+type backendHourlyModelStatsResponse struct {
+	Query backendHourlyModelStatsQuery  `json:"query"`
+	Scope backendHourlyModelStatsScope  `json:"scope"`
+	Items []backendHourlyModelStatsItem `json:"items"`
+}
+
+type backendHourlyModelStatsQuery struct {
+	Backend   *string `json:"backend"`
+	Model     *string `json:"model"`
+	StartHour *string `json:"start_hour"`
+	EndHour   *string `json:"end_hour"`
+}
+
+type backendHourlyModelStatsScope struct {
+	Backends  []backendHourlyModelStatsBackendRef `json:"backends"`
+	Models    []string                            `json:"models"`
+	TimeRange backendHourlyModelStatsTimeRange    `json:"time_range"`
+}
+
+type backendHourlyModelStatsBackendRef struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+type backendHourlyModelStatsTimeRange struct {
+	StartHour *string `json:"start_hour"`
+	EndHour   *string `json:"end_hour"`
+	Timezone  string  `json:"timezone"`
+}
+
+type backendHourlyModelStatsItem struct {
+	BackendID            int64   `json:"backend_id"`
+	Backend              string  `json:"backend"`
+	Model                string  `json:"model"`
+	Hour                 string  `json:"hour"`
+	Requests             int     `json:"requests"`
+	Successes            int     `json:"successes"`
+	Failures             int     `json:"failures"`
+	SuccessAvgDurationMS float64 `json:"success_avg_duration_ms"`
+	SuccessRequestBytes  int64   `json:"success_request_bytes"`
+	SuccessResponseBytes int64   `json:"success_response_bytes"`
+}
+
 type dashboardUsagePoint struct {
 	Label        string  `json:"label"`
 	Requests     int     `json:"requests"`
@@ -337,6 +380,7 @@ func (a *App) routes() {
 	a.mux.Handle("DELETE /admin/api/events", http.HandlerFunc(a.handleClearEvents))
 	a.mux.Handle("GET /admin/api/usage-logs", http.HandlerFunc(a.handleListUsageLogs))
 	a.mux.Handle("GET /admin/api/usage-logs/stats", http.HandlerFunc(a.handleUsageLogStats))
+	a.mux.Handle("GET /admin/api/backend-hourly-model-stats", http.HandlerFunc(a.handleBackendHourlyModelStats))
 	a.mux.Handle("GET /admin/api/usage-logs/{id}", http.HandlerFunc(a.handleGetUsageLog))
 	a.mux.Handle("GET /admin/api/usage-log-options", http.HandlerFunc(a.handleUsageLogOptions))
 	a.mux.Handle("DELETE /admin/api/usage-logs", http.HandlerFunc(a.handleClearUsageLogs))
@@ -1187,21 +1231,21 @@ func (a *App) handleImportBackends(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleCreateBackend(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		Name         string            `json:"name"`
-		Protocol     string            `json:"protocol"`
-		BaseURL      string            `json:"base_url"`
-		APIKey       string            `json:"api_key"`
-		ConsoleURL   string            `json:"console_url"`
-		Tags         []string          `json:"tags"`
-		ConsoleUsername string         `json:"console_username"`
-		ConsolePassword string         `json:"console_password"`
-		Notes        string            `json:"notes"`
-		ProxyID      int64             `json:"proxy_id"`
-		Status       string            `json:"status"`
-		Weight       int               `json:"weight"`
-		Models       []string          `json:"models"`
-		ModelMapping map[string]string `json:"model_mapping"`
-		Endpoints    []string          `json:"endpoints"`
+		Name            string            `json:"name"`
+		Protocol        string            `json:"protocol"`
+		BaseURL         string            `json:"base_url"`
+		APIKey          string            `json:"api_key"`
+		ConsoleURL      string            `json:"console_url"`
+		Tags            []string          `json:"tags"`
+		ConsoleUsername string            `json:"console_username"`
+		ConsolePassword string            `json:"console_password"`
+		Notes           string            `json:"notes"`
+		ProxyID         int64             `json:"proxy_id"`
+		Status          string            `json:"status"`
+		Weight          int               `json:"weight"`
+		Models          []string          `json:"models"`
+		ModelMapping    map[string]string `json:"model_mapping"`
+		Endpoints       []string          `json:"endpoints"`
 	}
 	if err := decodeJSON(r, &payload); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -1223,20 +1267,20 @@ func (a *App) handleCreateBackend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	backend, err := a.store.CreateBackend(r.Context(), domain.Backend{
-		Name:         payload.Name,
-		Protocol:     domain.NormalizeBackendProtocol(payload.Protocol),
-		BaseURL:      payload.BaseURL,
-		APIKey:       payload.APIKey,
-		ConsoleURL:   payload.ConsoleURL,
-		Tags:         payload.Tags,
+		Name:            payload.Name,
+		Protocol:        domain.NormalizeBackendProtocol(payload.Protocol),
+		BaseURL:         payload.BaseURL,
+		APIKey:          payload.APIKey,
+		ConsoleURL:      payload.ConsoleURL,
+		Tags:            payload.Tags,
 		ConsoleUsername: payload.ConsoleUsername,
 		ConsolePassword: payload.ConsolePassword,
-		Notes:        payload.Notes,
-		ProxyID:      payload.ProxyID,
-		Weight:       payload.Weight,
-		Models:       payload.Models,
-		ModelMapping: payload.ModelMapping,
-		Endpoints:    payload.Endpoints,
+		Notes:           payload.Notes,
+		ProxyID:         payload.ProxyID,
+		Weight:          payload.Weight,
+		Models:          payload.Models,
+		ModelMapping:    payload.ModelMapping,
+		Endpoints:       payload.Endpoints,
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -1264,21 +1308,21 @@ func (a *App) handleUpdateBackend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload struct {
-		Name         string            `json:"name"`
-		Protocol     string            `json:"protocol"`
-		BaseURL      string            `json:"base_url"`
-		APIKey       string            `json:"api_key"`
-		ConsoleURL   string            `json:"console_url"`
-		Tags         []string          `json:"tags"`
-		ConsoleUsername string         `json:"console_username"`
-		ConsolePassword string         `json:"console_password"`
-		Notes        string            `json:"notes"`
-		ProxyID      int64             `json:"proxy_id"`
-		Status       string            `json:"status"`
-		Weight       int               `json:"weight"`
-		Models       []string          `json:"models"`
-		ModelMapping map[string]string `json:"model_mapping"`
-		Endpoints    []string          `json:"endpoints"`
+		Name            string            `json:"name"`
+		Protocol        string            `json:"protocol"`
+		BaseURL         string            `json:"base_url"`
+		APIKey          string            `json:"api_key"`
+		ConsoleURL      string            `json:"console_url"`
+		Tags            []string          `json:"tags"`
+		ConsoleUsername string            `json:"console_username"`
+		ConsolePassword string            `json:"console_password"`
+		Notes           string            `json:"notes"`
+		ProxyID         int64             `json:"proxy_id"`
+		Status          string            `json:"status"`
+		Weight          int               `json:"weight"`
+		Models          []string          `json:"models"`
+		ModelMapping    map[string]string `json:"model_mapping"`
+		Endpoints       []string          `json:"endpoints"`
 	}
 	if err := decodeJSON(r, &payload); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -1814,6 +1858,82 @@ func (a *App) handleUsageLogStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *App) handleBackendHourlyModelStats(w http.ResponseWriter, r *http.Request) {
+	startHour, err := parseOptionalUTCHourQuery(r.URL.Query().Get("start_hour"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	endHour, err := parseOptionalUTCHourQuery(r.URL.Query().Get("end_hour"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !startHour.IsZero() && !endHour.IsZero() && startHour.After(endHour) {
+		writeError(w, http.StatusBadRequest, "start_hour must be before or equal to end_hour")
+		return
+	}
+
+	filter := store.BackendHourlyModelStatsFilter{
+		BackendName: strings.TrimSpace(r.URL.Query().Get("backend")),
+		Model:       strings.TrimSpace(r.URL.Query().Get("model")),
+		StartHour:   startHour,
+		EndHour:     endHour,
+	}
+	result, err := a.store.ListBackendHourlyModelStats(r.Context(), filter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	items := make([]backendHourlyModelStatsItem, 0, len(result.Rows))
+	for _, row := range result.Rows {
+		avg := 0.0
+		if row.Successes > 0 {
+			avg = float64(row.SuccessDurationMSSum) / float64(row.Successes)
+		}
+		items = append(items, backendHourlyModelStatsItem{
+			BackendID:            row.BackendID,
+			Backend:              row.BackendName,
+			Model:                row.Model,
+			Hour:                 row.HourStart.UTC().Format(time.RFC3339),
+			Requests:             row.Successes + row.Failures,
+			Successes:            row.Successes,
+			Failures:             row.Failures,
+			SuccessAvgDurationMS: avg,
+			SuccessRequestBytes:  row.SuccessRequestBytes,
+			SuccessResponseBytes: row.SuccessResponseBytes,
+		})
+	}
+
+	backends := make([]backendHourlyModelStatsBackendRef, 0, len(result.Backends))
+	for _, backend := range result.Backends {
+		backends = append(backends, backendHourlyModelStatsBackendRef{
+			ID:   backend.ID,
+			Name: backend.Name,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, backendHourlyModelStatsResponse{
+		Query: backendHourlyModelStatsQuery{
+			Backend:   optionalString(filter.BackendName),
+			Model:     optionalString(filter.Model),
+			StartHour: formatOptionalUTCTime(optionalTimeValue(startHour)),
+			EndHour:   formatOptionalUTCTime(optionalTimeValue(endHour)),
+		},
+		Scope: backendHourlyModelStatsScope{
+			Backends: backends,
+			Models:   result.Models,
+			TimeRange: backendHourlyModelStatsTimeRange{
+				StartHour: formatOptionalUTCTime(result.RangeStart),
+				EndHour:   formatOptionalUTCTime(result.RangeEnd),
+				Timezone:  "UTC",
+			},
+		},
+		Items: items,
+	})
+}
+
 func (a *App) handleGetUsageLog(w http.ResponseWriter, r *http.Request) {
 	id, err := parseID(r.PathValue("id"))
 	if err != nil {
@@ -2324,6 +2444,38 @@ func parseTimeQuery(value string) time.Time {
 	return parsed.UTC()
 }
 
+func parseOptionalUTCHourQuery(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid utc hour %q", value)
+	}
+	parsed = parsed.UTC()
+	if parsed.Minute() != 0 || parsed.Second() != 0 || parsed.Nanosecond() != 0 {
+		return time.Time{}, fmt.Errorf("utc hour must be aligned to whole hour: %q", value)
+	}
+	return parsed, nil
+}
+
+func formatOptionalUTCTime(value *time.Time) *string {
+	if value == nil {
+		return nil
+	}
+	formatted := value.UTC().Format(time.RFC3339)
+	return &formatted
+}
+
+func optionalTimeValue(value time.Time) *time.Time {
+	if value.IsZero() {
+		return nil
+	}
+	copy := value
+	return &copy
+}
+
 func pageOffset(page, limit int) int {
 	if page < 1 {
 		page = 1
@@ -2361,6 +2513,15 @@ func toSearchResultItems(items []store.SearchResult) []searchResultItem {
 		})
 	}
 	return out
+}
+
+func optionalString(value string) *string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	copy := value
+	return &copy
 }
 
 func redactedHeaders(header http.Header) http.Header {
@@ -2480,13 +2641,13 @@ func (a *App) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 
 	// Return current runtime config merged with DB settings
 	response := map[string]any{
-		"listen_addr":       getSettingOrDefault(settings, "listen_addr", a.cfg.ListenAddr),
-		"db_path":           getSettingOrDefault(settings, "db_path", a.cfg.DBPath),
-		"log_level":         getSettingOrDefault(settings, "log_level", a.cfg.LogLevel),
-		"backend_cooldown":  getSettingOrDefault(settings, "backend_cooldown", a.cfg.BackendCooldown.String()),
-		"backend_fails":     getSettingOrDefault(settings, "backend_fails", fmt.Sprintf("%d", a.cfg.BackendFails)),
-		"request_timeout":   getSettingOrDefault(settings, "request_timeout", a.cfg.RequestTimeout.String()),
-		"shutdown_timeout":  getSettingOrDefault(settings, "shutdown_timeout", a.cfg.ShutdownTimeout.String()),
+		"listen_addr":      getSettingOrDefault(settings, "listen_addr", a.cfg.ListenAddr),
+		"db_path":          getSettingOrDefault(settings, "db_path", a.cfg.DBPath),
+		"log_level":        getSettingOrDefault(settings, "log_level", a.cfg.LogLevel),
+		"backend_cooldown": getSettingOrDefault(settings, "backend_cooldown", a.cfg.BackendCooldown.String()),
+		"backend_fails":    getSettingOrDefault(settings, "backend_fails", fmt.Sprintf("%d", a.cfg.BackendFails)),
+		"request_timeout":  getSettingOrDefault(settings, "request_timeout", a.cfg.RequestTimeout.String()),
+		"shutdown_timeout": getSettingOrDefault(settings, "shutdown_timeout", a.cfg.ShutdownTimeout.String()),
 	}
 
 	writeJSON(w, http.StatusOK, response)

@@ -1,6 +1,7 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -29,6 +30,38 @@ type BackendRequestStats struct {
 type BackendHourlyStats struct {
 	Requests int
 	Failures int
+}
+
+type BackendHourlyModelStatsFilter struct {
+	BackendName string
+	Model       string
+	StartHour   time.Time
+	EndHour     time.Time
+}
+
+type BackendRef struct {
+	ID   int64
+	Name string
+}
+
+type BackendHourlyModelStatsRow struct {
+	BackendID            int64
+	BackendName          string
+	Model                string
+	HourStart            time.Time
+	Successes            int
+	Failures             int
+	SuccessDurationMSSum int64
+	SuccessRequestBytes  int64
+	SuccessResponseBytes int64
+}
+
+type BackendHourlyModelStatsResult struct {
+	Rows       []BackendHourlyModelStatsRow
+	Backends   []BackendRef
+	Models     []string
+	RangeStart *time.Time
+	RangeEnd   *time.Time
 }
 
 type ClientKeyUsageSummary struct {
@@ -286,6 +319,22 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_usage_logs_created_at ON usage_logs(created_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_usage_logs_client_id_created_at ON usage_logs(client_id, created_at DESC);`,
+		`CREATE TABLE IF NOT EXISTS backend_hourly_model_stats (
+			backend_id INTEGER NOT NULL,
+			backend_name TEXT NOT NULL DEFAULT '',
+			model TEXT NOT NULL,
+			hour_start_utc TEXT NOT NULL,
+			success_count INTEGER NOT NULL DEFAULT 0,
+			failure_count INTEGER NOT NULL DEFAULT 0,
+			success_duration_ms_sum INTEGER NOT NULL DEFAULT 0,
+			success_request_bytes_sum INTEGER NOT NULL DEFAULT 0,
+			success_response_bytes_sum INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (backend_id, model, hour_start_utc)
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_backend_hourly_model_stats_hour ON backend_hourly_model_stats(hour_start_utc DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_backend_hourly_model_stats_model_hour ON backend_hourly_model_stats(model, hour_start_utc DESC);`,
 		`CREATE TABLE IF NOT EXISTS settings (
 			key TEXT PRIMARY KEY,
 			value TEXT NOT NULL,
@@ -1879,7 +1928,17 @@ func (s *Store) AppendUsageLog(ctx context.Context, log domain.UsageLog) error {
 		createdAt = time.Now().UTC()
 	}
 
-	_, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO usage_logs(
 			request_id, client_id, client_name, client_token_prefix,
 			method, path, query, endpoint, model, backend_id, backend_name, proxy_id, proxy_name,
@@ -1920,7 +1979,177 @@ func (s *Store) AppendUsageLog(ctx context.Context, log domain.UsageLog) error {
 		boolToInt(log.IsStream),
 		formatTime(createdAt.UTC()),
 	)
+	if err != nil {
+		return err
+	}
+
+	if err = upsertBackendHourlyModelStats(ctx, tx, log, createdAt); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (s *Store) ListBackendHourlyModelStats(ctx context.Context, filter BackendHourlyModelStatsFilter) (BackendHourlyModelStatsResult, error) {
+	where, args := backendHourlyModelStatsFilterClause(filter)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT backend_id, backend_name, model, hour_start_utc,
+			success_count, failure_count, success_duration_ms_sum,
+			success_request_bytes_sum, success_response_bytes_sum
+		FROM backend_hourly_model_stats
+	`+where+`
+		ORDER BY hour_start_utc ASC, backend_name ASC, model ASC
+	`, args...)
+	if err != nil {
+		return BackendHourlyModelStatsResult{}, err
+	}
+	defer rows.Close()
+
+	result := BackendHourlyModelStatsResult{
+		Rows:     []BackendHourlyModelStatsRow{},
+		Backends: []BackendRef{},
+		Models:   []string{},
+	}
+	backendSeen := make(map[int64]string)
+	modelSeen := make(map[string]struct{})
+	for rows.Next() {
+		var row BackendHourlyModelStatsRow
+		var hourStart string
+		if err := rows.Scan(
+			&row.BackendID,
+			&row.BackendName,
+			&row.Model,
+			&hourStart,
+			&row.Successes,
+			&row.Failures,
+			&row.SuccessDurationMSSum,
+			&row.SuccessRequestBytes,
+			&row.SuccessResponseBytes,
+		); err != nil {
+			return BackendHourlyModelStatsResult{}, err
+		}
+		row.HourStart = parseTime(hourStart)
+		result.Rows = append(result.Rows, row)
+
+		if _, ok := backendSeen[row.BackendID]; !ok {
+			backendSeen[row.BackendID] = row.BackendName
+		}
+		modelSeen[row.Model] = struct{}{}
+		if result.RangeStart == nil || row.HourStart.Before(*result.RangeStart) {
+			hour := row.HourStart
+			result.RangeStart = &hour
+		}
+		if result.RangeEnd == nil || row.HourStart.After(*result.RangeEnd) {
+			hour := row.HourStart
+			result.RangeEnd = &hour
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return BackendHourlyModelStatsResult{}, err
+	}
+
+	for id, name := range backendSeen {
+		result.Backends = append(result.Backends, BackendRef{ID: id, Name: name})
+	}
+	slices.SortFunc(result.Backends, func(a, b BackendRef) int {
+		if a.Name != b.Name {
+			return strings.Compare(a.Name, b.Name)
+		}
+		return cmp.Compare(a.ID, b.ID)
+	})
+	for model := range modelSeen {
+		result.Models = append(result.Models, model)
+	}
+	slices.Sort(result.Models)
+
+	return result, nil
+}
+
+func upsertBackendHourlyModelStats(ctx context.Context, tx *sql.Tx, log domain.UsageLog, createdAt time.Time) error {
+	if log.BackendID <= 0 || strings.TrimSpace(log.BackendName) == "" || strings.TrimSpace(log.Model) == "" {
+		return nil
+	}
+
+	successes := 0
+	failures := 0
+	successDuration := int64(0)
+	successRequestBytes := int64(0)
+	successResponseBytes := int64(0)
+	if isSuccessStatus(log.StatusCode) {
+		successes = 1
+		successDuration = log.DurationMS
+		successRequestBytes = log.RequestBytes
+		successResponseBytes = log.ResponseBytes
+	} else {
+		failures = 1
+	}
+
+	now := formatTime(time.Now().UTC())
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO backend_hourly_model_stats(
+			backend_id, backend_name, model, hour_start_utc,
+			success_count, failure_count, success_duration_ms_sum,
+			success_request_bytes_sum, success_response_bytes_sum,
+			created_at, updated_at
+		)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(backend_id, model, hour_start_utc) DO UPDATE SET
+			backend_name = excluded.backend_name,
+			success_count = backend_hourly_model_stats.success_count + excluded.success_count,
+			failure_count = backend_hourly_model_stats.failure_count + excluded.failure_count,
+			success_duration_ms_sum = backend_hourly_model_stats.success_duration_ms_sum + excluded.success_duration_ms_sum,
+			success_request_bytes_sum = backend_hourly_model_stats.success_request_bytes_sum + excluded.success_request_bytes_sum,
+			success_response_bytes_sum = backend_hourly_model_stats.success_response_bytes_sum + excluded.success_response_bytes_sum,
+			updated_at = excluded.updated_at
+	`,
+		log.BackendID,
+		strings.TrimSpace(log.BackendName),
+		strings.TrimSpace(log.Model),
+		formatTime(backendHourlyBucketUTC(createdAt)),
+		successes,
+		failures,
+		successDuration,
+		successRequestBytes,
+		successResponseBytes,
+		now,
+		now,
+	)
 	return err
+}
+
+func backendHourlyBucketUTC(createdAt time.Time) time.Time {
+	return createdAt.UTC().Truncate(time.Hour)
+}
+
+func isSuccessStatus(statusCode int) bool {
+	return statusCode >= 200 && statusCode < 300
+}
+
+func backendHourlyModelStatsFilterClause(filter BackendHourlyModelStatsFilter) (string, []any) {
+	var (
+		clauses []string
+		args    []any
+	)
+	if value := strings.TrimSpace(filter.BackendName); value != "" {
+		clauses = append(clauses, `backend_name = ?`)
+		args = append(args, value)
+	}
+	if value := strings.TrimSpace(filter.Model); value != "" {
+		clauses = append(clauses, `model = ?`)
+		args = append(args, value)
+	}
+	if !filter.StartHour.IsZero() {
+		clauses = append(clauses, `hour_start_utc >= ?`)
+		args = append(args, formatTime(filter.StartHour.UTC()))
+	}
+	if !filter.EndHour.IsZero() {
+		clauses = append(clauses, `hour_start_utc <= ?`)
+		args = append(args, formatTime(filter.EndHour.UTC()))
+	}
+	if len(clauses) == 0 {
+		return "", nil
+	}
+	return " WHERE " + strings.Join(clauses, " AND "), args
 }
 
 func (s *Store) CountUsageLogs(ctx context.Context) (int, error) {
@@ -2311,12 +2540,12 @@ func scanSocksProxy(s scanner) (domain.SocksProxy, error) {
 
 func scanBackend(s scanner) (domain.Backend, error) {
 	var (
-		backend                                   domain.Backend
-		modelList, modelMappingRaw, tagList       string
-		endpointList                              string
-		createdAt, updatedAt                      string
-		recoverAt, consoleURL                     string
-		consoleUsername, consolePassword, notes   string
+		backend                                 domain.Backend
+		modelList, modelMappingRaw, tagList     string
+		endpointList                            string
+		createdAt, updatedAt                    string
+		recoverAt, consoleURL                   string
+		consoleUsername, consolePassword, notes string
 	)
 	err := s.Scan(
 		&backend.ID,
@@ -2361,20 +2590,20 @@ func scanBackend(s scanner) (domain.Backend, error) {
 
 func scanBackendWithProxy(s scanner) (domain.Backend, error) {
 	var (
-		backend                                   domain.Backend
-		modelList, modelMappingRaw, tagList       string
-		endpointList                              string
-		createdAt, updatedAt                      string
-		recoverAt, consoleURL                     string
-		consoleUsername, consolePassword, notes   string
-		proxyID                                   sql.NullInt64
-		proxyName                                 sql.NullString
-		proxyAddress                              sql.NullString
-		proxyUsername                             sql.NullString
-		proxyPassword                             sql.NullString
-		proxyEnabled                              sql.NullInt64
-		proxyCreatedAt                            sql.NullString
-		proxyUpdatedAt                            sql.NullString
+		backend                                 domain.Backend
+		modelList, modelMappingRaw, tagList     string
+		endpointList                            string
+		createdAt, updatedAt                    string
+		recoverAt, consoleURL                   string
+		consoleUsername, consolePassword, notes string
+		proxyID                                 sql.NullInt64
+		proxyName                               sql.NullString
+		proxyAddress                            sql.NullString
+		proxyUsername                           sql.NullString
+		proxyPassword                           sql.NullString
+		proxyEnabled                            sql.NullInt64
+		proxyCreatedAt                          sql.NullString
+		proxyUpdatedAt                          sql.NullString
 	)
 	err := s.Scan(
 		&backend.ID,
