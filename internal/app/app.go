@@ -652,9 +652,12 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 			usageLog.StatusCode = resp.StatusCode
 			usageLog.StatusFamily = statusFamily(resp.StatusCode)
 			usageLog.ErrorMessage = resp.Status
+			bufferedResp, responseBytes, responsePreview, truncated, bufferErr := cloneResponseForLogging(resp)
+			if bufferErr == nil {
+				applyResponseLogFields(&usageLog, bufferedResp, responseBytes, responsePreview, truncated)
+				_ = bufferedResp.Body.Close()
+			}
 			_ = a.scheduler.MarkFailure(r.Context(), backend.ID, errors.New(resp.Status))
-			_, _ = io.Copy(io.Discard, resp.Body)
-			_ = resp.Body.Close()
 			a.logEvent(r.Context(), slog.LevelWarn, "backend_response_failed", append(append(clientAttrs(client),
 				backendAttemptAttrs(backend, attempt)...),
 				slog.String("endpoint", endpoint),
@@ -712,11 +715,7 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		resp = bufferedResp
-		usageLog.ResponseHeadersJSON = marshalHeaders(redactedHeaders(resp.Header))
-		usageLog.IsStream = strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
-		usageLog.ResponseBytes = responseBytes
-		usageLog.ResponseBodyPreview = responsePreview
-		usageLog.PreviewTruncated = usageLog.PreviewTruncated || truncated
+		applyResponseLogFields(&usageLog, resp, responseBytes, responsePreview, truncated)
 
 		a.logEvent(r.Context(), slog.LevelInfo, "backend_response_selected", append(append(clientAttrs(client),
 			backendAttemptAttrs(backend, attempt)...),
@@ -2571,6 +2570,14 @@ func cloneResponseForLogging(resp *http.Response) (*http.Response, int64, string
 	cloned := *resp
 	cloned.Body = io.NopCloser(strings.NewReader(string(body)))
 	return &cloned, int64(len(body)), preview, truncated, nil
+}
+
+func applyResponseLogFields(log *domain.UsageLog, resp *http.Response, responseBytes int64, responsePreview string, truncated bool) {
+	log.ResponseHeadersJSON = marshalHeaders(redactedHeaders(resp.Header))
+	log.IsStream = strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
+	log.ResponseBytes = responseBytes
+	log.ResponseBodyPreview = responsePreview
+	log.PreviewTruncated = log.PreviewTruncated || truncated
 }
 
 func statusFamily(statusCode int) string {

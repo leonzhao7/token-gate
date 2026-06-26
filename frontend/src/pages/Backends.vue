@@ -1,30 +1,6 @@
 <template>
   <DefaultLayout>
     <div class="backends-page">
-      <div class="page-header">
-        <div>
-          <h1>Backends</h1>
-          <p class="page-description">Manage AI backend configurations and routing</p>
-        </div>
-        <div class="header-actions">
-          <Button variant="secondary" size="sm" :loading="exporting" @click="exportBackends">
-            Export
-          </Button>
-          <Button variant="secondary" size="sm" :loading="importing" @click="openImportPicker">
-            Import
-          </Button>
-          <Button @click="showCreateModal = true" size="md">
-            ➕ Add Backend
-          </Button>
-          <input
-            ref="importFileInput"
-            class="file-input"
-            type="file"
-            accept="application/json,.json"
-            @change="handleImportFile"
-          />
-        </div>
-      </div>
 
       <!-- Search & Filters -->
       <Card class="filters-card">
@@ -43,7 +19,7 @@
             <option value="disabled">Disabled</option>
           </select>
           <div class="filter-group">
-            <label class="filter-label">Per Page</label>
+            <label class="filter-label">Per Page </label>
             <select v-model.number="pageSize" class="filter-select" @change="handlePageSizeChange">
               <option :value="10">10</option>
               <option :value="25">25</option>
@@ -51,14 +27,25 @@
               <option :value="100">100</option>
             </select>
           </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            @click="refreshBackends"
-            :loading="loading"
-          >
+          <Button variant="secondary" size="sm" :loading="exporting" @click="exportBackends">
+            Export
+          </Button>
+          <Button variant="secondary" size="sm" :loading="importing" @click="openImportPicker">
+            Import
+          </Button>
+          <Button variant="secondary" size="sm"  @click="showCreateModal = true">
+            ➕ Add
+          </Button>
+          <Button variant="secondary" size="sm" @click="refreshBackends" :loading="loading">
             🔄 Refresh
           </Button>
+          <input
+            ref="importFileInput"
+            class="file-input"
+            type="file"
+            accept="application/json,.json"
+            @change="handleImportFile"
+          />
         </div>
       </Card>
 
@@ -360,33 +347,6 @@ onMounted(() => {
   max-width: 1400px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--spacing-2xl);
-  gap: var(--spacing-lg);
-}
-
-.page-header h1 {
-  font-size: 32px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 var(--spacing-xs) 0;
-}
-
-.page-description {
-  font-size: 14px;
-  color: var(--text-secondary);
-  margin: 0;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
 .file-input {
   display: none;
 }
@@ -397,8 +357,9 @@ onMounted(() => {
 
 .filters {
   display: flex;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--spacing-md);
-  align-items: center;
+  align-items: flex-end;
 }
 
 .search-input,

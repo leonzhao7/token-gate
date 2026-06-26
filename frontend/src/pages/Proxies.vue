@@ -1,15 +1,6 @@
 <template>
   <DefaultLayout>
     <div class="proxies-page">
-      <div class="page-header">
-        <div>
-          <h1>SOCKS Proxies</h1>
-          <p class="page-description">Manage SOCKS5 proxies for backend connections</p>
-        </div>
-        <Button @click="showCreateModal = true" size="md">
-          ➕ Add Proxy
-        </Button>
-      </div>
 
       <!-- Search -->
       <Card class="filters-card">
@@ -20,12 +11,10 @@
             class="search-input"
             placeholder="Search proxies..."
           />
-          <Button
-            variant="secondary"
-            size="sm"
-            @click="refreshProxies"
-            :loading="loading"
-          >
+          <Button variant="secondary" size="sm" @click="showCreateModal = true">
+            ➕ Add
+          </Button>
+          <Button variant="secondary" size="sm" @click="refreshProxies" :loading="loading">
             🔄 Refresh
           </Button>
         </div>

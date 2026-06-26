@@ -1,15 +1,6 @@
 <template>
   <DefaultLayout>
     <div class="client-keys-page">
-      <div class="page-header">
-        <div>
-          <h1>Client Keys</h1>
-          <p class="page-description">Manage API keys for client applications</p>
-        </div>
-        <Button @click="showCreateModal = true" size="md">
-          ➕ Create Key
-        </Button>
-      </div>
 
       <!-- Search & Filters -->
       <Card class="filters-card">
@@ -25,12 +16,10 @@
             <option value="active">Active</option>
             <option value="disabled">Disabled</option>
           </select>
-          <Button
-            variant="secondary"
-            size="sm"
-            @click="refreshKeys"
-            :loading="loading"
-          >
+          <Button variant="secondary" size="sm" @click="showCreateModal = true">
+            ➕ Add
+          </Button>
+          <Button variant="secondary" size="sm" @click="refreshKeys" :loading="loading">
             🔄 Refresh
           </Button>
         </div>
@@ -240,26 +229,6 @@ onMounted(() => {
   max-width: 1400px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--spacing-2xl);
-  gap: var(--spacing-lg);
-}
-
-.page-header h1 {
-  font-size: 32px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 var(--spacing-xs) 0;
-}
-
-.page-description {
-  font-size: 14px;
-  color: var(--text-secondary);
-  margin: 0;
-}
 
 .filters-card {
   margin-bottom: var(--spacing-xl);

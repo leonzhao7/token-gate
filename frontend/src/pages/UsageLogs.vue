@@ -1,30 +1,6 @@
 <template>
   <DefaultLayout>
     <div class="usage-logs-page">
-      <div class="page-header">
-        <div>
-          <h1>Usage Logs</h1>
-          <p class="page-description">Monitor API request logs and usage patterns</p>
-        </div>
-        <div class="header-actions">
-          <Button
-            variant="secondary"
-            size="sm"
-            @click="refreshLogs"
-            :loading="loading"
-          >
-            🔄 Refresh
-          </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            @click="showClearModal = true"
-          >
-            Clear
-          </Button>
-        </div>
-      </div>
-
       <!-- Filters -->
       <Card class="filters-card">
         <div class="filters">
@@ -78,6 +54,13 @@
               <option :value="100">100</option>
             </select>
           </div>
+
+          <Button variant="secondary" size="sm" @click="refreshLogs" :loading="loading">
+            🔄 Refresh
+          </Button>
+          <Button variant="secondary" size="sm" @click="showClearModal = true">
+            Clear
+          </Button>
         </div>
       </Card>
 
@@ -218,41 +201,15 @@ onMounted(() => {
   max-width: 1600px;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--spacing-2xl);
-  gap: var(--spacing-lg);
-}
-
-.page-header h1 {
-  font-size: 32px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 var(--spacing-xs) 0;
-}
-
-.page-description {
-  font-size: 14px;
-  color: var(--text-secondary);
-  margin: 0;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
 .filters-card {
   margin-bottom: var(--spacing-xl);
 }
 
 .filters {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--spacing-lg);
+  align-items: flex-end;
 }
 
 .filter-group {

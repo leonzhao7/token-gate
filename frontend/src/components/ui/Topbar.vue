@@ -37,7 +37,7 @@ const currentPageTitle = computed(() => {
   const titles: Record<string, string> = {
     '/': 'Dashboard',
     '/backends': 'Backends',
-    '/proxies': 'SOCKS Proxies',
+    '/proxies': 'Proxies',
     '/client-keys': 'Client Keys',
     '/usage-logs': 'Usage Logs',
     '/events': 'Audit Events',
