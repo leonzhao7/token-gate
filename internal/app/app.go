@@ -529,6 +529,9 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 					slog.String("error", err.Error()),
 				)...)
 				lastErr = err
+				if index < len(selection.Candidates)-1 {
+					a.appendAttemptUsageLog(r.Context(), usageLog, startedAt)
+				}
 				continue
 			}
 		}
@@ -554,6 +557,9 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 				slog.String("error", err.Error()),
 			)...)
 			lastErr = err
+			if index < len(selection.Candidates)-1 {
+				a.appendAttemptUsageLog(r.Context(), usageLog, startedAt)
+			}
 			continue
 		}
 		attemptStartedAt := time.Now()
@@ -571,6 +577,8 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			_ = a.scheduler.MarkFailure(r.Context(), backend.ID, err)
 			lastErr = err
+			usageLog.StatusCode = http.StatusServiceUnavailable
+			usageLog.StatusFamily = statusFamily(http.StatusServiceUnavailable)
 			usageLog.ErrorMessage = err.Error()
 			a.logEvent(r.Context(), slog.LevelWarn, "backend_request_failed", append(append(clientAttrs(client),
 				backendAttemptAttrs(backend, attempt)...),
@@ -590,6 +598,7 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 				BackendName: backend.Name,
 			})
 			if index < len(selection.Candidates)-1 {
+				a.appendAttemptUsageLog(r.Context(), usageLog, startedAt)
 				continue
 			}
 			break
@@ -622,6 +631,7 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 			})
 			lastErr = errors.New(resp.Status)
 			if index < len(selection.Candidates)-1 {
+				a.appendAttemptUsageLog(r.Context(), usageLog, startedAt)
 				continue
 			}
 			break
@@ -710,6 +720,14 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		slog.String("error", "all candidate backends failed"),
 	)...)
 	writeError(w, http.StatusServiceUnavailable, "no backend available")
+}
+
+func (a *App) appendAttemptUsageLog(ctx context.Context, base domain.UsageLog, requestStartedAt time.Time) {
+	log := base
+	log.DurationMS = time.Since(requestStartedAt).Milliseconds()
+	logCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	_ = a.store.AppendUsageLog(logCtx, log)
 }
 
 func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
