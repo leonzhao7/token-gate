@@ -1,6 +1,8 @@
 package app
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"embed"
@@ -136,6 +138,9 @@ type backendHourlyModelStatsItem struct {
 	Requests             int     `json:"requests"`
 	Successes            int     `json:"successes"`
 	Failures             int     `json:"failures"`
+	InputTokens          int64   `json:"input_tokens"`
+	OutputTokens         int64   `json:"output_tokens"`
+	InputCacheTokens     int64   `json:"input_cache_tokens"`
 	SuccessAvgDurationMS float64 `json:"success_avg_duration_ms"`
 	SuccessRequestBytes  int64   `json:"success_request_bytes"`
 	SuccessResponseBytes int64   `json:"success_response_bytes"`
@@ -652,9 +657,9 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 			usageLog.StatusCode = resp.StatusCode
 			usageLog.StatusFamily = statusFamily(resp.StatusCode)
 			usageLog.ErrorMessage = resp.Status
-			bufferedResp, responseBytes, responsePreview, truncated, bufferErr := cloneResponseForLogging(resp)
+			bufferedResp, responseBody, responseBytes, responsePreview, truncated, bufferErr := cloneResponseForLogging(resp)
 			if bufferErr == nil {
-				applyResponseLogFields(&usageLog, bufferedResp, responseBytes, responsePreview, truncated)
+				applyResponseLogFields(&usageLog, bufferedResp, responseBody, responseBytes, responsePreview, truncated)
 				_ = bufferedResp.Body.Close()
 			}
 			_ = a.scheduler.MarkFailure(r.Context(), backend.ID, errors.New(resp.Status))
@@ -701,7 +706,7 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 			)...)
 			return
 		}
-		bufferedResp, responseBytes, responsePreview, truncated, err := cloneResponseForLogging(resp)
+		bufferedResp, responseBody, responseBytes, responsePreview, truncated, err := cloneResponseForLogging(resp)
 		if err != nil {
 			usageLog.StatusCode = http.StatusServiceUnavailable
 			usageLog.StatusFamily = statusFamily(http.StatusServiceUnavailable)
@@ -715,7 +720,7 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		resp = bufferedResp
-		applyResponseLogFields(&usageLog, resp, responseBytes, responsePreview, truncated)
+		applyResponseLogFields(&usageLog, resp, responseBody, responseBytes, responsePreview, truncated)
 
 		a.logEvent(r.Context(), slog.LevelInfo, "backend_response_selected", append(append(clientAttrs(client),
 			backendAttemptAttrs(backend, attempt)...),
@@ -1899,6 +1904,9 @@ func (a *App) handleBackendHourlyModelStats(w http.ResponseWriter, r *http.Reque
 			Requests:             row.Successes + row.Failures,
 			Successes:            row.Successes,
 			Failures:             row.Failures,
+			InputTokens:          row.SuccessInputTokens,
+			OutputTokens:         row.SuccessOutputTokens,
+			InputCacheTokens:     row.SuccessInputCacheTokens,
 			SuccessAvgDurationMS: avg,
 			SuccessRequestBytes:  row.SuccessRequestBytes,
 			SuccessResponseBytes: row.SuccessResponseBytes,
@@ -1946,10 +1954,13 @@ func (a *App) handleGetUsageLog(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"overview": map[string]any{
-			"request_id":  entry.RequestID,
-			"status_code": entry.StatusCode,
-			"backend":     entry.BackendName,
-			"model":       entry.Model,
+			"request_id":         entry.RequestID,
+			"status_code":        entry.StatusCode,
+			"backend":            entry.BackendName,
+			"model":              entry.Model,
+			"input_tokens":       entry.InputTokens,
+			"output_tokens":      entry.OutputTokens,
+			"input_cache_tokens": entry.InputCacheTokens,
 		},
 		"request": map[string]any{
 			"bytes":        entry.RequestBytes,
@@ -2559,25 +2570,233 @@ func previewText(data []byte, limit int) (string, bool) {
 	return string(data[:limit]), true
 }
 
-func cloneResponseForLogging(resp *http.Response) (*http.Response, int64, string, bool, error) {
+type normalizedTokenUsage struct {
+	InputTokens      int64
+	OutputTokens     int64
+	InputCacheTokens int64
+}
+
+type loggingSSEEvent struct {
+	Event string
+	Data  string
+}
+
+func cloneResponseForLogging(resp *http.Response) (*http.Response, []byte, int64, string, bool, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		_ = resp.Body.Close()
-		return nil, 0, "", false, err
+		return nil, nil, 0, "", false, err
 	}
 	_ = resp.Body.Close()
 	preview, truncated := previewText(body, 16*1024)
 	cloned := *resp
-	cloned.Body = io.NopCloser(strings.NewReader(string(body)))
-	return &cloned, int64(len(body)), preview, truncated, nil
+	cloned.Body = io.NopCloser(bytes.NewReader(body))
+	return &cloned, body, int64(len(body)), preview, truncated, nil
 }
 
-func applyResponseLogFields(log *domain.UsageLog, resp *http.Response, responseBytes int64, responsePreview string, truncated bool) {
+func applyResponseLogFields(log *domain.UsageLog, resp *http.Response, responseBody []byte, responseBytes int64, responsePreview string, truncated bool) {
 	log.ResponseHeadersJSON = marshalHeaders(redactedHeaders(resp.Header))
 	log.IsStream = strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
 	log.ResponseBytes = responseBytes
 	log.ResponseBodyPreview = responsePreview
 	log.PreviewTruncated = log.PreviewTruncated || truncated
+	usage := extractNormalizedTokenUsage(resp, responseBody)
+	log.InputTokens = usage.InputTokens
+	log.OutputTokens = usage.OutputTokens
+	log.InputCacheTokens = usage.InputCacheTokens
+}
+
+func extractNormalizedTokenUsage(resp *http.Response, responseBody []byte) normalizedTokenUsage {
+	if len(responseBody) == 0 {
+		return normalizedTokenUsage{}
+	}
+	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
+	if strings.Contains(contentType, "text/event-stream") {
+		events, err := parseLoggingSSEStream(responseBody)
+		if err != nil {
+			return normalizedTokenUsage{}
+		}
+		usage := normalizedTokenUsage{}
+		for _, event := range events {
+			payload, ok := decodeLoggingSSEJSON(event.Data)
+			if !ok {
+				continue
+			}
+			usage = mergeNormalizedTokenUsage(usage, normalizedTokenUsageFromPayload(payload))
+		}
+		return usage
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(responseBody, &payload); err != nil {
+		return normalizedTokenUsage{}
+	}
+	return normalizedTokenUsageFromPayload(payload)
+}
+
+func normalizedTokenUsageFromPayload(payload map[string]any) normalizedTokenUsage {
+	usage := normalizedTokenUsage{}
+	for _, candidate := range []map[string]any{
+		usageObject(payload["usage"]),
+		usageObject(usageObject(payload["response"])["usage"]),
+		usageObject(usageObject(payload["message"])["usage"]),
+	} {
+		if len(candidate) == 0 {
+			continue
+		}
+		usage = mergeNormalizedTokenUsage(usage, normalizeProviderUsage(candidate))
+	}
+	return usage
+}
+
+func normalizeProviderUsage(usage map[string]any) normalizedTokenUsage {
+	inputTokens := int64Value(usage["input_tokens"])
+	outputTokens := int64Value(usage["output_tokens"])
+	if looksLikeAnthropicUsage(usage) {
+		cacheTokens := anthropicCacheTokens(usage)
+		return normalizedTokenUsage{
+			InputTokens:      inputTokens + cacheTokens,
+			OutputTokens:     outputTokens,
+			InputCacheTokens: cacheTokens,
+		}
+	}
+	return normalizedTokenUsage{
+		InputTokens:      inputTokens,
+		OutputTokens:     outputTokens,
+		InputCacheTokens: int64Value(usageObject(usage["input_tokens_details"])["cached_tokens"]),
+	}
+}
+
+func looksLikeAnthropicUsage(usage map[string]any) bool {
+	return int64Value(usage["cache_creation_input_tokens"]) > 0 ||
+		int64Value(usage["cache_read_input_tokens"]) > 0 ||
+		len(usageObject(usage["cache_creation"])) > 0 ||
+		len(usageObject(usage["cache_read"])) > 0
+}
+
+func anthropicCacheTokens(usage map[string]any) int64 {
+	cacheCreation := int64Value(usage["cache_creation_input_tokens"])
+	if cacheCreation == 0 {
+		cacheCreation = sumUsageDetailTokens(usageObject(usage["cache_creation"]))
+	}
+	cacheRead := int64Value(usage["cache_read_input_tokens"])
+	if cacheRead == 0 {
+		cacheRead = sumUsageDetailTokens(usageObject(usage["cache_read"]))
+	}
+	return cacheCreation + cacheRead
+}
+
+func sumUsageDetailTokens(values map[string]any) int64 {
+	var total int64
+	for _, value := range values {
+		total += int64Value(value)
+	}
+	return total
+}
+
+func mergeNormalizedTokenUsage(base, next normalizedTokenUsage) normalizedTokenUsage {
+	if next.InputTokens > base.InputTokens {
+		base.InputTokens = next.InputTokens
+	}
+	if next.OutputTokens > base.OutputTokens {
+		base.OutputTokens = next.OutputTokens
+	}
+	if next.InputCacheTokens > base.InputCacheTokens {
+		base.InputCacheTokens = next.InputCacheTokens
+	}
+	return base
+}
+
+func parseLoggingSSEStream(body []byte) ([]loggingSSEEvent, error) {
+	scanner := bufio.NewScanner(bytes.NewReader(body))
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+
+	var (
+		events   []loggingSSEEvent
+		current  loggingSSEEvent
+		dataRows []string
+	)
+	flush := func() {
+		if current.Event == "" && len(dataRows) == 0 {
+			return
+		}
+		current.Data = strings.Join(dataRows, "\n")
+		events = append(events, current)
+		current = loggingSSEEvent{}
+		dataRows = nil
+	}
+
+	for scanner.Scan() {
+		line := strings.TrimSuffix(scanner.Text(), "\r")
+		if line == "" {
+			flush()
+			continue
+		}
+		if strings.HasPrefix(line, ":") {
+			continue
+		}
+		field, value, found := strings.Cut(line, ":")
+		if !found {
+			continue
+		}
+		value = strings.TrimPrefix(value, " ")
+		switch field {
+		case "event":
+			current.Event = value
+		case "data":
+			dataRows = append(dataRows, value)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	flush()
+	return events, nil
+}
+
+func decodeLoggingSSEJSON(data string) (map[string]any, bool) {
+	trimmed := strings.TrimSpace(data)
+	if trimmed == "" || trimmed == "[DONE]" {
+		return nil, false
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		return nil, false
+	}
+	if payload == nil {
+		return nil, false
+	}
+	return payload, true
+}
+
+func usageObject(value any) map[string]any {
+	object, ok := value.(map[string]any)
+	if !ok || object == nil {
+		return map[string]any{}
+	}
+	return object
+}
+
+func int64Value(value any) int64 {
+	switch typed := value.(type) {
+	case float64:
+		return int64(typed)
+	case int:
+		return int64(typed)
+	case int64:
+		return typed
+	case json.Number:
+		parsed, err := typed.Int64()
+		if err == nil {
+			return parsed
+		}
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+		if err == nil {
+			return parsed
+		}
+	}
+	return 0
 }
 
 func statusFamily(statusCode int) string {

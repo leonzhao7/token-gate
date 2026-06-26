@@ -45,15 +45,18 @@ type BackendRef struct {
 }
 
 type BackendHourlyModelStatsRow struct {
-	BackendID            int64
-	BackendName          string
-	Model                string
-	HourStart            time.Time
-	Successes            int
-	Failures             int
-	SuccessDurationMSSum int64
-	SuccessRequestBytes  int64
-	SuccessResponseBytes int64
+	BackendID               int64
+	BackendName             string
+	Model                   string
+	HourStart               time.Time
+	Successes               int
+	Failures                int
+	SuccessDurationMSSum    int64
+	SuccessRequestBytes     int64
+	SuccessResponseBytes    int64
+	SuccessInputTokens      int64
+	SuccessOutputTokens     int64
+	SuccessInputCacheTokens int64
 }
 
 type BackendHourlyModelStatsResult struct {
@@ -309,6 +312,9 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			trace_id TEXT NOT NULL DEFAULT '',
 			request_bytes INTEGER NOT NULL DEFAULT 0,
 			response_bytes INTEGER NOT NULL DEFAULT 0,
+			input_tokens INTEGER NOT NULL DEFAULT 0,
+			output_tokens INTEGER NOT NULL DEFAULT 0,
+			input_cache_tokens INTEGER NOT NULL DEFAULT 0,
 			request_headers_json TEXT NOT NULL DEFAULT '{}',
 			request_body_preview TEXT NOT NULL DEFAULT '',
 			response_headers_json TEXT NOT NULL DEFAULT '{}',
@@ -329,6 +335,9 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			success_duration_ms_sum INTEGER NOT NULL DEFAULT 0,
 			success_request_bytes_sum INTEGER NOT NULL DEFAULT 0,
 			success_response_bytes_sum INTEGER NOT NULL DEFAULT 0,
+			success_input_tokens_sum INTEGER NOT NULL DEFAULT 0,
+			success_output_tokens_sum INTEGER NOT NULL DEFAULT 0,
+			success_input_cache_tokens_sum INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL,
 			PRIMARY KEY (backend_id, model, hour_start_utc)
@@ -435,6 +444,9 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		{name: "trace_id", definition: "TEXT NOT NULL DEFAULT ''"},
 		{name: "request_bytes", definition: "INTEGER NOT NULL DEFAULT 0"},
 		{name: "response_bytes", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{name: "input_tokens", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{name: "output_tokens", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{name: "input_cache_tokens", definition: "INTEGER NOT NULL DEFAULT 0"},
 		{name: "request_headers_json", definition: "TEXT NOT NULL DEFAULT '{}'"},
 		{name: "request_body_preview", definition: "TEXT NOT NULL DEFAULT ''"},
 		{name: "response_headers_json", definition: "TEXT NOT NULL DEFAULT '{}'"},
@@ -445,6 +457,19 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		if err := ensureColumn(ctx, db, "usage_logs", column.name, column.definition); err != nil {
 			_ = db.Close()
 			return nil, fmt.Errorf("migrate usage_logs %s: %w", column.name, err)
+		}
+	}
+	for _, column := range []struct {
+		name       string
+		definition string
+	}{
+		{name: "success_input_tokens_sum", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{name: "success_output_tokens_sum", definition: "INTEGER NOT NULL DEFAULT 0"},
+		{name: "success_input_cache_tokens_sum", definition: "INTEGER NOT NULL DEFAULT 0"},
+	} {
+		if err := ensureColumn(ctx, db, "backend_hourly_model_stats", column.name, column.definition); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("migrate backend_hourly_model_stats %s: %w", column.name, err)
 		}
 	}
 
@@ -1943,10 +1968,11 @@ func (s *Store) AppendUsageLog(ctx context.Context, log domain.UsageLog) error {
 			request_id, client_id, client_name, client_token_prefix,
 			method, path, query, endpoint, model, backend_id, backend_name, proxy_id, proxy_name,
 			attempts, status_code, status_family, duration_ms, error_message, client_ip, user_agent, trace_id,
-			request_bytes, response_bytes, request_headers_json, request_body_preview, response_headers_json, response_body_preview,
+			request_bytes, response_bytes, input_tokens, output_tokens, input_cache_tokens,
+			request_headers_json, request_body_preview, response_headers_json, response_body_preview,
 			preview_truncated, is_stream, created_at
 		)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		strings.TrimSpace(log.RequestID),
 		log.ClientID,
@@ -1971,6 +1997,9 @@ func (s *Store) AppendUsageLog(ctx context.Context, log domain.UsageLog) error {
 		strings.TrimSpace(log.TraceID),
 		log.RequestBytes,
 		log.ResponseBytes,
+		log.InputTokens,
+		log.OutputTokens,
+		log.InputCacheTokens,
 		nonEmpty(log.RequestHeadersJSON, "{}"),
 		log.RequestBodyPreview,
 		nonEmpty(log.ResponseHeadersJSON, "{}"),
@@ -1995,7 +2024,8 @@ func (s *Store) ListBackendHourlyModelStats(ctx context.Context, filter BackendH
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT backend_id, backend_name, model, hour_start_utc,
 			success_count, failure_count, success_duration_ms_sum,
-			success_request_bytes_sum, success_response_bytes_sum
+			success_request_bytes_sum, success_response_bytes_sum,
+			success_input_tokens_sum, success_output_tokens_sum, success_input_cache_tokens_sum
 		FROM backend_hourly_model_stats
 	`+where+`
 		ORDER BY hour_start_utc ASC, backend_name ASC, model ASC
@@ -2025,6 +2055,9 @@ func (s *Store) ListBackendHourlyModelStats(ctx context.Context, filter BackendH
 			&row.SuccessDurationMSSum,
 			&row.SuccessRequestBytes,
 			&row.SuccessResponseBytes,
+			&row.SuccessInputTokens,
+			&row.SuccessOutputTokens,
+			&row.SuccessInputCacheTokens,
 		); err != nil {
 			return BackendHourlyModelStatsResult{}, err
 		}
@@ -2075,11 +2108,17 @@ func upsertBackendHourlyModelStats(ctx context.Context, tx *sql.Tx, log domain.U
 	successDuration := int64(0)
 	successRequestBytes := int64(0)
 	successResponseBytes := int64(0)
+	successInputTokens := int64(0)
+	successOutputTokens := int64(0)
+	successInputCacheTokens := int64(0)
 	if isSuccessStatus(log.StatusCode) {
 		successes = 1
 		successDuration = log.DurationMS
 		successRequestBytes = log.RequestBytes
 		successResponseBytes = log.ResponseBytes
+		successInputTokens = log.InputTokens
+		successOutputTokens = log.OutputTokens
+		successInputCacheTokens = log.InputCacheTokens
 	} else {
 		failures = 1
 	}
@@ -2090,9 +2129,10 @@ func upsertBackendHourlyModelStats(ctx context.Context, tx *sql.Tx, log domain.U
 			backend_id, backend_name, model, hour_start_utc,
 			success_count, failure_count, success_duration_ms_sum,
 			success_request_bytes_sum, success_response_bytes_sum,
+			success_input_tokens_sum, success_output_tokens_sum, success_input_cache_tokens_sum,
 			created_at, updated_at
 		)
-		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(backend_id, model, hour_start_utc) DO UPDATE SET
 			backend_name = excluded.backend_name,
 			success_count = backend_hourly_model_stats.success_count + excluded.success_count,
@@ -2100,6 +2140,9 @@ func upsertBackendHourlyModelStats(ctx context.Context, tx *sql.Tx, log domain.U
 			success_duration_ms_sum = backend_hourly_model_stats.success_duration_ms_sum + excluded.success_duration_ms_sum,
 			success_request_bytes_sum = backend_hourly_model_stats.success_request_bytes_sum + excluded.success_request_bytes_sum,
 			success_response_bytes_sum = backend_hourly_model_stats.success_response_bytes_sum + excluded.success_response_bytes_sum,
+			success_input_tokens_sum = backend_hourly_model_stats.success_input_tokens_sum + excluded.success_input_tokens_sum,
+			success_output_tokens_sum = backend_hourly_model_stats.success_output_tokens_sum + excluded.success_output_tokens_sum,
+			success_input_cache_tokens_sum = backend_hourly_model_stats.success_input_cache_tokens_sum + excluded.success_input_cache_tokens_sum,
 			updated_at = excluded.updated_at
 	`,
 		log.BackendID,
@@ -2111,6 +2154,9 @@ func upsertBackendHourlyModelStats(ctx context.Context, tx *sql.Tx, log domain.U
 		successDuration,
 		successRequestBytes,
 		successResponseBytes,
+		successInputTokens,
+		successOutputTokens,
+		successInputCacheTokens,
 		now,
 		now,
 	)
@@ -2161,7 +2207,8 @@ func (s *Store) GetUsageLog(ctx context.Context, id int64) (domain.UsageLog, err
 		SELECT id, request_id, client_id, client_name, client_token_prefix,
 			method, path, query, endpoint, model, backend_id, backend_name, proxy_id, proxy_name,
 			attempts, status_code, status_family, duration_ms, error_message, client_ip, user_agent, trace_id,
-			request_bytes, response_bytes, request_headers_json, request_body_preview, response_headers_json, response_body_preview,
+			request_bytes, response_bytes, input_tokens, output_tokens, input_cache_tokens,
+			request_headers_json, request_body_preview, response_headers_json, response_body_preview,
 			preview_truncated, is_stream, created_at
 		FROM usage_logs
 		WHERE id = ?
@@ -2175,7 +2222,8 @@ func (s *Store) UsageLogStats(ctx context.Context, filter UsageLogFilter) (Usage
 		SELECT id, request_id, client_id, client_name, client_token_prefix,
 			method, path, query, endpoint, model, backend_id, backend_name, proxy_id, proxy_name,
 			attempts, status_code, status_family, duration_ms, error_message, client_ip, user_agent, trace_id,
-			request_bytes, response_bytes, request_headers_json, request_body_preview, response_headers_json, response_body_preview,
+			request_bytes, response_bytes, input_tokens, output_tokens, input_cache_tokens,
+			request_headers_json, request_body_preview, response_headers_json, response_body_preview,
 			preview_truncated, is_stream, created_at
 		FROM usage_logs
 	`+where+`
@@ -2261,7 +2309,8 @@ func (s *Store) ListUsageLogsPageFiltered(ctx context.Context, filter UsageLogFi
 		SELECT id, request_id, client_id, client_name, client_token_prefix,
 			method, path, query, endpoint, model, backend_id, backend_name, proxy_id, proxy_name,
 			attempts, status_code, status_family, duration_ms, error_message, client_ip, user_agent, trace_id,
-			request_bytes, response_bytes, request_headers_json, request_body_preview, response_headers_json, response_body_preview,
+			request_bytes, response_bytes, input_tokens, output_tokens, input_cache_tokens,
+			request_headers_json, request_body_preview, response_headers_json, response_body_preview,
 			preview_truncated, is_stream, created_at
 		FROM usage_logs
 	`+where+`
@@ -2727,6 +2776,9 @@ func scanUsageLog(s scanner) (domain.UsageLog, error) {
 		&entry.TraceID,
 		&entry.RequestBytes,
 		&entry.ResponseBytes,
+		&entry.InputTokens,
+		&entry.OutputTokens,
+		&entry.InputCacheTokens,
 		&entry.RequestHeadersJSON,
 		&entry.RequestBodyPreview,
 		&entry.ResponseHeadersJSON,
@@ -2828,7 +2880,8 @@ func (s *Store) listUsageLogsSince(ctx context.Context, since time.Time) ([]doma
 		SELECT id, request_id, client_id, client_name, client_token_prefix,
 			method, path, query, endpoint, model, backend_id, backend_name, proxy_id, proxy_name,
 			attempts, status_code, status_family, duration_ms, error_message, client_ip, user_agent, trace_id,
-			request_bytes, response_bytes, request_headers_json, request_body_preview, response_headers_json, response_body_preview,
+			request_bytes, response_bytes, input_tokens, output_tokens, input_cache_tokens,
+			request_headers_json, request_body_preview, response_headers_json, response_body_preview,
 			preview_truncated, is_stream, created_at
 		FROM usage_logs
 		WHERE created_at >= ?
@@ -2874,7 +2927,8 @@ func (s *Store) listUsageLogsByColumn(ctx context.Context, column string, id int
 		SELECT id, request_id, client_id, client_name, client_token_prefix,
 			method, path, query, endpoint, model, backend_id, backend_name, proxy_id, proxy_name,
 			attempts, status_code, status_family, duration_ms, error_message, client_ip, user_agent, trace_id,
-			request_bytes, response_bytes, request_headers_json, request_body_preview, response_headers_json, response_body_preview,
+			request_bytes, response_bytes, input_tokens, output_tokens, input_cache_tokens,
+			request_headers_json, request_body_preview, response_headers_json, response_body_preview,
 			preview_truncated, is_stream, created_at
 		FROM usage_logs
 		WHERE `+column+` = ?

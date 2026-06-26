@@ -114,24 +114,30 @@ func TestAppendUsageLogAggregatesBackendHourlyModelStats(t *testing.T) {
 	createdAt := time.Date(2026, 6, 26, 7, 23, 0, 0, time.UTC)
 	for _, entry := range []domain.UsageLog{
 		{
-			RequestID:     "agg-success",
-			BackendID:     11,
-			BackendName:   "alpha",
-			Model:         "gpt-4o",
-			StatusCode:    200,
-			DurationMS:    120,
-			RequestBytes:  100,
-			ResponseBytes: 300,
-			CreatedAt:     createdAt,
+			RequestID:        "agg-success",
+			BackendID:        11,
+			BackendName:      "alpha",
+			Model:            "gpt-4o",
+			StatusCode:       200,
+			DurationMS:       120,
+			RequestBytes:     100,
+			ResponseBytes:    300,
+			InputTokens:      100,
+			OutputTokens:     25,
+			InputCacheTokens: 40,
+			CreatedAt:        createdAt,
 		},
 		{
-			RequestID:   "agg-failure",
-			BackendID:   11,
-			BackendName: "alpha",
-			Model:       "gpt-4o",
-			StatusCode:  502,
-			DurationMS:  999,
-			CreatedAt:   createdAt.Add(5 * time.Minute),
+			RequestID:        "agg-failure",
+			BackendID:        11,
+			BackendName:      "alpha",
+			Model:            "gpt-4o",
+			StatusCode:       502,
+			DurationMS:       999,
+			InputTokens:      999,
+			OutputTokens:     999,
+			InputCacheTokens: 999,
+			CreatedAt:        createdAt.Add(5 * time.Minute),
 		},
 	} {
 		if err := st.AppendUsageLog(ctx, entry); err != nil {
@@ -158,6 +164,9 @@ func TestAppendUsageLogAggregatesBackendHourlyModelStats(t *testing.T) {
 	}
 	if row.SuccessRequestBytes != 100 || row.SuccessResponseBytes != 300 {
 		t.Fatalf("unexpected byte sums: %#v", row)
+	}
+	if row.SuccessInputTokens != 100 || row.SuccessOutputTokens != 25 || row.SuccessInputCacheTokens != 40 {
+		t.Fatalf("unexpected token sums: %#v", row)
 	}
 	if row.HourStart != time.Date(2026, 6, 26, 7, 0, 0, 0, time.UTC) {
 		t.Fatalf("unexpected hour bucket %s", row.HourStart)

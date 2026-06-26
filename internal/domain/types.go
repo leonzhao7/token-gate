@@ -111,6 +111,9 @@ type UsageLog struct {
 	TraceID             string    `json:"trace_id"`
 	RequestBytes        int64     `json:"request_bytes"`
 	ResponseBytes       int64     `json:"response_bytes"`
+	InputTokens         int64     `json:"input_tokens"`
+	OutputTokens        int64     `json:"output_tokens"`
+	InputCacheTokens    int64     `json:"input_cache_tokens"`
 	RequestHeadersJSON  string    `json:"request_headers_json"`
 	RequestBodyPreview  string    `json:"request_body_preview"`
 	ResponseHeadersJSON string    `json:"response_headers_json"`

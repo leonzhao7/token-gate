@@ -1127,6 +1127,162 @@ func TestProxyTranslatesStreamingResponsesToMessagesForAnthropicBackend(t *testi
 	}
 }
 
+func TestUsageLogsRecordAnthropicResponseTokenUsage(t *testing.T) {
+	const requestBody = `{"model":"gpt-4o","input":"hello detail","max_output_tokens":16}`
+
+	application := newTestApp(t)
+	client := createTestClient(t, application, "anthropic-usage-client")
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "anthropic-usage-backend",
+		Protocol:  domain.BackendProtocolAnthropic,
+		BaseURL:   "https://anthropic.local/root/v1",
+		APIKey:    "backend-anthropic-key",
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointMessages},
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.responseBodyByName[backend.Name] = `{"id":"msg_1","type":"message","role":"assistant","model":"gpt-4o","content":[{"type":"text","text":"hello from anthropic"}],"usage":{"input_tokens":9547,"output_tokens":389,"cache_creation_input_tokens":76256,"cache_creation":{"ephemeral_5m_input_tokens":76256}},"stop_reason":"end_turn"}`
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	logs, err := application.store.ListUsageLogsPage(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatalf("list usage logs: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected one usage log, got %d", len(logs))
+	}
+	if logs[0].InputTokens != 85803 || logs[0].OutputTokens != 389 || logs[0].InputCacheTokens != 76256 {
+		t.Fatalf("unexpected anthropic token usage: %#v", logs[0])
+	}
+}
+
+func TestUsageLogsRecordOpenAIStreamingResponseTokenUsage(t *testing.T) {
+	const (
+		clientToken  = "openai-stream-usage-client"
+		requestBody  = `{"model":"claude-opus-4-6","max_tokens":16,"stream":true,"messages":[{"role":"user","content":"hello"}]}`
+		responseBody = "" +
+			"event: response.created\n" +
+			"data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"model\":\"gpt-5.4\",\"status\":\"in_progress\",\"output\":[],\"usage\":{\"input_tokens\":18908,\"output_tokens\":0}}}\n\n" +
+			"event: response.output_item.added\n" +
+			"data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"msg_1\",\"status\":\"in_progress\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n" +
+			"event: response.content_part.added\n" +
+			"data: {\"type\":\"response.content_part.added\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[]}}\n\n" +
+			"event: response.output_text.delta\n" +
+			"data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"hello from openai\"}\n\n" +
+			"event: response.completed\n" +
+			"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"model\":\"gpt-5.4\",\"status\":\"completed\",\"output\":[{\"id\":\"msg_1\",\"status\":\"completed\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello from openai\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":18908,\"input_tokens_details\":{\"cached_tokens\":16256},\"output_tokens\":217,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":19125},\"stop_reason\":\"end_turn\"}}\n\n"
+	)
+
+	application := newTestApp(t)
+	createTestClient(t, application, clientToken)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "openai-streaming-usage-backend",
+		Protocol:  domain.BackendProtocolOpenAI,
+		BaseURL:   "https://openai.local/root/v1",
+		APIKey:    "backend-openai-key",
+		Weight:    1,
+		Models:    []string{"claude-opus-4-6"},
+		Endpoints: []string{domain.EndpointResponses},
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.responseBodyByName[backend.Name] = responseBody
+	fixture.responseHeadersByName[backend.Name] = http.Header{
+		"Content-Type": {"text/event-stream"},
+	}
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(requestBody))
+	req.Header.Set("X-Api-Key", clientToken)
+	req.Header.Set("Anthropic-Version", "2023-06-01")
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	logs, err := application.store.ListUsageLogsPage(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatalf("list usage logs: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected one usage log, got %d", len(logs))
+	}
+	if logs[0].InputTokens != 18908 || logs[0].OutputTokens != 217 || logs[0].InputCacheTokens != 16256 {
+		t.Fatalf("unexpected openai streaming token usage: %#v", logs[0])
+	}
+}
+
+func TestUsageLogsRecordAnthropicStreamingResponseTokenUsage(t *testing.T) {
+	const (
+		requestBody  = `{"model":"gpt-5.4","input":"hello detail","stream":true,"max_output_tokens":16}`
+		responseBody = "" +
+			"event: message_start\n" +
+			"data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-opus-4-6\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":9547,\"output_tokens\":0,\"cache_creation_input_tokens\":76256}}}\n\n" +
+			"event: content_block_start\n" +
+			"data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n" +
+			"event: content_block_delta\n" +
+			"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hello from anthropic\"}}\n\n" +
+			"event: content_block_stop\n" +
+			"data: {\"type\":\"content_block_stop\",\"index\":0}\n\n" +
+			"event: message_delta\n" +
+			"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":9547,\"output_tokens\":389,\"cache_creation_input_tokens\":76256}}\n\n" +
+			"event: message_stop\n" +
+			"data: {\"type\":\"message_stop\"}\n\n"
+	)
+
+	application := newTestApp(t)
+	client := createTestClient(t, application, "anthropic-stream-usage-client")
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "anthropic-streaming-usage-backend",
+		Protocol:  domain.BackendProtocolAnthropic,
+		BaseURL:   "https://anthropic.local/root/v1",
+		APIKey:    "backend-anthropic-key",
+		Weight:    1,
+		Models:    []string{"gpt-5.4"},
+		Endpoints: []string{domain.EndpointMessages},
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.responseBodyByName[backend.Name] = responseBody
+	fixture.responseHeadersByName[backend.Name] = http.Header{
+		"Content-Type": {"text/event-stream"},
+	}
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	logs, err := application.store.ListUsageLogsPage(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatalf("list usage logs: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected one usage log, got %d", len(logs))
+	}
+	if logs[0].InputTokens != 85803 || logs[0].OutputTokens != 389 || logs[0].InputCacheTokens != 76256 {
+		t.Fatalf("unexpected anthropic streaming token usage: %#v", logs[0])
+	}
+}
+
 func TestUpdateBackendPreservesAPIKeyWhenPayloadIsBlank(t *testing.T) {
 	application := newTestApp(t)
 	backend := createTestBackend(t, application, domain.Backend{
@@ -2497,6 +2653,7 @@ func TestUsageLogListAndPagination(t *testing.T) {
 	})
 
 	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.responseBodyByName[backend.Name] = `{"backend":"alpha","usage":{"input_tokens":50,"output_tokens":10,"input_tokens_details":{"cached_tokens":20}}}`
 	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions?trace=1", strings.NewReader(`{"model":"gpt-4o","messages":[{"role":"user","content":"hello"}]}`))
@@ -2538,6 +2695,9 @@ func TestUsageLogListAndPagination(t *testing.T) {
 	}
 	if payload.Items[0].RequestID == "" {
 		t.Fatalf("expected request id to be recorded")
+	}
+	if payload.Items[0].InputTokens != 50 || payload.Items[0].OutputTokens != 10 || payload.Items[0].InputCacheTokens != 20 {
+		t.Fatalf("unexpected usage log token usage: %#v", payload.Items[0])
 	}
 
 	pageReq := httptest.NewRequest(http.MethodGet, "/admin/api/usage-logs?page=1&limit=10", nil)
@@ -2988,23 +3148,29 @@ func TestBackendHourlyModelStatsEndpointReturnsRowsAndScope(t *testing.T) {
 
 	for _, entry := range []domain.UsageLog{
 		{
-			RequestID:     "api-1",
-			BackendID:     11,
-			BackendName:   "alpha",
-			Model:         "gpt-4o",
-			StatusCode:    200,
-			DurationMS:    100,
-			RequestBytes:  10,
-			ResponseBytes: 20,
-			CreatedAt:     time.Date(2026, 6, 26, 7, 15, 0, 0, time.UTC),
+			RequestID:        "api-1",
+			BackendID:        11,
+			BackendName:      "alpha",
+			Model:            "gpt-4o",
+			StatusCode:       200,
+			DurationMS:       100,
+			RequestBytes:     10,
+			ResponseBytes:    20,
+			InputTokens:      100,
+			OutputTokens:     25,
+			InputCacheTokens: 40,
+			CreatedAt:        time.Date(2026, 6, 26, 7, 15, 0, 0, time.UTC),
 		},
 		{
-			RequestID:   "api-2",
-			BackendID:   22,
-			BackendName: "beta",
-			Model:       "gpt-4.1",
-			StatusCode:  502,
-			CreatedAt:   time.Date(2026, 6, 26, 8, 15, 0, 0, time.UTC),
+			RequestID:        "api-2",
+			BackendID:        22,
+			BackendName:      "beta",
+			Model:            "gpt-4.1",
+			StatusCode:       502,
+			InputTokens:      999,
+			OutputTokens:     999,
+			InputCacheTokens: 999,
+			CreatedAt:        time.Date(2026, 6, 26, 8, 15, 0, 0, time.UTC),
 		},
 	} {
 		if err := application.store.AppendUsageLog(ctx, entry); err != nil {
@@ -3048,6 +3214,9 @@ func TestBackendHourlyModelStatsEndpointReturnsRowsAndScope(t *testing.T) {
 			Requests             int     `json:"requests"`
 			Successes            int     `json:"successes"`
 			Failures             int     `json:"failures"`
+			InputTokens          int64   `json:"input_tokens"`
+			OutputTokens         int64   `json:"output_tokens"`
+			InputCacheTokens     int64   `json:"input_cache_tokens"`
 			SuccessAvgDurationMS float64 `json:"success_avg_duration_ms"`
 			SuccessRequestBytes  int64   `json:"success_request_bytes"`
 			SuccessResponseBytes int64   `json:"success_response_bytes"`
@@ -3073,6 +3242,12 @@ func TestBackendHourlyModelStatsEndpointReturnsRowsAndScope(t *testing.T) {
 	}
 	if payload.Items[0].Requests != payload.Items[0].Successes+payload.Items[0].Failures {
 		t.Fatalf("requests should equal successes + failures: %#v", payload.Items[0])
+	}
+	if payload.Items[0].InputTokens != 100 || payload.Items[0].OutputTokens != 25 || payload.Items[0].InputCacheTokens != 40 {
+		t.Fatalf("unexpected first hourly token payload: %#v", payload.Items[0])
+	}
+	if payload.Items[1].InputTokens != 0 || payload.Items[1].OutputTokens != 0 || payload.Items[1].InputCacheTokens != 0 {
+		t.Fatalf("expected failed hourly row to have zero token sums: %#v", payload.Items[1])
 	}
 }
 
@@ -3240,6 +3415,7 @@ func TestUsageLogDetailReturnsPreviewData(t *testing.T) {
 	})
 
 	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.responseBodyByName[backend.Name] = `{"id":"resp_1","object":"response","model":"gpt-4o","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hello from alpha"}]}],"usage":{"input_tokens":123,"output_tokens":45,"input_tokens_details":{"cached_tokens":67}}}`
 	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o","input":"hello detail"}`))
@@ -3271,8 +3447,11 @@ func TestUsageLogDetailReturnsPreviewData(t *testing.T) {
 
 	var payload struct {
 		Overview struct {
-			RequestID  string `json:"request_id"`
-			StatusCode int    `json:"status_code"`
+			RequestID        string `json:"request_id"`
+			StatusCode       int    `json:"status_code"`
+			InputTokens      int64  `json:"input_tokens"`
+			OutputTokens     int64  `json:"output_tokens"`
+			InputCacheTokens int64  `json:"input_cache_tokens"`
 		} `json:"overview"`
 		Metadata struct {
 			ID      int64  `json:"id"`
@@ -3304,14 +3483,20 @@ func TestUsageLogDetailReturnsPreviewData(t *testing.T) {
 	if payload.Overview.RequestID == "" || payload.Overview.StatusCode != http.StatusOK {
 		t.Fatalf("unexpected overview payload: %#v", payload.Overview)
 	}
+	if payload.Overview.InputTokens != 123 || payload.Overview.OutputTokens != 45 || payload.Overview.InputCacheTokens != 67 {
+		t.Fatalf("unexpected overview token payload: %#v", payload.Overview)
+	}
 	if payload.Request.Bytes <= 0 || !strings.Contains(payload.Request.BodyPreview, "hello detail") {
 		t.Fatalf("unexpected request preview payload: %#v", payload.Request)
 	}
 	if payload.Request.Method != http.MethodPost || payload.Request.Path != "/v1/responses" || payload.Request.Query != "" {
 		t.Fatalf("unexpected request metadata payload: %#v", payload.Request)
 	}
-	if payload.Response.Bytes <= 0 || payload.Response.StatusFamily != "2xx" || !strings.Contains(payload.Response.BodyPreview, backend.Name) {
+	if payload.Response.Bytes <= 0 || payload.Response.StatusFamily != "2xx" || !strings.Contains(payload.Response.BodyPreview, "hello from alpha") {
 		t.Fatalf("unexpected response preview payload: %#v", payload.Response)
+	}
+	if payload.Raw.InputTokens != 123 || payload.Raw.OutputTokens != 45 || payload.Raw.InputCacheTokens != 67 {
+		t.Fatalf("unexpected raw token payload: %#v", payload.Raw)
 	}
 }
 
