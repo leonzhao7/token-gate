@@ -20,6 +20,7 @@
 - 不修改后端 API、数据库或 usage log 写入逻辑
 - 不新增筛选、排序、聚合或图表能力
 - 不重做 Usage Logs 页面整体布局
+- 不为这个小功能引入新的前端测试框架
 
 ## Existing Context
 
@@ -199,13 +200,12 @@ token 展示逻辑全部收敛在 `UsageLogsTable.vue`：
 
 ## Testing
 
-需要补前端测试，重点覆盖：
+这次不新增前端测试文件，也不为该功能引入测试框架。
 
-- `UsageLog` 类型对新增字段兼容
-- `UsageLogsTable.vue` 表头包含 `Tokens`
-- token 单元格能显示 `input / cache / output` 摘要
-- 展开区能显示 `Input Tokens`、`Cache Tokens`、`Output Tokens`
-- 缺失 token 字段时显示 `0`，不出现空白或 `undefined`
+仅保留轻量验证：
+
+- `frontend/src/api/types.ts` 类型更新后 `build:check` 通过
+- `UsageLogsTable.vue` 渲染变更后 `build:check` 通过
 
 ## Risks
 
@@ -225,4 +225,4 @@ token 展示逻辑全部收敛在 `UsageLogsTable.vue`：
 2. 该列显示 `input_tokens` 与 `cache/output` 摘要
 3. 展开区能看到 3 个 token 明细项
 4. `Bytes` 列保持存在
-5. 前端相关测试通过
+5. `cd frontend && npm run build:check` 通过
