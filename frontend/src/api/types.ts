@@ -17,6 +17,7 @@ export interface Backend {
   socks_proxy_id?: number | null  // alias
   console_url?: string
   console_username?: string
+  console_password?: string
   tags?: string[]
   notes?: string
   created_at: string
@@ -169,14 +170,20 @@ export interface Config {
 
 export interface CreateBackendRequest {
   name: string
-  base_url: string  // Changed from 'url' to match backend API
+  protocol?: 'openai' | 'anthropic'
+  base_url: string
   api_key: string
-  model_mapping?: string  // JSON string or empty
-  socks_proxy_id?: number | null
+  console_url?: string
+  tags?: string[]
+  console_username?: string
+  console_password?: string
+  notes?: string
+  proxy_id?: number
+  status?: string
+  model_mapping?: Record<string, string>
+  models?: string[]
+  endpoints?: string[]
   weight?: number
-  priority?: number
-  max_requests_per_minute?: number
-  enabled?: boolean
 }
 
 export interface UpdateBackendRequest extends Partial<CreateBackendRequest> {

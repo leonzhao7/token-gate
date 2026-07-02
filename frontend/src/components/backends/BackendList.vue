@@ -136,6 +136,20 @@
                     </span>
                   </div>
                 </div>
+                <div v-if="modelMappingEntries(backend.model_mapping).length > 0" class="detail-item mapping-detail">
+                  <span class="detail-label">Model Mapping</span>
+                  <div class="detail-value mapping-list">
+                    <div
+                      v-for="[clientModel, upstreamModel] in modelMappingEntries(backend.model_mapping)"
+                      :key="clientModel"
+                      class="mapping-row"
+                    >
+                      <span class="mapping-client">{{ clientModel }}</span>
+                      <span class="mapping-arrow">→</span>
+                      <span class="mapping-upstream">{{ upstreamModel }}</span>
+                    </div>
+                  </div>
+                </div>
                 <div v-if="backend.tags && backend.tags.length > 0" class="detail-item">
                   <span class="detail-label">Tags</span>
                   <div class="detail-value">
@@ -211,6 +225,7 @@ import EmptyState from '@/components/ui/EmptyState.vue'
 import Button from '@/components/ui/Button.vue'
 import type { Backend } from '@/api'
 import { formatLatencySeconds } from '@/utils/latency'
+import { formatModelMappingForInput, parseModelMappingInput } from './backendPayload'
 
 interface Props {
   backends: Backend[]
@@ -267,6 +282,15 @@ const getStatusClass = (status: string): string => {
       return 'status-disable'
     default:
       return ''
+  }
+}
+
+const modelMappingEntries = (value: Backend['model_mapping']) => {
+  try {
+    const formatted = formatModelMappingForInput(value)
+    return Object.entries(parseModelMappingInput(formatted))
+  } catch {
+    return []
   }
 }
 
@@ -620,6 +644,37 @@ const formatTime = (timestamp: string) => {
   border-radius: var(--radius-sm);
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.mapping-detail {
+  align-items: flex-start;
+}
+
+.mapping-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.mapping-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.mapping-client {
+  color: var(--text-primary);
+}
+
+.mapping-arrow {
+  color: var(--text-tertiary);
+}
+
+.mapping-upstream {
+  color: var(--accent-primary);
 }
 
 .notes-text {

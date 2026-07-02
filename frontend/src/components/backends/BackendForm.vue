@@ -29,6 +29,18 @@
       </div>
 
       <div class="form-group">
+        <label class="form-label" for="protocol">Protocol</label>
+        <select
+          id="protocol"
+          v-model="formData.protocol"
+          class="form-select"
+        >
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+        </select>
+      </div>
+
+      <div class="form-group">
         <label class="form-label" for="api-key">API Key *</label>
         <input
           id="api-key"
@@ -42,14 +54,15 @@
 
       <div class="form-group">
         <label class="form-label" for="model">Model Mapping</label>
-        <input
+        <textarea
           id="model"
           v-model="formData.model_mapping"
-          type="text"
-          class="form-input"
-          placeholder="gpt-4:gpt-4-turbo,gpt-3.5-turbo:gpt-3.5-turbo-16k"
-        />
-        <p class="form-hint">Format: client_model:backend_model (comma-separated)</p>
+          class="form-input form-textarea"
+          rows="5"
+          placeholder="{&#10;  &quot;gpt-4o&quot;: &quot;azure-gpt-4o&quot;&#10;}"
+        ></textarea>
+        <p class="form-hint">JSON object: client model to upstream model.</p>
+        <p v-if="modelMappingError" class="form-error">{{ modelMappingError }}</p>
       </div>
     </div>
 
@@ -61,10 +74,10 @@
         <label class="form-label" for="proxy">SOCKS Proxy</label>
         <select
           id="proxy"
-          v-model="formData.socks_proxy_id"
+          v-model.number="formData.proxy_id"
           class="form-select"
         >
-          <option :value="null">No Proxy</option>
+          <option :value="0">No Proxy</option>
           <option
             v-for="proxy in proxies"
             :key="proxy.id"
@@ -93,42 +106,6 @@
           />
           <p class="form-hint">Load balancing weight (1-100)</p>
         </div>
-
-        <div class="form-group">
-          <label class="form-label" for="priority">Priority</label>
-          <input
-            id="priority"
-            v-model.number="formData.priority"
-            type="number"
-            min="1"
-            max="10"
-            class="form-input"
-          />
-          <p class="form-hint">Routing priority (1=highest)</p>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label" for="max-rpm">Max RPM</label>
-        <input
-          id="max-rpm"
-          v-model.number="formData.max_requests_per_minute"
-          type="number"
-          min="0"
-          class="form-input"
-          placeholder="0 = unlimited"
-        />
-      </div>
-
-      <div class="form-group checkbox-group">
-        <label class="checkbox-label">
-          <input
-            v-model="formData.enabled"
-            type="checkbox"
-            class="form-checkbox"
-          />
-          <span>Enabled</span>
-        </label>
       </div>
     </div>
 
@@ -148,6 +125,11 @@
 import { ref, computed, watch } from 'vue'
 import Button from '@/components/ui/Button.vue'
 import type { Backend, SocksProxy, CreateBackendRequest } from '@/api'
+import {
+  formatModelMappingForInput,
+  normalizeBackendProxyId,
+  parseModelMappingInput,
+} from './backendPayload'
 
 interface Props {
   backend?: Backend
@@ -166,29 +148,73 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
-const formData = ref<CreateBackendRequest>({
+interface BackendFormData {
+  name: string
+  protocol: 'openai' | 'anthropic'
+  base_url: string
+  api_key: string
+  model_mapping: string
+  proxy_id: number
+  weight: number
+  models: string[]
+  endpoints: string[]
+  console_url?: string
+  tags?: string[]
+  console_username?: string
+  console_password?: string
+  notes?: string
+}
+
+const defaultFormData = (): BackendFormData => ({
   name: '',
+  protocol: 'openai',
   base_url: '',
   api_key: '',
   model_mapping: '',
-  socks_proxy_id: null,
+  proxy_id: 0,
   weight: 10,
-  priority: 5,
-  max_requests_per_minute: 0,
-  enabled: true
+  models: [],
+  endpoints: []
+})
+
+const formData = ref<BackendFormData>(defaultFormData())
+
+const modelMappingError = computed(() => {
+  try {
+    parseModelMappingInput(formData.value.model_mapping)
+    return ''
+  } catch (err) {
+    return err instanceof Error ? err.message : 'Model mapping is invalid'
+  }
 })
 
 const isValid = computed(() => {
   return !!(
     formData.value.name?.trim() &&
     formData.value.base_url?.trim() &&
-    formData.value.api_key?.trim()
+    formData.value.api_key?.trim() &&
+    !modelMappingError.value
   )
 })
 
 const handleSubmit = () => {
   if (!isValid.value) return
-  emit('submit', formData.value)
+  emit('submit', {
+    name: formData.value.name.trim(),
+    protocol: formData.value.protocol,
+    base_url: formData.value.base_url.trim(),
+    api_key: formData.value.api_key,
+    console_url: formData.value.console_url || '',
+    tags: formData.value.tags || [],
+    console_username: formData.value.console_username || '',
+    console_password: formData.value.console_password || '',
+    notes: formData.value.notes || '',
+    proxy_id: formData.value.proxy_id || 0,
+    weight: formData.value.weight,
+    models: formData.value.models || [],
+    model_mapping: parseModelMappingInput(formData.value.model_mapping),
+    endpoints: formData.value.endpoints || []
+  })
 }
 
 // Initialize form with existing backend data
@@ -196,15 +222,22 @@ watch(() => props.backend, (backend) => {
   if (backend) {
     formData.value = {
       name: backend.name,
+      protocol: backend.protocol || 'openai',
       base_url: backend.base_url,
       api_key: backend.api_key || '',
-      model_mapping: backend.model_mapping || '',
-      socks_proxy_id: backend.socks_proxy_id,
+      model_mapping: formatModelMappingForInput(backend.model_mapping),
+      proxy_id: normalizeBackendProxyId(backend),
       weight: backend.weight,
-      priority: backend.priority,
-      max_requests_per_minute: backend.max_requests_per_minute || 0,
-      enabled: backend.enabled
+      models: backend.models || [],
+      endpoints: backend.endpoints || [],
+      console_url: backend.console_url || '',
+      tags: backend.tags || [],
+      console_username: backend.console_username || '',
+      console_password: backend.console_password || '',
+      notes: backend.notes || ''
     }
+  } else {
+    formData.value = defaultFormData()
   }
 }, { immediate: true })
 </script>
@@ -258,6 +291,13 @@ watch(() => props.backend, (backend) => {
   transition: all 150ms ease;
 }
 
+.form-textarea {
+  min-height: 112px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.5;
+}
+
 .form-input:focus,
 .form-select:focus {
   outline: none;
@@ -272,6 +312,11 @@ watch(() => props.backend, (backend) => {
 .form-hint {
   font-size: 12px;
   color: var(--text-tertiary);
+}
+
+.form-error {
+  font-size: 12px;
+  color: var(--danger);
 }
 
 .checkbox-group {

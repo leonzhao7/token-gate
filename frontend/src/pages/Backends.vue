@@ -139,6 +139,11 @@ import BackendList from '@/components/backends/BackendList.vue'
 import BackendForm from '@/components/backends/BackendForm.vue'
 import { useBackendsStore } from '@/stores/backends'
 import { backendsApi, proxiesApi, type Backend, type CreateBackendRequest, type SocksProxy } from '@/api'
+import {
+  formatModelMappingForInput,
+  normalizeBackendProxyId,
+  parseModelMappingInput,
+} from '@/components/backends/backendPayload'
 
 const backendsStore = useBackendsStore()
 
@@ -287,13 +292,19 @@ const handleToggleStatus = async (backend: Backend) => {
       name: backend.name,
       base_url: backend.base_url,
       api_key: backend.api_key || '',
+      console_url: backend.console_url || '',
+      tags: backend.tags || [],
+      console_username: backend.console_username || '',
+      console_password: backend.console_password || '',
+      notes: backend.notes || '',
       status: nextStatus,
       weight: backend.weight,
-      models: backend.models,
-      tags: backend.tags,
+      models: backend.models || [],
+      model_mapping: parseModelMappingInput(formatModelMappingForInput(backend.model_mapping)),
+      endpoints: backend.endpoints || [],
       protocol: backend.protocol,
-      proxy_id: backend.proxy?.id || 0,
-    } as any)
+      proxy_id: normalizeBackendProxyId(backend),
+    })
     await backendsStore.fetchBackends()
   } catch (err: any) {
     alert(err.message || 'Status update failed')
