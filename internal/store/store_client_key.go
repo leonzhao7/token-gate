@@ -126,13 +126,10 @@ func (s *Store) UpdateClientKey(ctx context.Context, client domain.ClientKey) (d
 
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE client_keys
-		SET name = ?, token_hash = ?, token = ?, token_prefix = ?, allowed_models = ?, enabled = ?, updated_at = ?
+		SET name = ?, allowed_models = ?, enabled = ?, updated_at = ?
 		WHERE id = ?
 	`,
 		strings.TrimSpace(client.Name),
-		client.TokenHash,
-		strings.TrimSpace(client.Token),
-		client.TokenPrefix,
 		client.AllowedModels,
 		boolToInt(client.Enabled),
 		formatTime(now),

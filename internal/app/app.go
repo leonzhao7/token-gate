@@ -1648,14 +1648,6 @@ func (a *App) handleUpdateClientKey(w http.ResponseWriter, r *http.Request) {
 	client.AllowedModels = payload.AllowedModels
 	client.Enabled = payload.Enabled
 
-	issuedToken := ""
-	if strings.TrimSpace(payload.Token) != "" && strings.TrimSpace(payload.Token) != client.Token {
-		issuedToken = strings.TrimSpace(payload.Token)
-		client.TokenHash = store.HashToken(issuedToken)
-		client.Token = issuedToken
-		client.TokenPrefix = tokenPrefix(issuedToken)
-	}
-
 	updated, err := a.store.UpdateClientKey(r.Context(), client)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -1663,7 +1655,7 @@ func (a *App) handleUpdateClientKey(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"client":       updated,
-		"issued_token": issuedToken,
+		"issued_token": payload.Token,
 	})
 }
 
