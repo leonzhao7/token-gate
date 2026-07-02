@@ -139,21 +139,106 @@ export interface AuditEvent {
 }
 
 export interface DashboardSummary {
-  backends_total: number
-  backends_healthy: number
-  backends_abnormal: number
-  client_keys_total: number
-  client_keys_active_24h: number
-  requests_24h: number
-  requests_growth: number
-  error_rate: number
-  recent_errors: number
+  cards?: Record<string, {
+    count: number
+    enabled?: number
+    successes?: number
+    failures?: number
+  }>
+  counts: {
+    backends: number
+    client_keys: number
+    socks_proxies: number
+  }
+  growth: {
+    requests: number
+    errors: number
+  }
+  status: {
+    healthy_backends: number
+    recent_errors: number
+    active_clients: number
+  }
+  sparkline: Array<{
+    label: string
+    requests: number
+  }>
 }
 
 export interface UsageData {
   timestamp: string
   success_count: number
   failure_count: number
+}
+
+export interface DashboardUsagePoint {
+  label: string
+  requests: number
+  successes?: number
+  failures?: number
+  latency_ms?: number
+  traffic_bytes?: number
+  error_rate: number
+}
+
+export interface DashboardUsageResponse {
+  range: string
+  series: DashboardUsagePoint[]
+}
+
+export interface DashboardActivityResponse {
+  events: AuditEvent[]
+  usage: UsageLog[]
+  usage_logs: UsageLog[]
+  summary: Array<{
+    category: string
+    count: number
+  }>
+}
+
+export interface BackendHourlyModelStatsItem {
+  backend_id: number
+  backend: string
+  model: string
+  hour: string
+  requests: number
+  successes: number
+  failures: number
+  input_tokens: number
+  output_tokens: number
+  input_cache_tokens: number
+  success_avg_duration_ms: number
+  success_request_bytes: number
+  success_response_bytes: number
+}
+
+export interface BackendHourlyModelStatsResponse {
+  query: {
+    backend: string | null
+    model: string | null
+    start_hour: string | null
+    end_hour: string | null
+  }
+  scope: {
+    backends: Array<{
+      id: number
+      name: string
+    }>
+    models: string[]
+    time_range: {
+      start_hour: string | null
+      end_hour: string | null
+      timezone: string
+    }
+  }
+  items: BackendHourlyModelStatsItem[]
+}
+
+export interface BackendHourlyModelStatsParams {
+  backend?: string
+  model?: string
+  start_hour?: string
+  end_hour?: string
 }
 
 export interface Config {
