@@ -39,6 +39,17 @@ test('parses model mapping JSON into the backend API object shape', async () => 
   assert.throws(() => parseModelMappingInput('gpt-4o:azure-gpt-4o'), /valid JSON object/)
 })
 
+test('parses comma-separated backend models into the backend API array shape', async () => {
+  const { parseModelListInput } = await loadModule()
+
+  assert.deepEqual(parseModelListInput(' gpt-4o, claude-3-5-sonnet, , gpt-image-* '), [
+    'gpt-4o',
+    'claude-3-5-sonnet',
+    'gpt-image-*',
+  ])
+  assert.deepEqual(parseModelListInput(''), [])
+})
+
 test('normalizes proxy id from current and legacy backend payloads', async () => {
   const { normalizeBackendProxyId } = await loadModule()
 

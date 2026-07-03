@@ -58,6 +58,13 @@ export const parseModelMappingInput = (value: string): Record<string, string> =>
   return toStringMap(parsed)
 }
 
+export const parseModelListInput = (value: string): string[] => {
+  return value
+    .split(',')
+    .map((model) => model.trim())
+    .filter(Boolean)
+}
+
 export const normalizeBackendProxyId = (backend: BackendProxyLike): number => {
   const proxyId = backend.proxy_id
   if (typeof proxyId === 'number' && proxyId > 0) return proxyId

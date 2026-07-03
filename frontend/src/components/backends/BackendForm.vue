@@ -53,6 +53,19 @@
       </div>
 
       <div class="form-group">
+        <label class="form-label" for="models">Models *</label>
+        <input
+          id="models"
+          v-model="formData.models"
+          type="text"
+          class="form-input"
+          placeholder="gpt-4o, claude-3-5-sonnet, gpt-image-*"
+          required
+        />
+        <p class="form-hint">Comma-separated client model names this backend can serve.</p>
+      </div>
+
+      <div class="form-group">
         <label class="form-label" for="model">Model Mapping</label>
         <textarea
           id="model"
@@ -128,6 +141,7 @@ import type { Backend, SocksProxy, CreateBackendRequest } from '@/api'
 import {
   formatModelMappingForInput,
   normalizeBackendProxyId,
+  parseModelListInput,
   parseModelMappingInput,
 } from './backendPayload'
 
@@ -156,7 +170,7 @@ interface BackendFormData {
   model_mapping: string
   proxy_id: number
   weight: number
-  models: string[]
+  models: string
   endpoints: string[]
   console_url?: string
   tags?: string[]
@@ -173,7 +187,7 @@ const defaultFormData = (): BackendFormData => ({
   model_mapping: '',
   proxy_id: 0,
   weight: 10,
-  models: [],
+  models: '',
   endpoints: []
 })
 
@@ -193,6 +207,7 @@ const isValid = computed(() => {
     formData.value.name?.trim() &&
     formData.value.base_url?.trim() &&
     formData.value.api_key?.trim() &&
+    parseModelListInput(formData.value.models).length > 0 &&
     !modelMappingError.value
   )
 })
@@ -211,7 +226,7 @@ const handleSubmit = () => {
     notes: formData.value.notes || '',
     proxy_id: formData.value.proxy_id || 0,
     weight: formData.value.weight,
-    models: formData.value.models || [],
+    models: parseModelListInput(formData.value.models),
     model_mapping: parseModelMappingInput(formData.value.model_mapping),
     endpoints: formData.value.endpoints || []
   })
@@ -228,7 +243,7 @@ watch(() => props.backend, (backend) => {
       model_mapping: formatModelMappingForInput(backend.model_mapping),
       proxy_id: normalizeBackendProxyId(backend),
       weight: backend.weight,
-      models: backend.models || [],
+      models: (backend.models || []).join(', '),
       endpoints: backend.endpoints || [],
       console_url: backend.console_url || '',
       tags: backend.tags || [],
