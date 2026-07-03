@@ -137,7 +137,7 @@ func (a *ClientKeyHandler) HandleUpdateClientKey(w http.ResponseWriter, r *http.
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"client":       updated,
-		"issued_token": payload.Token,
+		"issued_token": "",
 	})
 }
 

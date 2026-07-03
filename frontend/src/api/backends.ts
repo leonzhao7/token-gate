@@ -6,7 +6,9 @@ import type {
   BackendFilters,
   ListResponse,
   BackendImportExportPayload,
-  BackendImportResponse
+  BackendImportResponse,
+  BackendConsoleCheckinResponse,
+  BackendConsolePricingResponse
 } from './types'
 
 export const backendsApi = {
@@ -52,6 +54,16 @@ export const backendsApi = {
 
   async importAll(payload: BackendImportExportPayload): Promise<BackendImportResponse> {
     const { data } = await apiClient.post<BackendImportResponse>('/backends/import', payload)
+    return data
+  },
+
+  async checkin(id: number): Promise<BackendConsoleCheckinResponse> {
+    const { data } = await apiClient.post<BackendConsoleCheckinResponse>(`/backends/${id}/console/checkin`)
+    return data
+  },
+
+  async pricing(id: number): Promise<BackendConsolePricingResponse> {
+    const { data } = await apiClient.post<BackendConsolePricingResponse>(`/backends/${id}/console/pricing`)
     return data
   }
 }

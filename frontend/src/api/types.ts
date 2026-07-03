@@ -6,6 +6,7 @@ export interface Backend {
   base_url: string
   api_key: string
   protocol: 'openai' | 'anthropic'
+  backend_type?: 'new-api'
   weight: number
   priority?: number
   max_requests_per_minute?: number
@@ -18,6 +19,9 @@ export interface Backend {
   console_url?: string
   console_username?: string
   console_password?: string
+  console_cookie?: string
+  console_account_json?: string
+  console_pricing_json?: string
   tags?: string[]
   notes?: string
   created_at: string
@@ -256,9 +260,11 @@ export interface Config {
 export interface CreateBackendRequest {
   name: string
   protocol?: 'openai' | 'anthropic'
+  backend_type?: 'new-api'
   base_url: string
   api_key: string
   console_url?: string
+  console_cookie?: string
   tags?: string[]
   console_username?: string
   console_password?: string
@@ -278,9 +284,13 @@ export interface UpdateBackendRequest extends Partial<CreateBackendRequest> {
 export interface BackendImportExportItem {
   name: string
   protocol: 'openai' | 'anthropic'
+  backend_type?: 'new-api'
   base_url: string
   api_key: string
   console_url?: string
+  console_cookie?: string
+  console_account_json?: string
+  console_pricing_json?: string
   tags?: string[]
   console_username?: string
   console_password?: string
@@ -301,6 +311,17 @@ export interface BackendImportExportPayload {
 export interface BackendImportResponse {
   imported: number
   backends: Backend[]
+}
+
+export interface BackendConsoleCheckinResponse {
+  backend: Backend
+  checkin?: Record<string, any>
+  account?: Record<string, any>
+}
+
+export interface BackendConsolePricingResponse {
+  backend: Backend
+  pricing?: Record<string, any>
 }
 
 export interface CreateProxyRequest {

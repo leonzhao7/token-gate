@@ -2485,6 +2485,193 @@ func TestAdminBackendCreateUpdateAndListIncludeConsoleMetadata(t *testing.T) {
 	}
 }
 
+func TestAdminBackendNewAPIConsoleCheckinUsesSavedCookieAndRefreshesBalance(t *testing.T) {
+	application := newTestApp(t)
+
+	var calls []string
+	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		if r.Header.Get("Cookie") != "session=valid" {
+			t.Fatalf("expected saved cookie, got %q", r.Header.Get("Cookie"))
+		}
+		switch r.URL.Path {
+		case "/api/user/checkin":
+			if r.Method != http.MethodPost {
+				t.Fatalf("expected POST checkin, got %s", r.Method)
+			}
+			if r.Header.Get("New-Api-User") != "1929" {
+				t.Fatalf("expected New-Api-User header 1929, got %q", r.Header.Get("New-Api-User"))
+			}
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"message":"ok"}`), nil
+		case "/api/user/self":
+			if r.Method != http.MethodGet {
+				t.Fatalf("expected GET self, got %s", r.Method)
+			}
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"username":"tom","id":1929,"quota":248540,"used_quota":3250000,"email":"hidden@example.com"}}`), nil
+		default:
+			t.Fatalf("unexpected console path %s", r.URL.Path)
+		}
+		return nil, errors.New("unreachable console path")
+	})})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:            "new-api-console",
+		Protocol:        domain.BackendProtocolOpenAI,
+		BackendType:     domain.BackendTypeNewAPI,
+		BaseURL:         "https://new-api.local/v1",
+		APIKey:          "backend-key",
+		ConsoleURL:      "https://console.local",
+		ConsoleUsername: "tom",
+		ConsolePassword: "tom_passwd",
+		ConsoleCookie:   "session=valid",
+		Models:          []string{"gpt-4o"},
+		Endpoints:       []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/checkin", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected checkin status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	updated, err := application.store.GetBackend(context.Background(), backend.ID)
+	if err != nil {
+		t.Fatalf("get updated backend: %v", err)
+	}
+	account := decodeJSONPayload(t, updated.ConsoleAccountJSON)
+	if account["username"] != "tom" || account["id"] != float64(1929) || account["quota"] != float64(248540) || account["used_quota"] != float64(3250000) {
+		t.Fatalf("expected saved account summary, got %#v", account)
+	}
+	if _, ok := account["email"]; ok {
+		t.Fatalf("expected account summary to exclude email, got %#v", account)
+	}
+	if !reflect.DeepEqual(calls, []string{"GET /api/user/self", "POST /api/user/checkin", "GET /api/user/self"}) {
+		t.Fatalf("unexpected console call sequence: %#v", calls)
+	}
+}
+
+func TestAdminBackendNewAPIConsoleCheckinLogsInWhenCookieExpired(t *testing.T) {
+	application := newTestApp(t)
+
+	var calls []string
+	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		switch r.URL.Path {
+		case "/api/user/checkin":
+			if r.Header.Get("Cookie") != "theme=dark; session=fresh" {
+				t.Fatalf("expected refreshed session cookie, got %q", r.Header.Get("Cookie"))
+			}
+			if r.Header.Get("New-Api-User") != "1929" {
+				t.Fatalf("expected New-Api-User header 1929, got %q", r.Header.Get("New-Api-User"))
+			}
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"message":"checked in"}`), nil
+		case "/api/user/login":
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read login body: %v", err)
+			}
+			if string(body) != `{"username":"tom","password":"tom_passwd"}`+"\n" && string(body) != `{"username":"tom","password":"tom_passwd"}` {
+				t.Fatalf("unexpected login body %q", string(body))
+			}
+			return consoleJSONResponse(http.StatusOK, http.Header{"Set-Cookie": []string{"session=fresh; Path=/; HttpOnly"}}, `{"success":true,"message":"logged in"}`), nil
+		case "/api/user/self":
+			if len(calls) == 1 {
+				if r.Header.Get("Cookie") != "theme=dark; session=expired" {
+					t.Fatalf("expected expired saved cookie for initial self, got %q", r.Header.Get("Cookie"))
+				}
+				return consoleJSONResponse(http.StatusOK, nil, `{"success":false,"message":"未登录"}`), nil
+			}
+			if r.Header.Get("Cookie") != "theme=dark; session=fresh" {
+				t.Fatalf("expected refreshed cookie for self, got %q", r.Header.Get("Cookie"))
+			}
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"username":"tom","id":1929,"quota":200,"used_quota":50}}`), nil
+		default:
+			t.Fatalf("unexpected console path %s", r.URL.Path)
+		}
+		return nil, errors.New("unreachable console path")
+	})})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:            "new-api-expired-cookie",
+		Protocol:        domain.BackendProtocolOpenAI,
+		BackendType:     domain.BackendTypeNewAPI,
+		BaseURL:         "https://new-api.local/v1",
+		APIKey:          "backend-key",
+		ConsoleURL:      "https://console.local",
+		ConsoleUsername: "tom",
+		ConsolePassword: "tom_passwd",
+		ConsoleCookie:   "theme=dark; session=expired",
+		Models:          []string{"gpt-4o"},
+		Endpoints:       []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/checkin", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected checkin status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	updated, err := application.store.GetBackend(context.Background(), backend.ID)
+	if err != nil {
+		t.Fatalf("get updated backend: %v", err)
+	}
+	if updated.ConsoleCookie != "theme=dark; session=fresh" {
+		t.Fatalf("expected saved cookie to merge session, got %q", updated.ConsoleCookie)
+	}
+	account := decodeJSONPayload(t, updated.ConsoleAccountJSON)
+	if account["quota"] != float64(200) || account["used_quota"] != float64(50) {
+		t.Fatalf("expected refreshed account summary, got %#v", account)
+	}
+	if !reflect.DeepEqual(calls, []string{"GET /api/user/self", "POST /api/user/login", "GET /api/user/self", "POST /api/user/checkin", "GET /api/user/self"}) {
+		t.Fatalf("unexpected console call sequence: %#v", calls)
+	}
+}
+
+func TestAdminBackendNewAPIConsolePricingSavesModelPlazaJSON(t *testing.T) {
+	application := newTestApp(t)
+
+	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/pricing" {
+			t.Fatalf("unexpected pricing request %s %s", r.Method, r.URL.Path)
+		}
+		return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"pricing_version":"2026-07-03","vendors":[{"name":"openai","models":["gpt-4o"]}],"group_ratio":{"default":1}}}`), nil
+	})})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:          "new-api-pricing",
+		Protocol:      domain.BackendProtocolOpenAI,
+		BackendType:   domain.BackendTypeNewAPI,
+		BaseURL:       "https://new-api.local/v1",
+		APIKey:        "backend-key",
+		ConsoleURL:    "https://console.local",
+		ConsoleCookie: "session=valid",
+		Models:        []string{"routed-model"},
+		Endpoints:     []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/pricing", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected pricing status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	updated, err := application.store.GetBackend(context.Background(), backend.ID)
+	if err != nil {
+		t.Fatalf("get updated backend: %v", err)
+	}
+	pricing := decodeJSONPayload(t, updated.ConsolePricingJSON)
+	data, ok := pricing["data"].(map[string]any)
+	if !ok || data["pricing_version"] != "2026-07-03" {
+		t.Fatalf("expected saved pricing payload, got %#v", pricing)
+	}
+	if !reflect.DeepEqual(updated.Models, []string{"routed-model"}) {
+		t.Fatalf("pricing sync must not change scheduler models, got %#v", updated.Models)
+	}
+}
+
 func TestBackendListIncludesHourlyCountersAndDetailMetadata(t *testing.T) {
 	application := newTestApp(t)
 	ctx := context.Background()
@@ -2493,14 +2680,23 @@ func TestBackendListIncludesHourlyCountersAndDetailMetadata(t *testing.T) {
 		Name:            "relay-hourly",
 		BaseURL:         "https://relay-hourly.local/v1",
 		APIKey:          "hourly-key",
+		BackendType:     domain.BackendTypeNewAPI,
 		ConsoleURL:      "https://console.relay-hourly.local",
+		ConsoleCookie:   "session=hourly-secret; theme=dark",
 		Tags:            []string{"night"},
 		ConsoleUsername: "console-user",
 		ConsolePassword: "console-pass",
-		Notes:           "night shift",
-		Weight:          1,
-		Models:          []string{"gpt-4o"},
-		Endpoints:       []string{domain.EndpointChat},
+		ConsoleAccountJSON: `{
+			"username": "console-user",
+			"id": 1929,
+			"quota": 248540,
+			"used_quota": 3250000
+		}`,
+		ConsolePricingJSON: `{"data":{"gpt-4o":{"model_ratio":1}}}`,
+		Notes:              "night shift",
+		Weight:             1,
+		Models:             []string{"gpt-4o"},
+		Endpoints:          []string{domain.EndpointChat},
 	})
 
 	now := time.Now().UTC()
@@ -2590,8 +2786,14 @@ func TestBackendListIncludesHourlyCountersAndDetailMetadata(t *testing.T) {
 	if overview["console_url"] != "https://console.relay-hourly.local" {
 		t.Fatalf("expected console url in overview, got %#v", overview)
 	}
+	if overview["backend_type"] != domain.BackendTypeNewAPI {
+		t.Fatalf("expected backend type in overview, got %#v", overview)
+	}
 	if overview["console_username"] != "console-user" || overview["console_password"] != "set" {
 		t.Fatalf("expected console credentials in overview, got %#v", overview)
+	}
+	if overview["console_cookie"] != "set" {
+		t.Fatalf("expected console cookie presence in overview, got %#v", overview)
 	}
 	if overview["proxy"] != "direct" {
 		t.Fatalf("expected proxy summary in overview, got %#v", overview)
@@ -2602,10 +2804,25 @@ func TestBackendListIncludesHourlyCountersAndDetailMetadata(t *testing.T) {
 	if configuration["notes"] != "night shift" {
 		t.Fatalf("expected notes in configuration, got %#v", configuration)
 	}
+	account, ok := configuration["console_account"].(map[string]any)
+	if !ok || account["username"] != "console-user" || account["quota"] != float64(248540) {
+		t.Fatalf("expected console account json in configuration, got %#v", configuration)
+	}
+	pricing, ok := configuration["console_pricing"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected console pricing json in configuration, got %#v", configuration)
+	}
+	pricingData, ok := pricing["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected console pricing data map, got %#v", pricing)
+	}
+	if _, ok := pricingData["gpt-4o"].(map[string]any); !ok {
+		t.Fatalf("expected console pricing model plaza data, got %#v", pricing)
+	}
 	if detailPayload.Raw.ConsoleURL != "https://console.relay-hourly.local" || detailPayload.Raw.Notes != "night shift" {
 		t.Fatalf("expected raw console metadata, got %#v", detailPayload.Raw)
 	}
-	if detailPayload.Raw.APIKey != "set" || detailPayload.Raw.ConsolePassword != "set" {
+	if detailPayload.Raw.APIKey != "set" || detailPayload.Raw.ConsolePassword != "set" || detailPayload.Raw.ConsoleCookie != "set" {
 		t.Fatalf("expected masked raw secrets, got %#v", detailPayload.Raw)
 	}
 }
@@ -4642,6 +4859,35 @@ func detailEntriesToMap(entries []resourceDetailEntry) map[string]any {
 		values[entry.Key] = entry.Value
 	}
 	return values
+}
+
+func decodeJSONPayload(t *testing.T, raw string) map[string]any {
+	t.Helper()
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("decode json payload %q: %v", raw, err)
+	}
+	return payload
+}
+
+type consoleRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f consoleRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func consoleJSONResponse(status int, header http.Header, body string) *http.Response {
+	if header == nil {
+		header = http.Header{}
+	}
+	header.Set("Content-Type", "application/json")
+	return &http.Response{
+		StatusCode: status,
+		Status:     http.StatusText(status),
+		Header:     header,
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
 }
 
 type searchResultAssertion struct {

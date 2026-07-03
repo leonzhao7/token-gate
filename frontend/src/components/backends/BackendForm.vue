@@ -41,6 +41,17 @@
       </div>
 
       <div class="form-group">
+        <label class="form-label" for="backend-type">Backend Type</label>
+        <select
+          id="backend-type"
+          v-model="formData.backend_type"
+          class="form-select"
+        >
+          <option value="new-api">new-api</option>
+        </select>
+      </div>
+
+      <div class="form-group">
         <label class="form-label" for="api-key">API Key *</label>
         <input
           id="api-key"
@@ -76,6 +87,56 @@
         ></textarea>
         <p class="form-hint">JSON object: client model to upstream model.</p>
         <p v-if="modelMappingError" class="form-error">{{ modelMappingError }}</p>
+      </div>
+    </div>
+
+    <!-- Console Settings -->
+    <div class="form-section">
+      <h3 class="section-title">Console Settings</h3>
+
+      <div class="form-group">
+        <label class="form-label" for="console-url">Console URL</label>
+        <input
+          id="console-url"
+          v-model="formData.console_url"
+          type="url"
+          class="form-input"
+          placeholder="https://console.example.com"
+        />
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="console-username">Console Username</label>
+          <input
+            id="console-username"
+            v-model="formData.console_username"
+            type="text"
+            class="form-input"
+            placeholder="tom"
+          />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="console-password">Console Password</label>
+          <input
+            id="console-password"
+            v-model="formData.console_password"
+            type="password"
+            class="form-input"
+            placeholder="tom_passwd"
+          />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="console-cookie">Console Cookie</label>
+        <textarea
+          id="console-cookie"
+          v-model="formData.console_cookie"
+          class="form-input form-textarea"
+          rows="3"
+          placeholder="session=..."
+        ></textarea>
       </div>
     </div>
 
@@ -165,6 +226,7 @@ const emit = defineEmits<{
 interface BackendFormData {
   name: string
   protocol: 'openai' | 'anthropic'
+  backend_type: 'new-api'
   base_url: string
   api_key: string
   model_mapping: string
@@ -172,23 +234,29 @@ interface BackendFormData {
   weight: number
   models: string
   endpoints: string[]
-  console_url?: string
+  console_url: string
+  console_cookie: string
   tags?: string[]
-  console_username?: string
-  console_password?: string
+  console_username: string
+  console_password: string
   notes?: string
 }
 
 const defaultFormData = (): BackendFormData => ({
   name: '',
   protocol: 'openai',
+  backend_type: 'new-api',
   base_url: '',
   api_key: '',
   model_mapping: '',
   proxy_id: 0,
   weight: 10,
   models: '',
-  endpoints: []
+  endpoints: [],
+  console_url: '',
+  console_cookie: '',
+  console_username: '',
+  console_password: ''
 })
 
 const formData = ref<BackendFormData>(defaultFormData())
@@ -217,12 +285,14 @@ const handleSubmit = () => {
   emit('submit', {
     name: formData.value.name.trim(),
     protocol: formData.value.protocol,
+    backend_type: formData.value.backend_type,
     base_url: formData.value.base_url.trim(),
     api_key: formData.value.api_key,
-    console_url: formData.value.console_url || '',
+    console_url: formData.value.console_url.trim(),
+    console_cookie: formData.value.console_cookie.trim(),
     tags: formData.value.tags || [],
-    console_username: formData.value.console_username || '',
-    console_password: formData.value.console_password || '',
+    console_username: formData.value.console_username.trim(),
+    console_password: formData.value.console_password.trim(),
     notes: formData.value.notes || '',
     proxy_id: formData.value.proxy_id || 0,
     weight: formData.value.weight,
@@ -238,6 +308,7 @@ watch(() => props.backend, (backend) => {
     formData.value = {
       name: backend.name,
       protocol: backend.protocol || 'openai',
+      backend_type: backend.backend_type || 'new-api',
       base_url: backend.base_url,
       api_key: backend.api_key || '',
       model_mapping: formatModelMappingForInput(backend.model_mapping),
@@ -246,6 +317,7 @@ watch(() => props.backend, (backend) => {
       models: (backend.models || []).join(', '),
       endpoints: backend.endpoints || [],
       console_url: backend.console_url || '',
+      console_cookie: backend.console_cookie || '',
       tags: backend.tags || [],
       console_username: backend.console_username || '',
       console_password: backend.console_password || '',

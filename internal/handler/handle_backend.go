@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -16,11 +18,16 @@ import (
 )
 
 type BackendHandler struct {
-	store *store.Store
+	store             *store.Store
+	consoleHTTPClient *http.Client
 }
 
 func NewBackendHandler(st *store.Store) *BackendHandler {
 	return &BackendHandler{store: st}
+}
+
+func (h *BackendHandler) SetConsoleHTTPClient(client *http.Client) {
+	h.consoleHTTPClient = client
 }
 
 type BackendView struct {
@@ -48,12 +55,16 @@ type backendImportExportPayload struct {
 type backendImportExportItem struct {
 	Name                string            `json:"name"`
 	Protocol            string            `json:"protocol"`
+	BackendType         string            `json:"backend_type"`
 	BaseURL             string            `json:"base_url"`
 	APIKey              string            `json:"api_key"`
 	ConsoleURL          string            `json:"console_url"`
 	Tags                []string          `json:"tags"`
 	ConsoleUsername     string            `json:"console_username"`
 	ConsolePassword     string            `json:"console_password"`
+	ConsoleCookie       string            `json:"console_cookie"`
+	ConsoleAccountJSON  string            `json:"console_account_json"`
+	ConsolePricingJSON  string            `json:"console_pricing_json"`
 	Notes               string            `json:"notes"`
 	ProxyID             int64             `json:"proxy_id"`
 	Status              string            `json:"status"`
@@ -209,12 +220,14 @@ func (h *BackendHandler) HandleCreateBackend(w http.ResponseWriter, r *http.Requ
 	var payload struct {
 		Name            string            `json:"name"`
 		Protocol        string            `json:"protocol"`
+		BackendType     string            `json:"backend_type"`
 		BaseURL         string            `json:"base_url"`
 		APIKey          string            `json:"api_key"`
 		ConsoleURL      string            `json:"console_url"`
 		Tags            []string          `json:"tags"`
 		ConsoleUsername string            `json:"console_username"`
 		ConsolePassword string            `json:"console_password"`
+		ConsoleCookie   string            `json:"console_cookie"`
 		Notes           string            `json:"notes"`
 		ProxyID         int64             `json:"proxy_id"`
 		Status          string            `json:"status"`
@@ -245,12 +258,14 @@ func (h *BackendHandler) HandleCreateBackend(w http.ResponseWriter, r *http.Requ
 	backend, err := h.store.CreateBackend(r.Context(), domain.Backend{
 		Name:            payload.Name,
 		Protocol:        domain.NormalizeBackendProtocol(payload.Protocol),
+		BackendType:     domain.NormalizeBackendType(payload.BackendType),
 		BaseURL:         payload.BaseURL,
 		APIKey:          payload.APIKey,
 		ConsoleURL:      payload.ConsoleURL,
 		Tags:            payload.Tags,
 		ConsoleUsername: payload.ConsoleUsername,
 		ConsolePassword: payload.ConsolePassword,
+		ConsoleCookie:   payload.ConsoleCookie,
 		Notes:           payload.Notes,
 		ProxyID:         payload.ProxyID,
 		Weight:          payload.Weight,
@@ -286,12 +301,14 @@ func (h *BackendHandler) HandleUpdateBackend(w http.ResponseWriter, r *http.Requ
 	var payload struct {
 		Name            string            `json:"name"`
 		Protocol        string            `json:"protocol"`
+		BackendType     string            `json:"backend_type"`
 		BaseURL         string            `json:"base_url"`
 		APIKey          string            `json:"api_key"`
 		ConsoleURL      string            `json:"console_url"`
 		Tags            []string          `json:"tags"`
 		ConsoleUsername string            `json:"console_username"`
 		ConsolePassword string            `json:"console_password"`
+		ConsoleCookie   string            `json:"console_cookie"`
 		Notes           string            `json:"notes"`
 		ProxyID         int64             `json:"proxy_id"`
 		Status          string            `json:"status"`
@@ -323,6 +340,7 @@ func (h *BackendHandler) HandleUpdateBackend(w http.ResponseWriter, r *http.Requ
 	if strings.TrimSpace(payload.Protocol) != "" {
 		current.Protocol = domain.NormalizeBackendProtocol(payload.Protocol)
 	}
+	current.BackendType = domain.NormalizeBackendType(payload.BackendType)
 	current.BaseURL = payload.BaseURL
 	if strings.TrimSpace(payload.APIKey) != "" {
 		current.APIKey = payload.APIKey
@@ -331,6 +349,7 @@ func (h *BackendHandler) HandleUpdateBackend(w http.ResponseWriter, r *http.Requ
 	current.Tags = payload.Tags
 	current.ConsoleUsername = payload.ConsoleUsername
 	current.ConsolePassword = payload.ConsolePassword
+	current.ConsoleCookie = payload.ConsoleCookie
 	current.Notes = payload.Notes
 	current.ProxyID = payload.ProxyID
 	switch payload.Status {
@@ -361,6 +380,115 @@ func (h *BackendHandler) HandleUpdateBackend(w http.ResponseWriter, r *http.Requ
 		BackendName: backend.Name,
 	})
 	writeJSON(w, http.StatusOK, backend)
+}
+
+func (h *BackendHandler) HandleBackendConsoleCheckin(w http.ResponseWriter, r *http.Request) {
+	backend, err := h.consoleBackend(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	selfResult, backend, err := h.newAPIConsoleSelfWithLogin(r.Context(), backend)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	accountID := consoleAccountID(selfResult.Payload)
+	if accountID == "" {
+		writeError(w, http.StatusBadGateway, "new-api self response missing user id")
+		return
+	}
+
+	result, err := h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodPost, "/api/user/checkin", nil, backend.ConsoleCookie, accountID)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	if result.loginRequired() {
+		backend, err = h.loginNewAPIConsole(r.Context(), backend)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		selfResult, backend, err = h.newAPIConsoleSelfWithLogin(r.Context(), backend)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		accountID = consoleAccountID(selfResult.Payload)
+		if accountID == "" {
+			writeError(w, http.StatusBadGateway, "new-api self response missing user id")
+			return
+		}
+
+		result, err = h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodPost, "/api/user/checkin", nil, backend.ConsoleCookie, accountID)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+	}
+	if !result.success() {
+		writeError(w, http.StatusBadGateway, result.errorMessage("new-api checkin failed"))
+		return
+	}
+
+	selfResult, err = h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodGet, "/api/user/self", nil, backend.ConsoleCookie, "")
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if !selfResult.success() {
+		writeError(w, http.StatusBadGateway, selfResult.errorMessage("new-api self request failed"))
+		return
+	}
+	accountJSON, err := consoleAccountSummaryJSON(selfResult.Payload)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	backend.ConsoleAccountJSON = accountJSON
+	updated, err := h.store.UpdateBackend(r.Context(), backend)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"backend": updated,
+		"checkin": result.Payload,
+		"account": decodeJSONMap(accountJSON),
+	})
+}
+
+func (h *BackendHandler) HandleBackendConsolePricing(w http.ResponseWriter, r *http.Request) {
+	backend, err := h.consoleBackend(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	result, err := h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodGet, "/api/pricing", nil, backend.ConsoleCookie, "")
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if !result.success() {
+		writeError(w, http.StatusBadGateway, result.errorMessage("new-api pricing request failed"))
+		return
+	}
+	backend.ConsolePricingJSON = result.Raw
+	updated, err := h.store.UpdateBackend(r.Context(), backend)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"backend": updated,
+		"pricing": result.Payload,
+	})
 }
 
 func (h *BackendHandler) validateBackendImportPayload(ctx context.Context, payload backendImportExportPayload) ([]domain.Backend, error) {
@@ -414,12 +542,16 @@ func (h *BackendHandler) validateBackendImportPayload(ctx context.Context, paylo
 		backends = append(backends, domain.Backend{
 			Name:                name,
 			Protocol:            domain.NormalizeBackendProtocol(item.Protocol),
+			BackendType:         domain.NormalizeBackendType(item.BackendType),
 			BaseURL:             item.BaseURL,
 			APIKey:              item.APIKey,
 			ConsoleURL:          item.ConsoleURL,
 			Tags:                item.Tags,
 			ConsoleUsername:     item.ConsoleUsername,
 			ConsolePassword:     item.ConsolePassword,
+			ConsoleCookie:       item.ConsoleCookie,
+			ConsoleAccountJSON:  item.ConsoleAccountJSON,
+			ConsolePricingJSON:  item.ConsolePricingJSON,
 			Notes:               item.Notes,
 			ProxyID:             item.ProxyID,
 			Status:              status,
@@ -437,12 +569,16 @@ func backendToImportExportItem(backend domain.Backend) backendImportExportItem {
 	return backendImportExportItem{
 		Name:                backend.Name,
 		Protocol:            domain.NormalizeBackendProtocol(backend.Protocol),
+		BackendType:         domain.NormalizeBackendType(backend.BackendType),
 		BaseURL:             backend.BaseURL,
 		APIKey:              backend.APIKey,
 		ConsoleURL:          backend.ConsoleURL,
 		Tags:                backend.Tags,
 		ConsoleUsername:     backend.ConsoleUsername,
 		ConsolePassword:     backend.ConsolePassword,
+		ConsoleCookie:       backend.ConsoleCookie,
+		ConsoleAccountJSON:  backend.ConsoleAccountJSON,
+		ConsolePricingJSON:  backend.ConsolePricingJSON,
 		Notes:               backend.Notes,
 		ProxyID:             backend.ProxyID,
 		Status:              backend.Status,
@@ -481,9 +617,11 @@ func (h *BackendHandler) HandleBackendDetail(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, resourceDetailPayload{
 		Overview: []resourceDetailEntry{
 			detailEntry("name", "Name", detail.Backend.Name),
+			detailEntry("backend_type", "Backend Type", domain.NormalizeBackendType(detail.Backend.BackendType)),
 			detailEntry("console_url", "Console URL", detail.Backend.ConsoleURL),
 			detailEntry("console_username", "Console Username", detail.Backend.ConsoleUsername),
 			detailEntry("console_password", "Console Password", secretPresenceValue(detail.Backend.ConsolePassword)),
+			detailEntry("console_cookie", "Console Cookie", secretPresenceValue(detail.Backend.ConsoleCookie)),
 			detailEntry("status", "Status", detail.Backend.Status),
 			detailEntry("consecutive_failures", "Consecutive Failures", detail.Backend.ConsecutiveFailures),
 			detailEntry("recover_at", "Recover At", optionalTimePointer(detail.Backend.RecoverAt)),
@@ -500,6 +638,8 @@ func (h *BackendHandler) HandleBackendDetail(w http.ResponseWriter, r *http.Requ
 			detailEntry("model_mapping", "Model Mapping", detail.Backend.ModelMapping),
 			detailEntry("endpoints", "Endpoints", detail.Backend.Endpoints),
 			detailEntry("base_url", "Base URL", detail.Backend.BaseURL),
+			detailEntry("console_account", "Console Account", decodeJSONMap(detail.Backend.ConsoleAccountJSON)),
+			detailEntry("console_pricing", "Console Pricing", decodeJSONMap(detail.Backend.ConsolePricingJSON)),
 		},
 		Metadata: []resourceDetailEntry{
 			detailEntry("id", "ID", detail.Backend.ID),
@@ -731,6 +871,279 @@ func MappedBackendModel(backend domain.Backend, clientModel string) string {
 	return clientModel
 }
 
+type newAPIConsoleResult struct {
+	StatusCode int
+	Header     http.Header
+	Raw        string
+	Payload    map[string]any
+}
+
+func (h *BackendHandler) consoleBackend(r *http.Request) (domain.Backend, error) {
+	id, err := parseID(r.PathValue("id"))
+	if err != nil {
+		return domain.Backend{}, err
+	}
+	backend, err := h.store.GetBackend(r.Context(), id)
+	if err != nil {
+		return domain.Backend{}, errors.New("backend not found")
+	}
+	if domain.NormalizeBackendType(backend.BackendType) != domain.BackendTypeNewAPI {
+		return domain.Backend{}, errors.New("backend_type must be new-api")
+	}
+	if strings.TrimSpace(backend.ConsoleURL) == "" {
+		return domain.Backend{}, errors.New("console_url is required")
+	}
+	if err := validateURL(backend.ConsoleURL); err != nil {
+		return domain.Backend{}, err
+	}
+	return backend, nil
+}
+
+func (h *BackendHandler) newAPIConsoleSelfWithLogin(ctx context.Context, backend domain.Backend) (newAPIConsoleResult, domain.Backend, error) {
+	selfResult, err := h.doNewAPIConsoleJSON(ctx, backend, http.MethodGet, "/api/user/self", nil, backend.ConsoleCookie, "")
+	if err != nil {
+		return newAPIConsoleResult{}, backend, err
+	}
+	if selfResult.success() {
+		return selfResult, backend, nil
+	}
+	if !selfResult.loginRequired() {
+		return newAPIConsoleResult{}, backend, errors.New(selfResult.errorMessage("new-api self request failed"))
+	}
+
+	updated, err := h.loginNewAPIConsole(ctx, backend)
+	if err != nil {
+		return newAPIConsoleResult{}, backend, err
+	}
+	selfResult, err = h.doNewAPIConsoleJSON(ctx, updated, http.MethodGet, "/api/user/self", nil, updated.ConsoleCookie, "")
+	if err != nil {
+		return newAPIConsoleResult{}, updated, err
+	}
+	if !selfResult.success() {
+		return newAPIConsoleResult{}, updated, errors.New(selfResult.errorMessage("new-api self request failed"))
+	}
+	return selfResult, updated, nil
+}
+
+func (h *BackendHandler) loginNewAPIConsole(ctx context.Context, backend domain.Backend) (domain.Backend, error) {
+	if strings.TrimSpace(backend.ConsoleUsername) == "" || strings.TrimSpace(backend.ConsolePassword) == "" {
+		return domain.Backend{}, errors.New("console username and password are required")
+	}
+	loginBody, err := json.Marshal(struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}{
+		Username: strings.TrimSpace(backend.ConsoleUsername),
+		Password: strings.TrimSpace(backend.ConsolePassword),
+	})
+	if err != nil {
+		return domain.Backend{}, err
+	}
+	loginResult, err := h.doNewAPIConsoleJSON(ctx, backend, http.MethodPost, "/api/user/login", loginBody, "", "")
+	if err != nil {
+		return domain.Backend{}, err
+	}
+	if !loginResult.success() {
+		return domain.Backend{}, errors.New(loginResult.errorMessage("new-api login failed"))
+	}
+	session := sessionCookie(loginResult.Header)
+	if session == nil {
+		return domain.Backend{}, errors.New("new-api login did not return session cookie")
+	}
+	backend.ConsoleCookie = mergeCookieValue(backend.ConsoleCookie, session)
+	updated, err := h.store.UpdateBackend(ctx, backend)
+	if err != nil {
+		return domain.Backend{}, err
+	}
+	return updated, nil
+}
+
+func (h *BackendHandler) doNewAPIConsoleJSON(ctx context.Context, backend domain.Backend, method, path string, body []byte, cookie string, newAPIUser string) (newAPIConsoleResult, error) {
+	target := consoleAPIURL(backend.ConsoleURL, path)
+	request, err := http.NewRequestWithContext(ctx, method, target, bytes.NewReader(body))
+	if err != nil {
+		return newAPIConsoleResult{}, err
+	}
+	request.Header.Set("Accept", "application/json")
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
+	if cookie = strings.TrimSpace(cookie); cookie != "" {
+		request.Header.Set("Cookie", cookie)
+	}
+	if newAPIUser = strings.TrimSpace(newAPIUser); newAPIUser != "" {
+		request.Header.Set("New-Api-User", newAPIUser)
+	}
+
+	client := h.consoleHTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return newAPIConsoleResult{}, err
+	}
+	defer response.Body.Close()
+
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return newAPIConsoleResult{}, err
+	}
+	raw := compactJSON(responseBody)
+	var payload map[string]any
+	if err := json.Unmarshal(responseBody, &payload); err != nil {
+		return newAPIConsoleResult{}, fmt.Errorf("decode new-api console response: %w", err)
+	}
+	return newAPIConsoleResult{
+		StatusCode: response.StatusCode,
+		Header:     response.Header.Clone(),
+		Raw:        raw,
+		Payload:    payload,
+	}, nil
+}
+
+func (r newAPIConsoleResult) success() bool {
+	if r.StatusCode < 200 || r.StatusCode >= 300 {
+		return false
+	}
+	if value, ok := r.Payload["success"].(bool); ok {
+		return value
+	}
+	return true
+}
+
+func (r newAPIConsoleResult) loginRequired() bool {
+	if r.StatusCode == http.StatusUnauthorized || r.StatusCode == http.StatusForbidden {
+		return true
+	}
+	if r.success() {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(fmt.Sprint(r.Payload["message"])))
+	return strings.Contains(message, "未登录") ||
+		strings.Contains(message, "登录") ||
+		strings.Contains(message, "login") ||
+		strings.Contains(message, "not logged") ||
+		strings.Contains(message, "unauthorized")
+}
+
+func (r newAPIConsoleResult) errorMessage(fallback string) string {
+	message := strings.TrimSpace(fmt.Sprint(r.Payload["message"]))
+	if message != "" && message != "<nil>" {
+		return message
+	}
+	return fallback
+}
+
+func consoleAPIURL(consoleURL, path string) string {
+	return strings.TrimRight(strings.TrimSpace(consoleURL), "/") + path
+}
+
+func compactJSON(data []byte) string {
+	var out bytes.Buffer
+	if err := json.Compact(&out, data); err != nil {
+		return strings.TrimSpace(string(data))
+	}
+	return out.String()
+}
+
+func sessionCookie(header http.Header) *http.Cookie {
+	response := http.Response{Header: header}
+	for _, cookie := range response.Cookies() {
+		if cookie.Name == "session" {
+			return cookie
+		}
+	}
+	return nil
+}
+
+func mergeCookieValue(raw string, cookie *http.Cookie) string {
+	if cookie == nil || strings.TrimSpace(cookie.Name) == "" {
+		return strings.TrimSpace(raw)
+	}
+	replacement := cookie.Name + "=" + cookie.Value
+	parts := strings.Split(raw, ";")
+	out := make([]string, 0, len(parts)+1)
+	replaced := false
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		name, _, ok := strings.Cut(part, "=")
+		if ok && strings.TrimSpace(name) == cookie.Name {
+			out = append(out, replacement)
+			replaced = true
+			continue
+		}
+		out = append(out, part)
+	}
+	if !replaced {
+		out = append(out, replacement)
+	}
+	return strings.Join(out, "; ")
+}
+
+func consoleAccountSummaryJSON(payload map[string]any) (string, error) {
+	data, ok := payload["data"].(map[string]any)
+	if !ok {
+		return "", errors.New("new-api self response missing data")
+	}
+	summary := map[string]any{
+		"username":   data["username"],
+		"id":         data["id"],
+		"quota":      data["quota"],
+		"used_quota": data["used_quota"],
+	}
+	encoded, err := json.Marshal(summary)
+	if err != nil {
+		return "", err
+	}
+	return string(encoded), nil
+}
+
+func consoleAccountID(payload map[string]any) string {
+	data, ok := payload["data"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	switch value := data["id"].(type) {
+	case float64:
+		if value <= 0 {
+			return ""
+		}
+		return strconv.FormatInt(int64(value), 10)
+	case int:
+		if value <= 0 {
+			return ""
+		}
+		return strconv.Itoa(value)
+	case int64:
+		if value <= 0 {
+			return ""
+		}
+		return strconv.FormatInt(value, 10)
+	case json.Number:
+		id, err := value.Int64()
+		if err != nil || id <= 0 {
+			return ""
+		}
+		return strconv.FormatInt(id, 10)
+	case string:
+		return strings.TrimSpace(value)
+	default:
+		return ""
+	}
+}
+
+func decodeJSONMap(raw string) map[string]any {
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return map[string]any{}
+	}
+	return payload
+}
+
 func optionalTimePointer(value *time.Time) *time.Time {
 	if value == nil || value.IsZero() {
 		return nil
@@ -853,5 +1266,6 @@ func maskedBackendDetail(backend domain.Backend) domain.Backend {
 	copy := backend
 	copy.APIKey = secretPresenceValue(copy.APIKey)
 	copy.ConsolePassword = secretPresenceValue(copy.ConsolePassword)
+	copy.ConsoleCookie = secretPresenceValue(copy.ConsoleCookie)
 	return copy
 }

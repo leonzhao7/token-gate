@@ -200,6 +200,8 @@ func (a *App) routes() {
 	a.mux.Handle("GET /admin/api/backends/export", http.HandlerFunc(a.backendHandler.HandleExportBackends))
 	a.mux.Handle("GET /admin/api/backends/{id}/detail", http.HandlerFunc(a.backendHandler.HandleBackendDetail))
 	a.mux.Handle("POST /admin/api/backends", http.HandlerFunc(a.backendHandler.HandleCreateBackend))
+	a.mux.Handle("POST /admin/api/backends/{id}/console/checkin", http.HandlerFunc(a.backendHandler.HandleBackendConsoleCheckin))
+	a.mux.Handle("POST /admin/api/backends/{id}/console/pricing", http.HandlerFunc(a.backendHandler.HandleBackendConsolePricing))
 	a.mux.Handle("POST /admin/api/backends/import", http.HandlerFunc(a.backendHandler.HandleImportBackends))
 	a.mux.Handle("PUT /admin/api/backends/{id}", http.HandlerFunc(a.backendHandler.HandleUpdateBackend))
 	a.mux.Handle("DELETE /admin/api/backends/{id}", http.HandlerFunc(a.backendHandler.HandleDeleteBackend))

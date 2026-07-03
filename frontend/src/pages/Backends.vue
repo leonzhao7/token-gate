@@ -68,6 +68,8 @@
         @create="showCreateModal = true"
         @edit="handleEdit"
         @delete="handleDelete"
+        @checkin="handleCheckin"
+        @pricing="handlePricing"
         @toggle-status="handleToggleStatus"
       />
 
@@ -290,9 +292,11 @@ const handleToggleStatus = async (backend: Backend) => {
   try {
     await backendsApi.update(backend.id, {
       name: backend.name,
+      backend_type: backend.backend_type || 'new-api',
       base_url: backend.base_url,
       api_key: backend.api_key || '',
       console_url: backend.console_url || '',
+      console_cookie: backend.console_cookie || '',
       tags: backend.tags || [],
       console_username: backend.console_username || '',
       console_password: backend.console_password || '',
@@ -308,6 +312,24 @@ const handleToggleStatus = async (backend: Backend) => {
     await backendsStore.fetchBackends()
   } catch (err: any) {
     alert(err.message || 'Status update failed')
+  }
+}
+
+const handleCheckin = async (backend: Backend) => {
+  try {
+    await backendsStore.checkinBackend(backend.id)
+    await refreshBackends()
+  } catch (err: any) {
+    alert(err.message || 'Backend checkin failed')
+  }
+}
+
+const handlePricing = async (backend: Backend) => {
+  try {
+    await backendsStore.syncBackendPricing(backend.id)
+    await refreshBackends()
+  } catch (err: any) {
+    alert(err.message || 'Backend pricing sync failed')
   }
 }
 

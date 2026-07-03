@@ -81,6 +81,16 @@
             </div>
             <div class="col col-actions" @click.stop>
               <button
+                class="action-btn text-action-btn"
+                title="签到"
+                @click="$emit('checkin', backend)"
+              >签到</button>
+              <button
+                class="action-btn text-action-btn"
+                title="模型广场"
+                @click="$emit('pricing', backend)"
+              >模型广场</button>
+              <button
                 class="action-btn"
                 title="Edit"
                 @click="$emit('edit', backend)"
@@ -237,6 +247,8 @@ const emit = defineEmits<{
   create: []
   edit: [backend: Backend]
   delete: [backend: Backend]
+  checkin: [backend: Backend]
+  pricing: [backend: Backend]
   'toggle-status': [backend: Backend]
 }>()
 
@@ -385,7 +397,7 @@ const formatTime = (timestamp: string) => {
 }
 
 .col-actions {
-  flex: 0 0 90px;
+  flex: 0 0 220px;
   text-align: right;
 }
 
@@ -557,6 +569,14 @@ const formatTime = (timestamp: string) => {
 .action-btn:hover {
   background: var(--bg-muted);
   transform: scale(1.1);
+}
+
+.text-action-btn {
+  width: auto;
+  min-width: 44px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--text-primary);
 }
 
 /* Expanded Details */

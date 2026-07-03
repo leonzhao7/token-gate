@@ -16,7 +16,6 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
-
 type Store struct {
 	db *sql.DB
 }
@@ -81,12 +80,16 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL UNIQUE,
 			protocol TEXT NOT NULL DEFAULT 'openai',
+			backend_type TEXT NOT NULL DEFAULT 'new-api',
 			base_url TEXT NOT NULL,
 			api_key TEXT NOT NULL,
 			console_url TEXT NOT NULL DEFAULT '',
 			tag_list TEXT NOT NULL DEFAULT '[]',
 			console_username TEXT NOT NULL DEFAULT '',
 			console_password TEXT NOT NULL DEFAULT '',
+			console_cookie TEXT NOT NULL DEFAULT '',
+			console_account_json TEXT NOT NULL DEFAULT '{}',
+			console_pricing_json TEXT NOT NULL DEFAULT '{}',
 			notes TEXT NOT NULL DEFAULT '',
 			proxy_id INTEGER NOT NULL DEFAULT 0,
 			status TEXT NOT NULL DEFAULT 'normal',
@@ -203,6 +206,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate backends protocol: %w", err)
 	}
+	if err := ensureColumn(ctx, db, "backends", "backend_type", "TEXT NOT NULL DEFAULT 'new-api'"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate backends backend_type: %w", err)
+	}
 	if err := ensureColumn(ctx, db, "backends", "model_mapping", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate backends model_mapping: %w", err)
@@ -234,6 +241,18 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err := ensureColumn(ctx, db, "backends", "console_password", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate backends console_password: %w", err)
+	}
+	if err := ensureColumn(ctx, db, "backends", "console_cookie", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate backends console_cookie: %w", err)
+	}
+	if err := ensureColumn(ctx, db, "backends", "console_account_json", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate backends console_account_json: %w", err)
+	}
+	if err := ensureColumn(ctx, db, "backends", "console_pricing_json", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate backends console_pricing_json: %w", err)
 	}
 	if err := ensureColumn(ctx, db, "backends", "notes", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		_ = db.Close()
@@ -758,8 +777,8 @@ func nonEmpty(value, fallback string) string {
 }
 
 func ensureSlice[T any](values []T) []T {
-        if values == nil {
-                return []T{}
-        }
-        return values
+	if values == nil {
+		return []T{}
+	}
+	return values
 }

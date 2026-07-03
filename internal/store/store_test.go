@@ -87,6 +87,67 @@ func TestCreateBackendPersistsConsoleMetadata(t *testing.T) {
 	}
 }
 
+func TestBackendConsoleStateRoundTrips(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	ctx := context.Background()
+
+	backend, err := st.CreateBackend(ctx, domain.Backend{
+		Name:               "edge-new-api",
+		Protocol:           domain.BackendProtocolOpenAI,
+		BackendType:        domain.BackendTypeNewAPI,
+		BaseURL:            "https://edge-new-api.local/v1",
+		APIKey:             "edge-key",
+		ConsoleURL:         "https://console.edge-new-api.local",
+		ConsoleUsername:    "tom",
+		ConsolePassword:    "tom_passwd",
+		ConsoleCookie:      "session=initial",
+		ConsoleAccountJSON: `{"id":1929,"quota":248540,"used_quota":3250000,"username":"tom"}`,
+		ConsolePricingJSON: `{"success":true,"data":{"vendors":[]}}`,
+		Models:             []string{"gpt-4o"},
+		Endpoints:          []string{domain.EndpointChat},
+	})
+	if err != nil {
+		t.Fatalf("CreateBackend returned error: %v", err)
+	}
+
+	if backend.BackendType != domain.BackendTypeNewAPI {
+		t.Fatalf("expected backend_type to round-trip, got %q", backend.BackendType)
+	}
+	if backend.ConsoleCookie != "session=initial" {
+		t.Fatalf("expected console cookie to round-trip, got %q", backend.ConsoleCookie)
+	}
+	if backend.ConsoleAccountJSON != `{"id":1929,"quota":248540,"used_quota":3250000,"username":"tom"}` {
+		t.Fatalf("expected console account json to round-trip, got %q", backend.ConsoleAccountJSON)
+	}
+	if backend.ConsolePricingJSON != `{"success":true,"data":{"vendors":[]}}` {
+		t.Fatalf("expected console pricing json to round-trip, got %q", backend.ConsolePricingJSON)
+	}
+
+	backend.ConsoleCookie = "session=rotated"
+	backend.ConsoleAccountJSON = `{"id":1930,"quota":100,"used_quota":50,"username":"tom2"}`
+	backend.ConsolePricingJSON = `{"success":true,"data":{"pricing_version":"2026-07-03"}}`
+	updated, err := st.UpdateBackend(ctx, backend)
+	if err != nil {
+		t.Fatalf("UpdateBackend returned error: %v", err)
+	}
+
+	if updated.ConsoleCookie != "session=rotated" || updated.ConsoleAccountJSON != backend.ConsoleAccountJSON || updated.ConsolePricingJSON != backend.ConsolePricingJSON {
+		t.Fatalf("expected updated console state, got %#v", updated)
+	}
+
+	listed, err := st.ListBackends(ctx)
+	if err != nil {
+		t.Fatalf("ListBackends returned error: %v", err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("expected one backend, got %#v", listed)
+	}
+	if listed[0].BackendType != domain.BackendTypeNewAPI || listed[0].ConsoleCookie != "session=rotated" {
+		t.Fatalf("expected listed backend console state, got %#v", listed[0])
+	}
+}
+
 func TestOpenCreatesBackendHourlyModelStatsTable(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
@@ -349,17 +410,21 @@ func TestOpenMigratesLegacyBackendsConsoleMetadataColumns(t *testing.T) {
 	defer st.Close()
 
 	backend, err := st.CreateBackend(context.Background(), domain.Backend{
-		Name:            "edge-legacy",
-		Protocol:        domain.BackendProtocolOpenAI,
-		BaseURL:         "https://edge-legacy.local/v1",
-		APIKey:          "edge-key",
-		ConsoleURL:      "https://console.edge-legacy.local",
-		Tags:            []string{"legacy"},
-		ConsoleUsername: "admin-legacy",
-		ConsolePassword: "secret-legacy",
-		Notes:           "migrated db",
-		Models:          []string{"gpt-4o"},
-		Endpoints:       []string{domain.EndpointChat},
+		Name:               "edge-legacy",
+		Protocol:           domain.BackendProtocolOpenAI,
+		BackendType:        domain.BackendTypeNewAPI,
+		BaseURL:            "https://edge-legacy.local/v1",
+		APIKey:             "edge-key",
+		ConsoleURL:         "https://console.edge-legacy.local",
+		Tags:               []string{"legacy"},
+		ConsoleUsername:    "admin-legacy",
+		ConsolePassword:    "secret-legacy",
+		ConsoleCookie:      "session=legacy",
+		ConsoleAccountJSON: `{"username":"legacy","id":7,"quota":10,"used_quota":1}`,
+		ConsolePricingJSON: `{"success":true,"data":{"vendors":[]}}`,
+		Notes:              "migrated db",
+		Models:             []string{"gpt-4o"},
+		Endpoints:          []string{domain.EndpointChat},
 	})
 	if err != nil {
 		t.Fatalf("CreateBackend after migration returned error: %v", err)
@@ -370,6 +435,9 @@ func TestOpenMigratesLegacyBackendsConsoleMetadataColumns(t *testing.T) {
 	}
 	if !reflect.DeepEqual(backend.Tags, []string{"legacy"}) {
 		t.Fatalf("expected migrated tags support, got %#v", backend.Tags)
+	}
+	if backend.BackendType != domain.BackendTypeNewAPI || backend.ConsoleCookie != "session=legacy" {
+		t.Fatalf("expected migrated console state support, got %#v", backend)
 	}
 }
 

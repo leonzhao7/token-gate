@@ -20,6 +20,8 @@ const (
 
 	BackendProtocolOpenAI    = "openai"
 	BackendProtocolAnthropic = "anthropic"
+
+	BackendTypeNewAPI = "new-api"
 )
 
 type ClientKey struct {
@@ -38,12 +40,16 @@ type Backend struct {
 	ID                  int64             `json:"id"`
 	Name                string            `json:"name"`
 	Protocol            string            `json:"protocol"`
+	BackendType         string            `json:"backend_type"`
 	BaseURL             string            `json:"base_url"`
 	APIKey              string            `json:"api_key,omitempty"`
 	ConsoleURL          string            `json:"console_url"`
 	Tags                []string          `json:"tags"`
 	ConsoleUsername     string            `json:"console_username"`
 	ConsolePassword     string            `json:"console_password,omitempty"`
+	ConsoleCookie       string            `json:"console_cookie,omitempty"`
+	ConsoleAccountJSON  string            `json:"console_account_json"`
+	ConsolePricingJSON  string            `json:"console_pricing_json"`
 	Notes               string            `json:"notes"`
 	ProxyID             int64             `json:"proxy_id"`
 	Proxy               *SocksProxy       `json:"proxy,omitempty"`
@@ -129,6 +135,15 @@ func NormalizeBackendProtocol(value string) string {
 		return BackendProtocolAnthropic
 	default:
 		return BackendProtocolOpenAI
+	}
+}
+
+func NormalizeBackendType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case BackendTypeNewAPI, "newapi", "new_api":
+		return BackendTypeNewAPI
+	default:
+		return BackendTypeNewAPI
 	}
 }
 
