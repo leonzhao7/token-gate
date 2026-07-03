@@ -146,6 +146,7 @@ func New(ctx context.Context, dbPath string) (*App, error) {
 		mux:               http.NewServeMux(),
 		logger:            slog.Default().With("component", "app"),
 	}
+	app.backendHandler.SetConfig(&app.cfg)
 	app.settingHandler = handler.NewSettingHandler(st, &app.cfg)
 	app.dashboardHandler = handler.NewDashboardHandler(st, app.backendHandler)
 	app.routes()

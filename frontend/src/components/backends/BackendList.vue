@@ -216,6 +216,40 @@
                 </div>
               </div>
 
+              <div v-if="consoleAccountSummary(backend.console_account_json)" class="detail-section">
+                <h4 class="section-title">Console Account</h4>
+                <div
+                  v-for="row in consoleAccountRows(backend.console_account_json)"
+                  :key="row.label"
+                  class="detail-item"
+                >
+                  <span class="detail-label">{{ row.label }}</span>
+                  <span class="detail-value">{{ row.value }}</span>
+                </div>
+              </div>
+
+              <div v-if="pricingModelRows(backend.console_pricing_json, focusModelPatterns).length > 0" class="detail-section full-width">
+                <h4 class="section-title">Model Pricing</h4>
+                <div class="pricing-table-wrap">
+                  <table class="pricing-table">
+                    <thead>
+                      <tr>
+                        <th>Model</th>
+                        <th>Prompt</th>
+                        <th>Completion</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="row in pricingModelRows(backend.console_pricing_json, focusModelPatterns)" :key="row.model">
+                        <td>{{ row.model }}</td>
+                        <td>{{ row.prompt }}</td>
+                        <td>{{ row.completion }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
               <div v-if="backend.notes" class="detail-section full-width">
                 <h4 class="section-title">Notes</h4>
                 <p class="notes-text">{{ backend.notes }}</p>
@@ -236,12 +270,16 @@ import Button from '@/components/ui/Button.vue'
 import type { Backend } from '@/api'
 import { formatLatencySeconds } from '@/utils/latency'
 import { formatModelMappingForInput, parseModelMappingInput } from './backendPayload'
+import { consoleAccountRows, consoleAccountSummary, pricingModelRows } from './backendConsoleDisplay'
 
 interface Props {
   backends: Backend[]
+  focusModelPatterns?: string
 }
 
-defineProps<Props>()
+withDefaults(defineProps<Props>(), {
+  focusModelPatterns: ''
+})
 
 const emit = defineEmits<{
   create: []
@@ -703,6 +741,48 @@ const formatTime = (timestamp: string) => {
   color: var(--text-primary);
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+.pricing-table-wrap {
+  width: 100%;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.pricing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.pricing-table th,
+.pricing-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pricing-table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-weight: 600;
+  z-index: 1;
+}
+
+.pricing-table th:first-child,
+.pricing-table td:first-child {
+  text-align: left;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.pricing-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 /* Responsive */

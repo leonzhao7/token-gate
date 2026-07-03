@@ -1,33 +1,39 @@
 package config
 
 import (
+	"context"
 	"os"
 	"strconv"
 	"time"
-	"context"
 
 	"token-gate/internal/store"
 )
 
+const DefaultBackendConsoleUserAgent = "Token-Gate/1.0"
+
 type Config struct {
-	ListenAddr      string
-	DBPath          string
-	LogLevel        string
-	BackendCooldown time.Duration
-	BackendFails    int
-	RequestTimeout  time.Duration
-	ShutdownTimeout time.Duration
+	ListenAddr              string
+	DBPath                  string
+	LogLevel                string
+	BackendCooldown         time.Duration
+	BackendFails            int
+	BackendConsoleUserAgent string
+	FocusModels             string
+	RequestTimeout          time.Duration
+	ShutdownTimeout         time.Duration
 }
 
 func Load() Config {
 	return Config{
-		ListenAddr:      getenv("TG_LISTEN_ADDR", ":8080"),
-		DBPath:          getenv("TG_DB_PATH", "./token-gate.db"),
-		LogLevel:        getenv("TG_LOG_LEVEL", "info"),
-		BackendCooldown: getDuration("TG_BACKEND_COOLDOWN", 10*time.Minute),
-		BackendFails:    getInt("TG_BACKEND_FAILS", 3),
-		RequestTimeout:  getDuration("TG_REQUEST_TIMEOUT", 30*time.Second),
-		ShutdownTimeout: getDuration("TG_SHUTDOWN_TIMEOUT", 10*time.Second),
+		ListenAddr:              getenv("TG_LISTEN_ADDR", ":8080"),
+		DBPath:                  getenv("TG_DB_PATH", "./token-gate.db"),
+		LogLevel:                getenv("TG_LOG_LEVEL", "info"),
+		BackendCooldown:         getDuration("TG_BACKEND_COOLDOWN", 10*time.Minute),
+		BackendFails:            getInt("TG_BACKEND_FAILS", 3),
+		BackendConsoleUserAgent: getenv("TG_BACKEND_CONSOLE_USER_AGENT", DefaultBackendConsoleUserAgent),
+		FocusModels:             getenv("TG_FOCUS_MODELS", ""),
+		RequestTimeout:          getDuration("TG_REQUEST_TIMEOUT", 30*time.Second),
+		ShutdownTimeout:         getDuration("TG_SHUTDOWN_TIMEOUT", 10*time.Second),
 	}
 }
 
@@ -49,6 +55,12 @@ func LoadDatabase(ctx context.Context, st *store.Store) (Config, error) {
 		if n, err := strconv.Atoi(fails); err == nil {
 			cfg.BackendFails = n
 		}
+	}
+	if userAgent, ok := settings["backend_console_user_agent"]; ok {
+		cfg.BackendConsoleUserAgent = userAgent
+	}
+	if focusModels, ok := settings["focus_models"]; ok {
+		cfg.FocusModels = focusModels
 	}
 	if timeout, ok := settings["request_timeout"]; ok {
 		if d, err := time.ParseDuration(timeout); err == nil {

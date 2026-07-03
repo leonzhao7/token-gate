@@ -251,6 +251,8 @@ export interface Config {
   log_level?: string
   backend_cooldown?: string
   backend_fails?: string
+  backend_console_user_agent?: string
+  focus_models?: string
   request_timeout?: string
   shutdown_timeout?: string
 }

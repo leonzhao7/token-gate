@@ -14,12 +14,14 @@ import (
 	"strings"
 	"time"
 
+	"token-gate/internal/config"
 	"token-gate/internal/domain"
 	"token-gate/internal/store"
 )
 
 type BackendHandler struct {
 	store             *store.Store
+	cfg               *config.Config
 	consoleHTTPClient *http.Client
 	logger            *slog.Logger
 }
@@ -33,6 +35,10 @@ func NewBackendHandler(st *store.Store) *BackendHandler {
 
 func (h *BackendHandler) SetConsoleHTTPClient(client *http.Client) {
 	h.consoleHTTPClient = client
+}
+
+func (h *BackendHandler) SetConfig(cfg *config.Config) {
+	h.cfg = cfg
 }
 
 func (h *BackendHandler) SetLogger(logger *slog.Logger) {
@@ -498,6 +504,7 @@ func (h *BackendHandler) HandleBackendConsoleCheckin(w http.ResponseWriter, r *h
 		writeError(w, http.StatusBadGateway, result.errorMessage("new-api checkin failed"))
 		return
 	}
+	lastCheckinAt := time.Now().UTC()
 
 	selfResult, err = h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodGet, "/api/user/self", nil, backend.ConsoleCookie, accountID)
 	if err != nil {
@@ -517,7 +524,7 @@ func (h *BackendHandler) HandleBackendConsoleCheckin(w http.ResponseWriter, r *h
 		writeError(w, http.StatusBadGateway, selfResult.errorMessage("new-api self request failed"))
 		return
 	}
-	accountJSON, err := consoleAccountSummaryJSON(selfResult.Payload)
+	accountJSON, err := consoleAccountSummaryJSON(selfResult.Payload, lastCheckinAt)
 	if err != nil {
 		h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_failed", append(consoleBackendAttrs(backend),
 			slog.String("stage", "account_summary"),
@@ -1197,6 +1204,7 @@ func (h *BackendHandler) doNewAPIConsoleJSON(ctx context.Context, backend domain
 		return newAPIConsoleResult{}, err
 	}
 	request.Header.Set("Accept", "application/json")
+	request.Header.Set("User-Agent", h.backendConsoleUserAgent())
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
@@ -1261,6 +1269,17 @@ func (h *BackendHandler) doNewAPIConsoleJSON(ctx context.Context, backend domain
 		slog.Duration("duration", time.Since(startedAt)),
 	), consoleResultAttrs(result)...)...)
 	return result, nil
+}
+
+func (h *BackendHandler) backendConsoleUserAgent() string {
+	if h.cfg == nil {
+		return config.DefaultBackendConsoleUserAgent
+	}
+	value := strings.TrimSpace(h.cfg.BackendConsoleUserAgent)
+	if value == "" {
+		return config.DefaultBackendConsoleUserAgent
+	}
+	return value
 }
 
 func (r newAPIConsoleResult) success() bool {
@@ -1345,16 +1364,23 @@ func mergeCookieValue(raw string, cookie *http.Cookie) string {
 	return strings.Join(out, "; ")
 }
 
-func consoleAccountSummaryJSON(payload map[string]any) (string, error) {
+func consoleAccountSummaryJSON(payload map[string]any, lastCheckinAt time.Time) (string, error) {
 	data, ok := payload["data"].(map[string]any)
 	if !ok {
 		return "", errors.New("new-api self response missing data")
 	}
 	summary := map[string]any{
-		"username":   data["username"],
-		"id":         data["id"],
-		"quota":      data["quota"],
-		"used_quota": data["used_quota"],
+		"display_name": data["display_name"],
+		"group":        data["group"],
+		"id":           data["id"],
+		"quota":        data["quota"],
+		"role":         data["role"],
+		"status":       data["status"],
+		"used_quota":   data["used_quota"],
+		"username":     data["username"],
+	}
+	if !lastCheckinAt.IsZero() {
+		summary["last_checkin_at"] = lastCheckinAt.UTC().Format(time.RFC3339)
 	}
 	encoded, err := json.Marshal(summary)
 	if err != nil {

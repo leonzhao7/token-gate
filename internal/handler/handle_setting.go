@@ -28,15 +28,16 @@ func (a *SettingHandler) HandleGetConfig(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Return current runtime config merged with DB settings
 	response := map[string]any{
-		"listen_addr":      getSettingOrDefault(settings, "listen_addr", a.cfg.ListenAddr),
-		"db_path":          getSettingOrDefault(settings, "db_path", a.cfg.DBPath),
-		"log_level":        getSettingOrDefault(settings, "log_level", a.cfg.LogLevel),
-		"backend_cooldown": getSettingOrDefault(settings, "backend_cooldown", a.cfg.BackendCooldown.String()),
-		"backend_fails":    getSettingOrDefault(settings, "backend_fails", fmt.Sprintf("%d", a.cfg.BackendFails)),
-		"request_timeout":  getSettingOrDefault(settings, "request_timeout", a.cfg.RequestTimeout.String()),
-		"shutdown_timeout": getSettingOrDefault(settings, "shutdown_timeout", a.cfg.ShutdownTimeout.String()),
+		"listen_addr":                getSettingOrDefault(settings, "listen_addr", a.cfg.ListenAddr),
+		"db_path":                    getSettingOrDefault(settings, "db_path", a.cfg.DBPath),
+		"log_level":                  getSettingOrDefault(settings, "log_level", a.cfg.LogLevel),
+		"backend_cooldown":           getSettingOrDefault(settings, "backend_cooldown", a.cfg.BackendCooldown.String()),
+		"backend_fails":              getSettingOrDefault(settings, "backend_fails", fmt.Sprintf("%d", a.cfg.BackendFails)),
+		"backend_console_user_agent": getSettingOrDefault(settings, "backend_console_user_agent", a.cfg.BackendConsoleUserAgent),
+		"focus_models":               getSettingOrDefault(settings, "focus_models", a.cfg.FocusModels),
+		"request_timeout":            getSettingOrDefault(settings, "request_timeout", a.cfg.RequestTimeout.String()),
+		"shutdown_timeout":           getSettingOrDefault(settings, "shutdown_timeout", a.cfg.ShutdownTimeout.String()),
 	}
 
 	writeJSON(w, http.StatusOK, response)
@@ -67,6 +68,13 @@ func (a *SettingHandler) HandleUpdateConfig(w http.ResponseWriter, r *http.Reque
 	if fails, ok := payload["backend_fails"]; ok {
 		if _, err := strconv.Atoi(fails); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid backend_fails number")
+			return
+		}
+	}
+
+	if userAgent, ok := payload["backend_console_user_agent"]; ok {
+		if !isValidUserAgent(userAgent) {
+			writeError(w, http.StatusBadRequest, "invalid backend_console_user_agent")
 			return
 		}
 	}
@@ -109,13 +117,21 @@ func (a *SettingHandler) HandleUpdateConfig(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
+	if userAgent, ok := payload["backend_console_user_agent"]; ok {
+		a.cfg.BackendConsoleUserAgent = strings.TrimSpace(userAgent)
+	}
+
+	if focusModels, ok := payload["focus_models"]; ok {
+		a.cfg.FocusModels = strings.TrimSpace(focusModels)
+	}
+
 	if timeout, ok := payload["request_timeout"]; ok {
 		if d, err := time.ParseDuration(timeout); err == nil {
 			a.cfg.RequestTimeout = d
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	a.HandleGetConfig(w, r)
 }
 
 func (a *SettingHandler) HandleReloadConfig(w http.ResponseWriter, r *http.Request) {
@@ -143,6 +159,14 @@ func (a *SettingHandler) HandleReloadConfig(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
+	if userAgent, ok := settings["backend_console_user_agent"]; ok && isValidUserAgent(userAgent) {
+		a.cfg.BackendConsoleUserAgent = strings.TrimSpace(userAgent)
+	}
+
+	if focusModels, ok := settings["focus_models"]; ok {
+		a.cfg.FocusModels = strings.TrimSpace(focusModels)
+	}
+
 	if timeout, ok := settings["request_timeout"]; ok {
 		if d, err := time.ParseDuration(timeout); err == nil {
 			a.cfg.RequestTimeout = d
@@ -166,6 +190,14 @@ func isValidLogLevel(level string) bool {
 	default:
 		return false
 	}
+}
+
+func isValidUserAgent(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 512 {
+		return false
+	}
+	return !strings.ContainsAny(value, "\r\n")
 }
 
 func parseLogLevel(value string) slog.Level {

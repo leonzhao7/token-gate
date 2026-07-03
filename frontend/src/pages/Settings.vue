@@ -59,6 +59,30 @@
             />
             <p class="form-hint">Number of consecutive failures before marking backend as unhealthy. ✓ Hot-reload.</p>
           </div>
+
+          <div class="form-group">
+            <label class="form-label" for="backend-console-user-agent">Console User-Agent</label>
+            <input
+              id="backend-console-user-agent"
+              v-model="formData.backend_console_user_agent"
+              type="text"
+              class="form-input"
+              placeholder="Token-Gate/1.0"
+            />
+            <p class="form-hint">User-Agent sent to backend console URLs for checkin, login, self, and pricing requests. ✓ Hot-reload.</p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="focus-models">Focus Models</label>
+            <textarea
+              id="focus-models"
+              v-model="formData.focus_models"
+              class="form-textarea"
+              rows="4"
+              placeholder="gpt-5.*&#10;claude-*"
+            ></textarea>
+            <p class="form-hint">Comma or newline separated model name patterns for backend pricing display. Use * as a wildcard.</p>
+          </div>
         </Card>
 
         <!-- Request Handling -->
@@ -136,6 +160,8 @@ const formData = ref<Config>({
   log_level: 'info',
   backend_cooldown: '10m',
   backend_fails: '3',
+  backend_console_user_agent: 'Token-Gate/1.0',
+  focus_models: '',
   request_timeout: '30s',
   shutdown_timeout: '10s'
 })
@@ -284,6 +310,30 @@ onMounted(() => {
 }
 
 .form-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.form-textarea {
+  min-height: 96px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  line-height: 1.5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  resize: vertical;
+  transition: all 150ms ease;
+}
+
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.1);
+}
+
+.form-textarea::placeholder {
   color: var(--text-tertiary);
 }
 

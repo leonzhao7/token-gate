@@ -57,3 +57,32 @@ test('frontend backend types include console state and pricing json fields', () 
   assert.match(types, /console_account_json\?: string/)
   assert.match(types, /console_pricing_json\?: string/)
 })
+
+test('backend expanded details render console self and pricing model summaries', () => {
+  const list = read('components/backends/BackendList.vue')
+  const helper = read('components/backends/backendConsoleDisplay.ts')
+
+  assert.match(list, /Console Account/)
+  assert.match(list, /consoleAccountSummary\(backend\.console_account_json\)/)
+  assert.match(list, /Model Pricing/)
+  assert.match(list, /pricingModelRows\(backend\.console_pricing_json,\s*focusModelPatterns\)/)
+  assert.match(helper, /Last Check-in/)
+  assert.match(helper, /Quota Remaining/)
+  assert.match(list, /Model/)
+  assert.match(list, /Prompt/)
+  assert.match(list, /Completion/)
+})
+
+test('settings and backend list expose console UA and focus model configuration', () => {
+  const settings = read('pages/Settings.vue')
+  const backendsPage = read('pages/Backends.vue')
+  const backendList = read('components/backends/BackendList.vue')
+  const types = read('api/types.ts')
+
+  assert.match(settings, /v-model="formData\.backend_console_user_agent"/)
+  assert.match(settings, /v-model="formData\.focus_models"/)
+  assert.match(types, /backend_console_user_agent\?: string/)
+  assert.match(types, /focus_models\?: string/)
+  assert.match(backendsPage, /:focus-model-patterns="focusModelPatterns"/)
+  assert.match(backendList, /focusModelPatterns\?: string/)
+})

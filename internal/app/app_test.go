@@ -2509,7 +2509,7 @@ func TestAdminBackendNewAPIConsoleCheckinUsesSavedCookieAndRefreshesBalance(t *t
 			if r.Method != http.MethodGet {
 				t.Fatalf("expected GET self, got %s", r.Method)
 			}
-			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"username":"tom","id":1929,"quota":248540,"used_quota":3250000,"email":"hidden@example.com"}}`), nil
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"username":"tom","display_name":"Tom Admin","group":"default","role":1,"status":1,"id":1929,"quota":248540,"used_quota":3250000,"email":"hidden@example.com"}}`), nil
 		default:
 			t.Fatalf("unexpected console path %s", r.URL.Path)
 		}
@@ -2545,11 +2545,59 @@ func TestAdminBackendNewAPIConsoleCheckinUsesSavedCookieAndRefreshesBalance(t *t
 	if account["username"] != "tom" || account["id"] != float64(1929) || account["quota"] != float64(248540) || account["used_quota"] != float64(3250000) {
 		t.Fatalf("expected saved account summary, got %#v", account)
 	}
+	if account["display_name"] != "Tom Admin" || account["group"] != "default" || account["role"] != float64(1) || account["status"] != float64(1) {
+		t.Fatalf("expected saved account self fields, got %#v", account)
+	}
+	lastCheckinAt, ok := account["last_checkin_at"].(string)
+	if !ok || strings.TrimSpace(lastCheckinAt) == "" {
+		t.Fatalf("expected last successful checkin time in account summary, got %#v", account)
+	}
+	if _, err := time.Parse(time.RFC3339, lastCheckinAt); err != nil {
+		t.Fatalf("expected RFC3339 last_checkin_at, got %q: %v", lastCheckinAt, err)
+	}
 	if _, ok := account["email"]; ok {
 		t.Fatalf("expected account summary to exclude email, got %#v", account)
 	}
 	if !reflect.DeepEqual(calls, []string{"GET /api/user/self", "POST /api/user/checkin", "GET /api/user/self"}) {
 		t.Fatalf("unexpected console call sequence: %#v", calls)
+	}
+}
+
+func TestAdminBackendConsoleRequestsUseConfiguredUserAgent(t *testing.T) {
+	application := newTestApp(t)
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/admin/api/config", strings.NewReader(`{"backend_console_user_agent":"TokenGateTest/1.0"}`))
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(updateRecorder, updateReq)
+	if updateRecorder.Code != http.StatusOK {
+		t.Fatalf("expected config update status 200, got %d body=%s", updateRecorder.Code, updateRecorder.Body.String())
+	}
+
+	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if got := r.Header.Get("User-Agent"); got != "TokenGateTest/1.0" {
+			t.Fatalf("expected configured user agent, got %q", got)
+		}
+		return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"gpt-5.4":{"model_ratio":2}}}`), nil
+	})})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:          "new-api-console-user-agent",
+		Protocol:      domain.BackendProtocolOpenAI,
+		BackendType:   domain.BackendTypeNewAPI,
+		BaseURL:       "https://new-api.local/v1",
+		APIKey:        "backend-key",
+		ConsoleURL:    "https://console.local",
+		ConsoleCookie: "session=valid",
+		Models:        []string{"gpt-5.4"},
+		Endpoints:     []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/pricing", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected pricing status 200, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 

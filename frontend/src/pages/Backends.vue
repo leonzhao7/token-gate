@@ -65,6 +65,7 @@
       <BackendList
         v-else
         :backends="paginatedBackends"
+        :focus-model-patterns="focusModelPatterns"
         @create="showCreateModal = true"
         @edit="handleEdit"
         @delete="handleDelete"
@@ -140,6 +141,7 @@ import Pagination from '@/components/ui/Pagination.vue'
 import BackendList from '@/components/backends/BackendList.vue'
 import BackendForm from '@/components/backends/BackendForm.vue'
 import { useBackendsStore } from '@/stores/backends'
+import { useSettingsStore } from '@/stores/settings'
 import { backendsApi, proxiesApi, type Backend, type CreateBackendRequest, type SocksProxy } from '@/api'
 import {
   formatModelMappingForInput,
@@ -148,10 +150,12 @@ import {
 } from '@/components/backends/backendPayload'
 
 const backendsStore = useBackendsStore()
+const settingsStore = useSettingsStore()
 
 const backends = computed(() => backendsStore.backends)
 const loading = computed(() => backendsStore.loading)
 const error = computed(() => backendsStore.error)
+const focusModelPatterns = computed(() => settingsStore.config?.focus_models || '')
 
 const searchQuery = ref('')
 const statusFilter = ref('')
@@ -372,6 +376,7 @@ const closeModals = () => {
 onMounted(() => {
   refreshBackends()
   loadProxies()
+  settingsStore.fetchConfig()
 })
 </script>
 
