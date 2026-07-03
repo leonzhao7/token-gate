@@ -1,12 +1,6 @@
 <template>
   <DefaultLayout>
     <div class="dashboard">
-      <div class="dashboard-header">
-        <h1>Dashboard</h1>
-        <Button @click="refreshData" :loading="modelStatsLoading" size="sm" variant="secondary">
-          🔄 Refresh
-        </Button>
-      </div>
 
       <!-- Loading State -->
       <LoadingSpinner v-if="modelStatsLoading && !backendModelStats" message="Loading dashboard..." />
