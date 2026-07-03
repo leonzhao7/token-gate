@@ -1,11 +1,13 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -2626,6 +2628,125 @@ func TestAdminBackendNewAPIConsoleCheckinLogsInWhenCookieExpired(t *testing.T) {
 	}
 	if !reflect.DeepEqual(calls, []string{"GET /api/user/self", "POST /api/user/login", "GET /api/user/self", "POST /api/user/checkin", "GET /api/user/self"}) {
 		t.Fatalf("unexpected console call sequence: %#v", calls)
+	}
+}
+
+func TestAdminBackendNewAPIConsoleCheckinUsesLoginUserIDWhenSelfRequiresNewAPIUser(t *testing.T) {
+	application := newTestApp(t)
+
+	var calls []string
+	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		switch r.URL.Path {
+		case "/api/user/self":
+			if r.Header.Get("New-Api-User") == "" {
+				return consoleJSONResponse(http.StatusUnauthorized, nil, `{"success":false,"message":"无权进行此操作，未提供 New-Api-User"}`), nil
+			}
+			if r.Header.Get("New-Api-User") != "1929" {
+				t.Fatalf("expected New-Api-User header 1929, got %q", r.Header.Get("New-Api-User"))
+			}
+			if r.Header.Get("Cookie") != "theme=dark; session=fresh" {
+				t.Fatalf("expected refreshed cookie for self, got %q", r.Header.Get("Cookie"))
+			}
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"username":"tom","id":1929,"quota":200,"used_quota":50}}`), nil
+		case "/api/user/login":
+			return consoleJSONResponse(http.StatusOK, http.Header{"Set-Cookie": []string{"session=fresh; Path=/; HttpOnly"}}, `{"success":true,"data":{"id":1929,"username":"tom"},"message":"logged in"}`), nil
+		case "/api/user/checkin":
+			if r.Header.Get("New-Api-User") != "1929" {
+				t.Fatalf("expected New-Api-User header 1929, got %q", r.Header.Get("New-Api-User"))
+			}
+			if r.Header.Get("Cookie") != "theme=dark; session=fresh" {
+				t.Fatalf("expected refreshed cookie for checkin, got %q", r.Header.Get("Cookie"))
+			}
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"message":"checked in"}`), nil
+		default:
+			t.Fatalf("unexpected console path %s", r.URL.Path)
+		}
+		return nil, errors.New("unreachable console path")
+	})})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:            "new-api-self-requires-user-header",
+		Protocol:        domain.BackendProtocolOpenAI,
+		BackendType:     domain.BackendTypeNewAPI,
+		BaseURL:         "https://new-api.local/v1",
+		APIKey:          "backend-key",
+		ConsoleURL:      "https://console.local",
+		ConsoleUsername: "tom",
+		ConsolePassword: "tom_passwd",
+		ConsoleCookie:   "theme=dark; session=expired",
+		Models:          []string{"gpt-4o"},
+		Endpoints:       []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/checkin", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected checkin status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !reflect.DeepEqual(calls, []string{"GET /api/user/self", "POST /api/user/login", "GET /api/user/self", "POST /api/user/checkin", "GET /api/user/self"}) {
+		t.Fatalf("unexpected console call sequence: %#v", calls)
+	}
+}
+
+func TestAdminBackendNewAPIConsoleCheckinWritesDiagnosticLogsWithoutSecrets(t *testing.T) {
+	var logs bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+	})
+
+	application := newTestApp(t)
+
+	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch r.URL.Path {
+		case "/api/user/checkin":
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"message":"ok"}`), nil
+		case "/api/user/self":
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"username":"tom","id":1929,"quota":248540,"used_quota":3250000}}`), nil
+		default:
+			t.Fatalf("unexpected console path %s", r.URL.Path)
+		}
+		return nil, errors.New("unreachable console path")
+	})})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:            "new-api-console-logging",
+		Protocol:        domain.BackendProtocolOpenAI,
+		BackendType:     domain.BackendTypeNewAPI,
+		BaseURL:         "https://new-api.local/v1",
+		APIKey:          "backend-key",
+		ConsoleURL:      "https://console.local",
+		ConsoleUsername: "tom",
+		ConsolePassword: "tom_passwd",
+		ConsoleCookie:   "session=valid",
+		Models:          []string{"gpt-4o"},
+		Endpoints:       []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/checkin", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected checkin status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	output := logs.String()
+	for _, want := range []string{
+		"newapi_console_checkin_started",
+		"newapi_console_request_finished",
+		"newapi_console_account_summary_saved",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected diagnostic log %q in output:\n%s", want, output)
+		}
+	}
+	for _, secret := range []string{"session=valid", "tom_passwd"} {
+		if strings.Contains(output, secret) {
+			t.Fatalf("diagnostic logs leaked secret %q:\n%s", secret, output)
+		}
 	}
 }
 

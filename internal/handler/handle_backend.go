@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -20,14 +21,25 @@ import (
 type BackendHandler struct {
 	store             *store.Store
 	consoleHTTPClient *http.Client
+	logger            *slog.Logger
 }
 
 func NewBackendHandler(st *store.Store) *BackendHandler {
-	return &BackendHandler{store: st}
+	return &BackendHandler{
+		store:  st,
+		logger: slog.Default().With("component", "backend_handler"),
+	}
 }
 
 func (h *BackendHandler) SetConsoleHTTPClient(client *http.Client) {
 	h.consoleHTTPClient = client
+}
+
+func (h *BackendHandler) SetLogger(logger *slog.Logger) {
+	if logger == nil {
+		return
+	}
+	h.logger = logger.With("component", "backend_handler")
 }
 
 type BackendView struct {
@@ -385,75 +397,154 @@ func (h *BackendHandler) HandleUpdateBackend(w http.ResponseWriter, r *http.Requ
 func (h *BackendHandler) HandleBackendConsoleCheckin(w http.ResponseWriter, r *http.Request) {
 	backend, err := h.consoleBackend(r)
 	if err != nil {
+		h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_rejected",
+			slog.String("error", err.Error()),
+		)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	h.logConsoleEvent(r.Context(), slog.LevelInfo, "newapi_console_checkin_started", consoleBackendAttrs(backend)...)
 
-	selfResult, backend, err := h.newAPIConsoleSelfWithLogin(r.Context(), backend)
+	accountID := consoleStoredAccountID(backend)
+	selfResult, backend, accountID, err := h.newAPIConsoleSelfWithLogin(r.Context(), backend, accountID)
 	if err != nil {
+		h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_failed", append(consoleBackendAttrs(backend),
+			slog.String("stage", "initial_self"),
+			slog.String("error", err.Error()),
+		)...)
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	accountID := consoleAccountID(selfResult.Payload)
+	accountID = firstNonEmpty(consoleAccountID(selfResult.Payload), accountID)
 	if accountID == "" {
+		h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_failed", append(consoleBackendAttrs(backend),
+			slog.String("stage", "account_id"),
+			slog.String("error", "new-api self response missing user id"),
+		)...)
 		writeError(w, http.StatusBadGateway, "new-api self response missing user id")
 		return
 	}
+	h.logConsoleEvent(r.Context(), slog.LevelInfo, "newapi_console_checkin_account_identified", append(consoleBackendAttrs(backend),
+		slog.String("new_api_user", accountID),
+	)...)
 
 	result, err := h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodPost, "/api/user/checkin", nil, backend.ConsoleCookie, accountID)
 	if err != nil {
+		h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_failed", append(consoleBackendAttrs(backend),
+			slog.String("stage", "checkin_request"),
+			slog.String("new_api_user", accountID),
+			slog.String("error", err.Error()),
+		)...)
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 
 	if result.loginRequired() {
-		backend, err = h.loginNewAPIConsole(r.Context(), backend)
+		h.logConsoleEvent(r.Context(), slog.LevelInfo, "newapi_console_checkin_login_required", append(append(consoleBackendAttrs(backend),
+			slog.String("stage", "checkin_result"),
+			slog.String("new_api_user", accountID),
+		), consoleResultAttrs(result)...)...)
+		var loginAccountID string
+		backend, loginAccountID, err = h.loginNewAPIConsole(r.Context(), backend)
 		if err != nil {
+			h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_failed", append(consoleBackendAttrs(backend),
+				slog.String("stage", "login_after_checkin"),
+				slog.String("new_api_user", accountID),
+				slog.String("error", err.Error()),
+			)...)
 			writeError(w, http.StatusBadGateway, err.Error())
 			return
 		}
-		selfResult, backend, err = h.newAPIConsoleSelfWithLogin(r.Context(), backend)
+		accountID = firstNonEmpty(loginAccountID, accountID)
+		selfResult, backend, accountID, err = h.newAPIConsoleSelfWithLogin(r.Context(), backend, accountID)
 		if err != nil {
+			h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_failed", append(consoleBackendAttrs(backend),
+				slog.String("stage", "self_after_login"),
+				slog.String("error", err.Error()),
+			)...)
 			writeError(w, http.StatusBadGateway, err.Error())
 			return
 		}
-		accountID = consoleAccountID(selfResult.Payload)
+		accountID = firstNonEmpty(consoleAccountID(selfResult.Payload), accountID)
 		if accountID == "" {
+			h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_failed", append(consoleBackendAttrs(backend),
+				slog.String("stage", "account_id_after_login"),
+				slog.String("error", "new-api self response missing user id"),
+			)...)
 			writeError(w, http.StatusBadGateway, "new-api self response missing user id")
 			return
 		}
+		h.logConsoleEvent(r.Context(), slog.LevelInfo, "newapi_console_checkin_account_identified", append(consoleBackendAttrs(backend),
+			slog.String("stage", "after_login"),
+			slog.String("new_api_user", accountID),
+		)...)
 
 		result, err = h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodPost, "/api/user/checkin", nil, backend.ConsoleCookie, accountID)
 		if err != nil {
+			h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_failed", append(consoleBackendAttrs(backend),
+				slog.String("stage", "checkin_retry_request"),
+				slog.String("new_api_user", accountID),
+				slog.String("error", err.Error()),
+			)...)
 			writeError(w, http.StatusBadGateway, err.Error())
 			return
 		}
 	}
 	if !result.success() {
+		h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_failed", append(append(consoleBackendAttrs(backend),
+			slog.String("stage", "checkin_result"),
+			slog.String("new_api_user", accountID),
+		), consoleResultAttrs(result)...)...)
 		writeError(w, http.StatusBadGateway, result.errorMessage("new-api checkin failed"))
 		return
 	}
 
-	selfResult, err = h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodGet, "/api/user/self", nil, backend.ConsoleCookie, "")
+	selfResult, err = h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodGet, "/api/user/self", nil, backend.ConsoleCookie, accountID)
 	if err != nil {
+		h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_failed", append(consoleBackendAttrs(backend),
+			slog.String("stage", "refresh_self"),
+			slog.String("new_api_user", accountID),
+			slog.String("error", err.Error()),
+		)...)
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	if !selfResult.success() {
+		h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_failed", append(append(consoleBackendAttrs(backend),
+			slog.String("stage", "refresh_self_result"),
+			slog.String("new_api_user", accountID),
+		), consoleResultAttrs(selfResult)...)...)
 		writeError(w, http.StatusBadGateway, selfResult.errorMessage("new-api self request failed"))
 		return
 	}
 	accountJSON, err := consoleAccountSummaryJSON(selfResult.Payload)
 	if err != nil {
+		h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_failed", append(consoleBackendAttrs(backend),
+			slog.String("stage", "account_summary"),
+			slog.String("new_api_user", accountID),
+			slog.String("error", err.Error()),
+		)...)
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	backend.ConsoleAccountJSON = accountJSON
 	updated, err := h.store.UpdateBackend(r.Context(), backend)
 	if err != nil {
+		h.logConsoleEvent(r.Context(), slog.LevelError, "newapi_console_checkin_failed", append(consoleBackendAttrs(backend),
+			slog.String("stage", "save_account_summary"),
+			slog.String("new_api_user", accountID),
+			slog.String("error", err.Error()),
+		)...)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.logConsoleEvent(r.Context(), slog.LevelInfo, "newapi_console_account_summary_saved", append(consoleBackendAttrs(updated),
+		slog.String("new_api_user", accountID),
+		slog.Int("account_summary_bytes", len(accountJSON)),
+	)...)
+	h.logConsoleEvent(r.Context(), slog.LevelInfo, "newapi_console_checkin_completed", append(append(consoleBackendAttrs(updated),
+		slog.String("new_api_user", accountID),
+	), consoleResultAttrs(result)...)...)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"backend": updated,
@@ -871,6 +962,79 @@ func MappedBackendModel(backend domain.Backend, clientModel string) string {
 	return clientModel
 }
 
+func (h *BackendHandler) logConsoleEvent(ctx context.Context, level slog.Level, message string, attrs ...slog.Attr) {
+	logger := h.logger
+	if logger == nil {
+		logger = slog.Default().With("component", "backend_handler")
+	}
+	logger.LogAttrs(ctx, level, message, attrs...)
+}
+
+func consoleBackendAttrs(backend domain.Backend) []slog.Attr {
+	attrs := []slog.Attr{
+		slog.Int64("backend_id", backend.ID),
+		slog.String("backend_name", backend.Name),
+		slog.String("backend_type", domain.NormalizeBackendType(backend.BackendType)),
+		slog.String("backend_status", backend.Status),
+		slog.Bool("console_cookie_present", strings.TrimSpace(backend.ConsoleCookie) != ""),
+		slog.Int("console_cookie_bytes", len(strings.TrimSpace(backend.ConsoleCookie))),
+	}
+	if parsed, err := url.Parse(strings.TrimSpace(backend.ConsoleURL)); err == nil {
+		attrs = append(attrs,
+			slog.String("console_scheme", parsed.Scheme),
+			slog.String("console_host", parsed.Host),
+		)
+	} else {
+		attrs = append(attrs,
+			slog.String("console_scheme", ""),
+			slog.String("console_host", ""),
+			slog.String("console_url_error", err.Error()),
+		)
+	}
+	return attrs
+}
+
+func consoleRequestAttrs(backend domain.Backend, method, path string, body []byte, cookie string, newAPIUser string) []slog.Attr {
+	cookie = strings.TrimSpace(cookie)
+	newAPIUser = strings.TrimSpace(newAPIUser)
+	attrs := append(consoleBackendAttrs(backend),
+		slog.String("method", method),
+		slog.String("path", path),
+		slog.Int("request_body_bytes", len(body)),
+		slog.Bool("cookie_present", cookie != ""),
+		slog.Int("cookie_bytes", len(cookie)),
+		slog.Bool("new_api_user_present", newAPIUser != ""),
+	)
+	if newAPIUser != "" {
+		attrs = append(attrs, slog.String("new_api_user", newAPIUser))
+	}
+	return attrs
+}
+
+func consoleResultAttrs(result newAPIConsoleResult) []slog.Attr {
+	attrs := []slog.Attr{
+		slog.Int("console_http_status", result.StatusCode),
+		slog.Bool("console_success", result.success()),
+		slog.Bool("console_login_required", result.loginRequired()),
+	}
+	if message := consoleResultMessage(result); message != "" {
+		attrs = append(attrs, slog.String("console_message", message))
+	}
+	return attrs
+}
+
+func consoleResultMessage(result newAPIConsoleResult) string {
+	message := strings.TrimSpace(fmt.Sprint(result.Payload["message"]))
+	if message == "" || message == "<nil>" {
+		return ""
+	}
+	const limit = 200
+	if len([]rune(message)) <= limit {
+		return message
+	}
+	return string([]rune(message)[:limit]) + "..."
+}
+
 type newAPIConsoleResult struct {
 	StatusCode int
 	Header     http.Header
@@ -899,35 +1063,71 @@ func (h *BackendHandler) consoleBackend(r *http.Request) (domain.Backend, error)
 	return backend, nil
 }
 
-func (h *BackendHandler) newAPIConsoleSelfWithLogin(ctx context.Context, backend domain.Backend) (newAPIConsoleResult, domain.Backend, error) {
-	selfResult, err := h.doNewAPIConsoleJSON(ctx, backend, http.MethodGet, "/api/user/self", nil, backend.ConsoleCookie, "")
+func (h *BackendHandler) newAPIConsoleSelfWithLogin(ctx context.Context, backend domain.Backend, accountID string) (newAPIConsoleResult, domain.Backend, string, error) {
+	h.logConsoleEvent(ctx, slog.LevelInfo, "newapi_console_self_started", consoleBackendAttrs(backend)...)
+	selfResult, err := h.doNewAPIConsoleJSON(ctx, backend, http.MethodGet, "/api/user/self", nil, backend.ConsoleCookie, accountID)
 	if err != nil {
-		return newAPIConsoleResult{}, backend, err
+		h.logConsoleEvent(ctx, slog.LevelWarn, "newapi_console_self_failed", append(consoleBackendAttrs(backend),
+			slog.String("stage", "request"),
+			slog.String("error", err.Error()),
+		)...)
+		return newAPIConsoleResult{}, backend, accountID, err
 	}
 	if selfResult.success() {
-		return selfResult, backend, nil
+		h.logConsoleEvent(ctx, slog.LevelInfo, "newapi_console_self_completed", append(consoleBackendAttrs(backend), consoleResultAttrs(selfResult)...)...)
+		return selfResult, backend, firstNonEmpty(consoleAccountID(selfResult.Payload), accountID), nil
 	}
 	if !selfResult.loginRequired() {
-		return newAPIConsoleResult{}, backend, errors.New(selfResult.errorMessage("new-api self request failed"))
+		h.logConsoleEvent(ctx, slog.LevelWarn, "newapi_console_self_failed", append(append(consoleBackendAttrs(backend),
+			slog.String("stage", "result"),
+		), consoleResultAttrs(selfResult)...)...)
+		return newAPIConsoleResult{}, backend, accountID, errors.New(selfResult.errorMessage("new-api self request failed"))
 	}
+	h.logConsoleEvent(ctx, slog.LevelInfo, "newapi_console_self_login_required", append(consoleBackendAttrs(backend), consoleResultAttrs(selfResult)...)...)
 
-	updated, err := h.loginNewAPIConsole(ctx, backend)
+	updated, loginAccountID, err := h.loginNewAPIConsole(ctx, backend)
 	if err != nil {
-		return newAPIConsoleResult{}, backend, err
+		h.logConsoleEvent(ctx, slog.LevelWarn, "newapi_console_self_failed", append(consoleBackendAttrs(backend),
+			slog.String("stage", "login"),
+			slog.String("error", err.Error()),
+		)...)
+		return newAPIConsoleResult{}, backend, accountID, err
 	}
-	selfResult, err = h.doNewAPIConsoleJSON(ctx, updated, http.MethodGet, "/api/user/self", nil, updated.ConsoleCookie, "")
+	accountID = firstNonEmpty(loginAccountID, accountID)
+	selfResult, err = h.doNewAPIConsoleJSON(ctx, updated, http.MethodGet, "/api/user/self", nil, updated.ConsoleCookie, accountID)
 	if err != nil {
-		return newAPIConsoleResult{}, updated, err
+		h.logConsoleEvent(ctx, slog.LevelWarn, "newapi_console_self_failed", append(consoleBackendAttrs(updated),
+			slog.String("stage", "request_after_login"),
+			slog.String("error", err.Error()),
+		)...)
+		return newAPIConsoleResult{}, updated, accountID, err
 	}
 	if !selfResult.success() {
-		return newAPIConsoleResult{}, updated, errors.New(selfResult.errorMessage("new-api self request failed"))
+		h.logConsoleEvent(ctx, slog.LevelWarn, "newapi_console_self_failed", append(append(consoleBackendAttrs(updated),
+			slog.String("stage", "result_after_login"),
+		), consoleResultAttrs(selfResult)...)...)
+		return newAPIConsoleResult{}, updated, accountID, errors.New(selfResult.errorMessage("new-api self request failed"))
 	}
-	return selfResult, updated, nil
+	accountID = firstNonEmpty(consoleAccountID(selfResult.Payload), accountID)
+	h.logConsoleEvent(ctx, slog.LevelInfo, "newapi_console_self_completed", append(append(consoleBackendAttrs(updated),
+		slog.String("stage", "after_login"),
+	), consoleResultAttrs(selfResult)...)...)
+	return selfResult, updated, accountID, nil
 }
 
-func (h *BackendHandler) loginNewAPIConsole(ctx context.Context, backend domain.Backend) (domain.Backend, error) {
+func (h *BackendHandler) loginNewAPIConsole(ctx context.Context, backend domain.Backend) (domain.Backend, string, error) {
+	h.logConsoleEvent(ctx, slog.LevelInfo, "newapi_console_login_started", append(consoleBackendAttrs(backend),
+		slog.Bool("console_username_present", strings.TrimSpace(backend.ConsoleUsername) != ""),
+		slog.Bool("console_password_present", strings.TrimSpace(backend.ConsolePassword) != ""),
+	)...)
 	if strings.TrimSpace(backend.ConsoleUsername) == "" || strings.TrimSpace(backend.ConsolePassword) == "" {
-		return domain.Backend{}, errors.New("console username and password are required")
+		h.logConsoleEvent(ctx, slog.LevelWarn, "newapi_console_login_failed", append(consoleBackendAttrs(backend),
+			slog.String("stage", "credentials"),
+			slog.Bool("console_username_present", strings.TrimSpace(backend.ConsoleUsername) != ""),
+			slog.Bool("console_password_present", strings.TrimSpace(backend.ConsolePassword) != ""),
+			slog.String("error", "console username and password are required"),
+		)...)
+		return domain.Backend{}, "", errors.New("console username and password are required")
 	}
 	loginBody, err := json.Marshal(struct {
 		Username string `json:"username"`
@@ -937,31 +1137,63 @@ func (h *BackendHandler) loginNewAPIConsole(ctx context.Context, backend domain.
 		Password: strings.TrimSpace(backend.ConsolePassword),
 	})
 	if err != nil {
-		return domain.Backend{}, err
+		h.logConsoleEvent(ctx, slog.LevelWarn, "newapi_console_login_failed", append(consoleBackendAttrs(backend),
+			slog.String("stage", "encode_body"),
+			slog.String("error", err.Error()),
+		)...)
+		return domain.Backend{}, "", err
 	}
 	loginResult, err := h.doNewAPIConsoleJSON(ctx, backend, http.MethodPost, "/api/user/login", loginBody, "", "")
 	if err != nil {
-		return domain.Backend{}, err
+		h.logConsoleEvent(ctx, slog.LevelWarn, "newapi_console_login_failed", append(consoleBackendAttrs(backend),
+			slog.String("stage", "request"),
+			slog.String("error", err.Error()),
+		)...)
+		return domain.Backend{}, "", err
 	}
 	if !loginResult.success() {
-		return domain.Backend{}, errors.New(loginResult.errorMessage("new-api login failed"))
+		h.logConsoleEvent(ctx, slog.LevelWarn, "newapi_console_login_failed", append(append(consoleBackendAttrs(backend),
+			slog.String("stage", "result"),
+		), consoleResultAttrs(loginResult)...)...)
+		return domain.Backend{}, "", errors.New(loginResult.errorMessage("new-api login failed"))
 	}
 	session := sessionCookie(loginResult.Header)
 	if session == nil {
-		return domain.Backend{}, errors.New("new-api login did not return session cookie")
+		h.logConsoleEvent(ctx, slog.LevelWarn, "newapi_console_login_failed", append(append(consoleBackendAttrs(backend),
+			slog.String("stage", "session_cookie"),
+		), consoleResultAttrs(loginResult)...)...)
+		return domain.Backend{}, "", errors.New("new-api login did not return session cookie")
 	}
+	accountID := consoleAccountID(loginResult.Payload)
+	previousCookie := backend.ConsoleCookie
 	backend.ConsoleCookie = mergeCookieValue(backend.ConsoleCookie, session)
+	h.logConsoleEvent(ctx, slog.LevelInfo, "newapi_console_login_cookie_refreshed", append(consoleBackendAttrs(backend),
+		slog.Bool("previous_cookie_present", strings.TrimSpace(previousCookie) != ""),
+		slog.Int("previous_cookie_bytes", len(strings.TrimSpace(previousCookie))),
+		slog.Bool("updated_cookie_present", strings.TrimSpace(backend.ConsoleCookie) != ""),
+		slog.Int("updated_cookie_bytes", len(strings.TrimSpace(backend.ConsoleCookie))),
+	)...)
 	updated, err := h.store.UpdateBackend(ctx, backend)
 	if err != nil {
-		return domain.Backend{}, err
+		h.logConsoleEvent(ctx, slog.LevelError, "newapi_console_login_failed", append(consoleBackendAttrs(backend),
+			slog.String("stage", "save_cookie"),
+			slog.String("error", err.Error()),
+		)...)
+		return domain.Backend{}, accountID, err
 	}
-	return updated, nil
+	h.logConsoleEvent(ctx, slog.LevelInfo, "newapi_console_login_completed", append(append(consoleBackendAttrs(updated),
+		slog.Bool("new_api_user_present", accountID != ""),
+	), consoleResultAttrs(loginResult)...)...)
+	return updated, accountID, nil
 }
 
 func (h *BackendHandler) doNewAPIConsoleJSON(ctx context.Context, backend domain.Backend, method, path string, body []byte, cookie string, newAPIUser string) (newAPIConsoleResult, error) {
 	target := consoleAPIURL(backend.ConsoleURL, path)
 	request, err := http.NewRequestWithContext(ctx, method, target, bytes.NewReader(body))
 	if err != nil {
+		h.logConsoleEvent(ctx, slog.LevelWarn, "newapi_console_request_build_failed", append(consoleRequestAttrs(backend, method, path, body, cookie, newAPIUser),
+			slog.String("error", err.Error()),
+		)...)
 		return newAPIConsoleResult{}, err
 	}
 	request.Header.Set("Accept", "application/json")
@@ -979,27 +1211,56 @@ func (h *BackendHandler) doNewAPIConsoleJSON(ctx context.Context, backend domain
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}
 	}
+	startedAt := time.Now()
+	h.logConsoleEvent(ctx, slog.LevelInfo, "newapi_console_request_started", consoleRequestAttrs(backend, method, path, body, cookie, newAPIUser)...)
 	response, err := client.Do(request)
 	if err != nil {
+		h.logConsoleEvent(ctx, slog.LevelWarn, "newapi_console_request_failed", append(consoleRequestAttrs(backend, method, path, body, cookie, newAPIUser),
+			slog.Duration("duration", time.Since(startedAt)),
+			slog.String("error", err.Error()),
+		)...)
 		return newAPIConsoleResult{}, err
 	}
 	defer response.Body.Close()
 
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
+		h.logConsoleEvent(ctx, slog.LevelWarn, "newapi_console_response_read_failed", append(consoleRequestAttrs(backend, method, path, body, cookie, newAPIUser),
+			slog.Int("http_status", response.StatusCode),
+			slog.String("http_status_text", response.Status),
+			slog.String("content_type", response.Header.Get("Content-Type")),
+			slog.Duration("duration", time.Since(startedAt)),
+			slog.String("error", err.Error()),
+		)...)
 		return newAPIConsoleResult{}, err
 	}
 	raw := compactJSON(responseBody)
 	var payload map[string]any
 	if err := json.Unmarshal(responseBody, &payload); err != nil {
+		h.logConsoleEvent(ctx, slog.LevelWarn, "newapi_console_response_decode_failed", append(consoleRequestAttrs(backend, method, path, body, cookie, newAPIUser),
+			slog.Int("http_status", response.StatusCode),
+			slog.String("http_status_text", response.Status),
+			slog.String("content_type", response.Header.Get("Content-Type")),
+			slog.Int("response_bytes", len(responseBody)),
+			slog.Duration("duration", time.Since(startedAt)),
+			slog.String("error", err.Error()),
+		)...)
 		return newAPIConsoleResult{}, fmt.Errorf("decode new-api console response: %w", err)
 	}
-	return newAPIConsoleResult{
+	result := newAPIConsoleResult{
 		StatusCode: response.StatusCode,
 		Header:     response.Header.Clone(),
 		Raw:        raw,
 		Payload:    payload,
-	}, nil
+	}
+	h.logConsoleEvent(ctx, slog.LevelInfo, "newapi_console_request_finished", append(append(consoleRequestAttrs(backend, method, path, body, cookie, newAPIUser),
+		slog.Int("http_status", response.StatusCode),
+		slog.String("http_status_text", response.Status),
+		slog.String("content_type", response.Header.Get("Content-Type")),
+		slog.Int("response_bytes", len(responseBody)),
+		slog.Duration("duration", time.Since(startedAt)),
+	), consoleResultAttrs(result)...)...)
+	return result, nil
 }
 
 func (r newAPIConsoleResult) success() bool {
@@ -1107,7 +1368,16 @@ func consoleAccountID(payload map[string]any) string {
 	if !ok {
 		return ""
 	}
-	switch value := data["id"].(type) {
+	return consoleIDValue(data["id"])
+}
+
+func consoleStoredAccountID(backend domain.Backend) string {
+	payload := decodeJSONMap(backend.ConsoleAccountJSON)
+	return consoleIDValue(payload["id"])
+}
+
+func consoleIDValue(value any) string {
+	switch value := value.(type) {
 	case float64:
 		if value <= 0 {
 			return ""
@@ -1134,6 +1404,15 @@ func consoleAccountID(payload map[string]any) string {
 	default:
 		return ""
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func decodeJSONMap(raw string) map[string]any {
