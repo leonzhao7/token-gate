@@ -1,181 +1,194 @@
 <template>
   <form @submit.prevent="handleSubmit" class="backend-form">
-    <!-- Basic Info -->
-    <div class="form-section">
-      <h3 class="section-title">Basic Information</h3>
+    <!-- Section: Backend Service -->
+    <section class="form-section">
+      <div class="section-header">
+        <div class="section-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="4" rx="1.5" stroke="currentColor" stroke-width="1.4"/><rect x="2" y="9" width="12" height="4" rx="1.5" stroke="currentColor" stroke-width="1.4"/><circle cx="4.5" cy="5" r="0.75" fill="currentColor"/><circle cx="4.5" cy="11" r="0.75" fill="currentColor"/></svg>
+        </div>
+        <h3 class="section-title">后端服务</h3>
+        <span class="section-desc">上游 API 服务的连接信息</span>
+      </div>
 
-      <div class="form-group">
-        <label class="form-label" for="name">Name *</label>
+      <div class="field-grid cols-2">
+        <div class="form-field">
+          <label for="name">名称 <span class="required">*</span></label>
+          <input
+            id="name"
+            v-model="formData.name"
+            type="text"
+            placeholder="e.g. OpenAI Primary"
+            required
+          />
+        </div>
+        <div class="form-field">
+          <label for="backend-type">后端类型</label>
+          <select id="backend-type" v-model="formData.backend_type">
+            <option value="">通用</option>
+            <option value="new-api">new-api</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label for="console-url">Server URL</label>
         <input
-          id="name"
-          v-model="formData.name"
-          type="text"
-          class="form-input"
-          placeholder="e.g., OpenAI GPT-4"
-          required
+          id="console-url"
+          v-model="formData.console_url"
+          type="url"
+          placeholder="https://console.example.com"
         />
       </div>
 
-      <div class="form-group">
-        <label class="form-label" for="base-url">Base URL *</label>
+      <div class="field-grid cols-2">
+        <div class="form-field">
+          <label for="console-username">用户名</label>
+          <input
+            id="console-username"
+            v-model="formData.console_username"
+            type="text"
+            placeholder="admin"
+          />
+        </div>
+        <div class="form-field">
+          <label for="console-password">密码</label>
+          <div class="input-with-action">
+            <input
+              id="console-password"
+              v-model="formData.console_password"
+              :type="showConsolePassword ? 'text' : 'password'"
+              placeholder="••••••"
+            />
+            <button type="button" class="input-action-btn" @click="showConsolePassword = !showConsolePassword" tabindex="-1">
+              <svg v-if="!showConsolePassword" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.4"/></svg>
+              <svg v-else width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="14" x2="14" y2="2" stroke="currentColor" stroke-width="1.4"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label for="console-cookie">Cookie</label>
+        <textarea
+          id="console-cookie"
+          v-model="formData.console_cookie"
+          rows="2"
+          placeholder="session=abc123..."
+        ></textarea>
+      </div>
+
+      <div class="field-grid cols-2">
+        <div class="form-field">
+          <label for="tags">标签</label>
+          <input
+            id="tags"
+            v-model="formData.tags"
+            type="text"
+            placeholder="hk, priority, vip"
+          />
+        </div>
+        <div class="form-field">
+          <label for="notes">备注</label>
+          <input
+            id="notes"
+            v-model="formData.notes"
+            type="text"
+            placeholder="运维备注..."
+          />
+        </div>
+      </div>
+    </section>
+
+    <!-- Section: Relay Configuration -->
+    <section class="form-section">
+      <div class="section-header">
+        <div class="section-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8h4m4 0h4M8 2v4m0 4v4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.4"/></svg>
+        </div>
+        <h3 class="section-title">转发配置</h3>
+        <span class="section-desc">模型路由与负载均衡</span>
+      </div>
+
+      <div class="form-field">
+        <label for="base-url">Base URL <span class="required">*</span></label>
         <input
           id="base-url"
           v-model="formData.base_url"
           type="url"
-          class="form-input"
           placeholder="https://api.openai.com/v1"
           required
         />
       </div>
 
-      <div class="form-group">
-        <label class="form-label" for="protocol">Upstream Protocol</label>
-        <select
-          id="protocol"
-          v-model="formData.protocol"
-          class="form-select"
-        >
-          <option value="openai">OpenAI</option>
-          <option value="anthropic">Anthropic</option>
-          <option value="both">OpenAI + Anthropic</option>
-        </select>
+      <div class="form-field">
+        <label for="api-key">API Key <span class="required">*</span></label>
+        <div class="input-with-action">
+          <input
+            id="api-key"
+            v-model="formData.api_key"
+            :type="showApiKey ? 'text' : 'password'"
+            placeholder="sk-..."
+            required
+          />
+          <button type="button" class="input-action-btn" @click="showApiKey = !showApiKey" tabindex="-1">
+            <svg v-if="!showApiKey" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.4"/></svg>
+            <svg v-else width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="14" x2="14" y2="2" stroke="currentColor" stroke-width="1.4"/></svg>
+          </button>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label class="form-label" for="backend-type">Backend Type</label>
-        <select
-          id="backend-type"
-          v-model="formData.backend_type"
-          class="form-select"
-        >
-          <option value="">None</option>
-          <option value="new-api">new-api</option>
-        </select>
+      <div class="field-grid cols-2">
+        <div class="form-field">
+          <label for="protocol">上游协议</label>
+          <select id="protocol" v-model="formData.protocol">
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="both">OpenAI + Anthropic</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="weight">权重</label>
+          <input
+            id="weight"
+            v-model.number="formData.weight"
+            type="number"
+            min="1"
+            max="100"
+            placeholder="10"
+          />
+          <span class="field-hint">负载均衡权重 1-100</span>
+        </div>
       </div>
 
-      <div class="form-group">
-        <label class="form-label" for="api-key">API Key *</label>
-        <input
-          id="api-key"
-          v-model="formData.api_key"
-          type="password"
-          class="form-input"
-          placeholder="sk-..."
-          required
-        />
-      </div>
-
-      <div class="form-group">
-        <label class="form-label" for="models">Models *</label>
+      <div class="form-field">
+        <label for="models">Models <span class="required">*</span></label>
         <input
           id="models"
           v-model="formData.models"
           type="text"
-          class="form-input"
           placeholder="gpt-4o, claude-3-5-sonnet, gpt-image-*"
           required
         />
-        <p class="form-hint">Comma-separated client model names this backend can serve.</p>
+        <span class="field-hint">逗号分隔，此 backend 可服务的模型列表</span>
       </div>
 
-      <div class="form-group">
-        <label class="form-label" for="model">Model Mapping</label>
+      <div class="form-field">
+        <label for="model-mapping">Model Mapping</label>
         <textarea
-          id="model"
+          id="model-mapping"
           v-model="formData.model_mapping"
-          class="form-input form-textarea"
-          rows="5"
-          placeholder="{&#10;  &quot;gpt-4o&quot;: &quot;azure-gpt-4o&quot;&#10;}"
-        ></textarea>
-        <p class="form-hint">JSON object: client model to upstream model.</p>
-        <p v-if="modelMappingError" class="form-error">{{ modelMappingError }}</p>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label" for="tags">Tags</label>
-        <input
-          id="tags"
-          v-model="formData.tags"
-          type="text"
-          class="form-input"
-          placeholder="hk, priority, vip"
-        />
-      </div>
-
-      <div class="form-group">
-        <label class="form-label" for="description">Description</label>
-        <textarea
-          id="description"
-          v-model="formData.notes"
-          class="form-input form-textarea description-textarea"
           rows="3"
-          placeholder="Operator notes"
+          class="mono"
+          placeholder='{ "gpt-4o": "azure-gpt-4o" }'
         ></textarea>
-      </div>
-    </div>
-
-    <!-- Console Settings -->
-    <div class="form-section">
-      <h3 class="section-title">Console Settings</h3>
-
-      <div class="form-group">
-        <label class="form-label" for="console-url">Console URL</label>
-        <input
-          id="console-url"
-          v-model="formData.console_url"
-          type="url"
-          class="form-input"
-          placeholder="https://console.example.com"
-        />
+        <span v-if="modelMappingError" class="field-error">{{ modelMappingError }}</span>
+        <span v-else class="field-hint">JSON: 客户端模型名 → 上游模型名</span>
       </div>
 
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="console-username">Console Username</label>
-          <input
-            id="console-username"
-            v-model="formData.console_username"
-            type="text"
-            class="form-input"
-            placeholder="tom"
-          />
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="console-password">Console Password</label>
-          <input
-            id="console-password"
-            v-model="formData.console_password"
-            type="password"
-            class="form-input"
-            placeholder="tom_passwd"
-          />
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label" for="console-cookie">Console Cookie</label>
-        <textarea
-          id="console-cookie"
-          v-model="formData.console_cookie"
-          class="form-input form-textarea"
-          rows="3"
-          placeholder="session=..."
-        ></textarea>
-      </div>
-    </div>
-
-    <!-- Proxy Settings -->
-    <div class="form-section">
-      <h3 class="section-title">Proxy Settings</h3>
-
-      <div class="form-group">
-        <label class="form-label" for="proxy">SOCKS Proxy</label>
-        <select
-          id="proxy"
-          v-model.number="formData.proxy_id"
-          class="form-select"
-        >
-          <option :value="0">No Proxy</option>
+      <div class="form-field">
+        <label for="proxy">代理</label>
+        <select id="proxy" v-model.number="formData.proxy_id">
+          <option :value="0">无代理</option>
           <option
             v-for="proxy in proxies"
             :key="proxy.id"
@@ -185,32 +198,12 @@
           </option>
         </select>
       </div>
-    </div>
-
-    <!-- Advanced Settings -->
-    <div class="form-section">
-      <h3 class="section-title">Advanced Settings</h3>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label" for="weight">Weight</label>
-          <input
-            id="weight"
-            v-model.number="formData.weight"
-            type="number"
-            min="1"
-            max="100"
-            class="form-input"
-          />
-          <p class="form-hint">Load balancing weight (1-100)</p>
-        </div>
-      </div>
-    </div>
+    </section>
 
     <!-- Actions -->
     <div class="form-actions">
       <Button type="button" variant="secondary" @click="$emit('cancel')">
-        Cancel
+        取消
       </Button>
       <Button type="submit" :loading="loading" :disabled="!isValid">
         {{ submitLabel }}
@@ -240,7 +233,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
-  submitLabel: 'Save Backend'
+  submitLabel: '保存'
 })
 
 const emit = defineEmits<{
@@ -285,6 +278,8 @@ const defaultFormData = (): BackendFormData => ({
 })
 
 const formData = ref<BackendFormData>(defaultFormData())
+const showApiKey = ref(false)
+const showConsolePassword = ref(false)
 
 const modelMappingError = computed(() => {
   try {
@@ -326,7 +321,6 @@ const handleSubmit = () => {
   })
 }
 
-// Initialize form with existing backend data
 watch(() => props.backend, (backend) => {
   if (backend) {
     formData.value = {
@@ -356,108 +350,167 @@ watch(() => props.backend, (backend) => {
 .backend-form {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-2xl);
+  gap: var(--spacing-lg);
 }
 
+/* --- Section --- */
 .form-section {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-lg);
+  gap: 12px;
+  padding: 16px;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.section-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+  flex-shrink: 0;
 }
 
 .section-title {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: var(--spacing-sm);
+  margin: 0;
 }
 
-.form-group {
+.section-desc {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
+/* --- Fields --- */
+.form-field {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
+  gap: 4px;
 }
 
-.form-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--spacing-lg);
-}
-
-.form-label {
-  font-size: 14px;
+.form-field label {
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
+  line-height: 1;
 }
 
-.form-input,
-.form-select {
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  color: var(--text-primary);
-  background: var(--bg-base);
-  transition: all 150ms ease;
-}
-
-.form-textarea {
-  min-height: 112px;
-  resize: vertical;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  line-height: 1.5;
-}
-
-.description-textarea {
-  font-family: inherit;
-}
-
-.form-input:focus,
-.form-select:focus {
-  outline: none;
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.1);
-}
-
-.form-input::placeholder {
-  color: var(--text-tertiary);
-}
-
-.form-hint {
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-
-.form-error {
-  font-size: 12px;
+.required {
   color: var(--danger);
 }
 
-.checkbox-group {
-  flex-direction: row;
-  align-items: center;
+.form-field input,
+.form-field select,
+.form-field textarea {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  line-height: 1.4;
 }
 
-.checkbox-label {
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(0, 112, 243, 0.08);
+}
+
+.form-field input::placeholder,
+.form-field textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+.form-field textarea {
+  resize: vertical;
+  min-height: 48px;
+}
+
+.form-field textarea.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.field-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.3;
+}
+
+.field-error {
+  font-size: 11px;
+  color: var(--danger);
+  line-height: 1.3;
+}
+
+/* --- Grid --- */
+.field-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.field-grid.cols-2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* --- Input with action button --- */
+.input-with-action {
+  position: relative;
+  display: flex;
+}
+
+.input-with-action input {
+  flex: 1;
+  padding-right: 32px;
+}
+
+.input-action-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  font-size: 14px;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.input-action-btn:hover {
   color: var(--text-secondary);
-  cursor: pointer;
+  background: var(--bg-muted);
 }
 
-.form-checkbox {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-}
-
+/* --- Actions --- */
 .form-actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--spacing-md);
-  padding-top: var(--spacing-lg);
+  gap: 8px;
+  padding-top: 12px;
   border-top: 1px solid var(--border);
 }
 </style>

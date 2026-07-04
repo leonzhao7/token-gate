@@ -91,15 +91,15 @@
       <!-- Create/Edit Modal -->
       <Modal
         :show="showCreateModal || showEditModal"
-        :title="editingBackend ? 'Edit Backend' : 'Create Backend'"
-        width="700px"
+        :title="editingBackend ? '编辑 Backend' : '新增 Backend'"
+        width="580px"
         @close="closeModals"
       >
         <BackendForm
           :backend="editingBackend"
           :proxies="proxies"
           :loading="submitting"
-          :submit-label="editingBackend ? 'Update Backend' : 'Create Backend'"
+          :submit-label="editingBackend ? '更新' : '创建'"
           @submit="handleSubmit"
           @cancel="closeModals"
         />
