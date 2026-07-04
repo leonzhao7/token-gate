@@ -353,6 +353,14 @@ export interface BackendFilters extends PaginationParams {
 }
 
 export interface UsageLogFilters extends PaginationParams {
+  time_range?: string
+  date_from?: string
+  date_to?: string
+  status?: string
+  model?: string
+  client_key?: string
+  backend?: string
+  proxy?: string
   start_time?: string
   end_time?: string
   status_code?: number[]

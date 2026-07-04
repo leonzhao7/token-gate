@@ -5,24 +5,12 @@ import type {
   ListResponse,
   ClearResponse
 } from './types'
+import { buildUsageLogListParams } from './usageLogParams'
 
 export const usageLogsApi = {
   // List usage logs
   async list(filters?: UsageLogFilters): Promise<ListResponse<UsageLog>> {
-    const params = new URLSearchParams()
-    if (filters?.start_time) params.append('start_time', filters.start_time)
-    if (filters?.end_time) params.append('end_time', filters.end_time)
-    if (filters?.status_code?.length) {
-      filters.status_code.forEach(code => params.append('status_code', code.toString()))
-    }
-    if (filters?.backend_id?.length) {
-      filters.backend_id.forEach(id => params.append('backend_id', id.toString()))
-    }
-    if (filters?.client_key_id?.length) {
-      filters.client_key_id.forEach(id => params.append('client_key_id', id.toString()))
-    }
-    if (filters?.page) params.append('page', filters.page.toString())
-    if (filters?.limit) params.append('limit', filters.limit.toString())
+    const params = buildUsageLogListParams(filters)
 
     const { data } = await apiClient.get<ListResponse<UsageLog>>('/usage-logs', { params })
     return data
@@ -36,9 +24,7 @@ export const usageLogsApi = {
 
   // Delete usage logs (batch)
   async delete(filters?: UsageLogFilters): Promise<void> {
-    const params = new URLSearchParams()
-    if (filters?.start_time) params.append('start_time', filters.start_time)
-    if (filters?.end_time) params.append('end_time', filters.end_time)
+    const params = buildUsageLogListParams(filters)
     await apiClient.delete('/usage-logs', { params })
   },
 
