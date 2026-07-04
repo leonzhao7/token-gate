@@ -7,8 +7,7 @@ import type {
   ListResponse,
   BackendImportExportPayload,
   BackendImportResponse,
-  BackendConsoleCheckinResponse,
-  BackendConsolePricingResponse
+  BackendConsoleSyncResponse
 } from './types'
 
 export const backendsApi = {
@@ -57,13 +56,8 @@ export const backendsApi = {
     return data
   },
 
-  async checkin(id: number): Promise<BackendConsoleCheckinResponse> {
-    const { data } = await apiClient.post<BackendConsoleCheckinResponse>(`/backends/${id}/console/checkin`)
-    return data
-  },
-
-  async pricing(id: number): Promise<BackendConsolePricingResponse> {
-    const { data } = await apiClient.post<BackendConsolePricingResponse>(`/backends/${id}/console/pricing`)
+  async syncConsole(id: number): Promise<BackendConsoleSyncResponse> {
+    const { data } = await apiClient.post<BackendConsoleSyncResponse>(`/backends/${id}/console/sync`)
     return data
   }
 }

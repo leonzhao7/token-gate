@@ -82,25 +82,14 @@
             <div class="col col-actions" @click.stop>
               <button
                 class="action-btn text-action-btn console-action-btn"
-                :class="{ 'is-running': isCheckinRunning(backend.id) }"
-                :disabled="isBackendActionRunning(backend.id)"
-                :aria-busy="isCheckinRunning(backend.id)"
-                title="签到"
-                @click="$emit('checkin', backend)"
+                :class="{ 'is-running': isConsoleSyncRunning(backend.id) }"
+                :disabled="isConsoleSyncRunning(backend.id)"
+                :aria-busy="isConsoleSyncRunning(backend.id)"
+                title="同步"
+                @click="$emit('sync-console', backend)"
               >
-                <span v-if="isCheckinRunning(backend.id)" class="action-spinner"></span>
-                {{ isCheckinRunning(backend.id) ? '签到中' : '签到' }}
-              </button>
-              <button
-                class="action-btn text-action-btn console-action-btn"
-                :class="{ 'is-running': isPricingRunning(backend.id) }"
-                :disabled="isBackendActionRunning(backend.id)"
-                :aria-busy="isPricingRunning(backend.id)"
-                title="模型广场"
-                @click="$emit('pricing', backend)"
-              >
-                <span v-if="isPricingRunning(backend.id)" class="action-spinner"></span>
-                {{ isPricingRunning(backend.id) ? '同步中' : '模型广场' }}
+                <span v-if="isConsoleSyncRunning(backend.id)" class="action-spinner"></span>
+                {{ isConsoleSyncRunning(backend.id) ? '同步中' : '同步' }}
               </button>
               <button
                 class="action-btn"
@@ -287,34 +276,25 @@ import { consoleAccountRows, consoleAccountSummary, pricingModelRows } from './b
 interface Props {
   backends: Backend[]
   focusModelPatterns?: string
-  runningCheckinIds?: Set<number>
-  runningPricingIds?: Set<number>
+  runningConsoleSyncIds?: Set<number>
 }
 
 const props = withDefaults(defineProps<Props>(), {
   focusModelPatterns: '',
-  runningCheckinIds: () => new Set<number>(),
-  runningPricingIds: () => new Set<number>(),
+  runningConsoleSyncIds: () => new Set<number>(),
 })
 
 const emit = defineEmits<{
   create: []
   edit: [backend: Backend]
   delete: [backend: Backend]
-  checkin: [backend: Backend]
-  pricing: [backend: Backend]
+  'sync-console': [backend: Backend]
   'toggle-status': [backend: Backend]
 }>()
 
 const expandedId = ref<number | null>(null)
 
-const isCheckinRunning = (backendId: number) => props.runningCheckinIds.has(backendId)
-
-const isPricingRunning = (backendId: number) => props.runningPricingIds.has(backendId)
-
-const isBackendActionRunning = (backendId: number) => {
-  return isCheckinRunning(backendId) || isPricingRunning(backendId)
-}
+const isConsoleSyncRunning = (backendId: number) => props.runningConsoleSyncIds.has(backendId)
 
 const toggleExpand = (id: number) => {
   expandedId.value = expandedId.value === id ? null : id

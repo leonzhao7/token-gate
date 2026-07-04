@@ -66,13 +66,11 @@
         v-else
         :backends="paginatedBackends"
         :focus-model-patterns="focusModelPatterns"
-        :running-checkin-ids="runningCheckinIds"
-        :running-pricing-ids="runningPricingIds"
+        :running-console-sync-ids="runningConsoleSyncIds"
         @create="showCreateModal = true"
         @edit="handleEdit"
         @delete="handleDelete"
-        @checkin="handleCheckin"
-        @pricing="handlePricing"
+        @sync-console="handleConsoleSync"
         @toggle-status="handleToggleStatus"
       />
 
@@ -225,7 +223,7 @@ import {
   parseModelMappingInput,
 } from '@/components/backends/backendPayload'
 
-type BackendConsoleActionKind = 'checkin' | 'pricing'
+type BackendConsoleActionKind = 'sync'
 
 interface ConsoleRequestLogRow {
   id: string
@@ -263,8 +261,7 @@ const submitting = ref(false)
 const exporting = ref(false)
 const importing = ref(false)
 const importFileInput = ref<HTMLInputElement | null>(null)
-const runningCheckinIds = ref<Set<number>>(new Set())
-const runningPricingIds = ref<Set<number>>(new Set())
+const runningConsoleSyncIds = ref<Set<number>>(new Set())
 const showConsoleActionLogModal = ref(false)
 const consoleActionLogTitle = ref('')
 const consoleRequestLogRows = ref<ConsoleRequestLogRow[]>([])
@@ -416,23 +413,22 @@ const handleToggleStatus = async (backend: Backend) => {
   }
 }
 
-const setConsoleActionRunning = (action: BackendConsoleActionKind, backendId: number, running: boolean) => {
-  const target = action === 'checkin' ? runningCheckinIds : runningPricingIds
-  const next = new Set(target.value)
+const setConsoleSyncRunning = (backendId: number, running: boolean) => {
+  const next = new Set(runningConsoleSyncIds.value)
   if (running) {
     next.add(backendId)
   } else {
     next.delete(backendId)
   }
-  target.value = next
+  runningConsoleSyncIds.value = next
 }
 
-const consoleActionLabel = (action: BackendConsoleActionKind) => {
-  return action === 'checkin' ? '签到' : '模型广场'
+const consoleActionLabel = () => {
+  return '同步'
 }
 
-const openConsoleActionLog = (backend: Backend, action: BackendConsoleActionKind) => {
-  consoleActionLogTitle.value = `${backend.name} · ${consoleActionLabel(action)}`
+const openConsoleActionLog = (backend: Backend) => {
+  consoleActionLogTitle.value = `${backend.name} · ${consoleActionLabel()}`
   consoleRequestLogRows.value = []
   expandedConsoleLogRowIds.value = new Set()
   showConsoleActionLogModal.value = true
@@ -467,19 +463,18 @@ const formatConsoleLogTime = (value: string) => {
   return parsed.toLocaleString()
 }
 
-const actionAdminPath = (backend: Backend, action: BackendConsoleActionKind) => {
-  return `/admin/api/backends/${backend.id}/console/${action}`
+const actionAdminPath = (backend: Backend) => {
+  return `/admin/api/backends/${backend.id}/console/sync`
 }
 
 const fallbackConsoleRequestLog = (
   backend: Backend,
-  action: BackendConsoleActionKind,
   statusCode: number | null,
   body: unknown
 ): BackendConsoleRequestLog => ({
   time: new Date().toISOString(),
   method: 'POST',
-  path: actionAdminPath(backend, action),
+  path: actionAdminPath(backend),
   status_code: statusCode ?? 0,
   body: stringifyConsoleBody(body),
 })
@@ -487,7 +482,6 @@ const fallbackConsoleRequestLog = (
 const extractConsoleRequestLogs = (
   requests: BackendConsoleRequestLog[] | undefined,
   backend: Backend,
-  action: BackendConsoleActionKind,
   fallback?: BackendConsoleRequestLog
 ): ConsoleRequestLogRow[] => {
   const source = Array.isArray(requests) && requests.length > 0
@@ -497,11 +491,11 @@ const extractConsoleRequestLogs = (
       : []
 
   return source.map((request) => ({
-    id: `${backend.id}-${action}-${nextConsoleRequestLogRowId.value++}`,
+    id: `${backend.id}-sync-${nextConsoleRequestLogRowId.value++}`,
     backendId: backend.id,
     backendName: backend.name,
-    action,
-    actionLabel: consoleActionLabel(action),
+    action: 'sync',
+    actionLabel: consoleActionLabel(),
     time: formatConsoleLogTime(request.time),
     method: request.method,
     path: request.path,
@@ -558,35 +552,19 @@ const clearConsoleRequestLogRows = () => {
   expandedConsoleLogRowIds.value = new Set()
 }
 
-const handleCheckin = async (backend: Backend) => {
-  setConsoleActionRunning('checkin', backend.id, true)
-  openConsoleActionLog(backend, 'checkin')
+const handleConsoleSync = async (backend: Backend) => {
+  setConsoleSyncRunning(backend.id, true)
+  openConsoleActionLog(backend)
   try {
-    const response = await backendsApi.checkin(backend.id)
-    setConsoleRequestLogRows(extractConsoleRequestLogs(response.requests, backend, 'checkin'))
+    const response = await backendsApi.syncConsole(backend.id)
+    setConsoleRequestLogRows(extractConsoleRequestLogs(response.requests, backend))
     await refreshBackends()
   } catch (err: any) {
     const errorPayload = normalizeConsoleActionError(err)
-    const fallback = fallbackConsoleRequestLog(backend, 'checkin', err?.response?.status ?? null, errorPayload)
-    setConsoleRequestLogRows(extractConsoleRequestLogs(errorPayload.requests, backend, 'checkin', fallback))
+    const fallback = fallbackConsoleRequestLog(backend, err?.response?.status ?? null, errorPayload)
+    setConsoleRequestLogRows(extractConsoleRequestLogs(errorPayload.requests, backend, fallback))
   } finally {
-    setConsoleActionRunning('checkin', backend.id, false)
-  }
-}
-
-const handlePricing = async (backend: Backend) => {
-  setConsoleActionRunning('pricing', backend.id, true)
-  openConsoleActionLog(backend, 'pricing')
-  try {
-    const response = await backendsApi.pricing(backend.id)
-    setConsoleRequestLogRows(extractConsoleRequestLogs(response.requests, backend, 'pricing'))
-    await refreshBackends()
-  } catch (err: any) {
-    const errorPayload = normalizeConsoleActionError(err)
-    const fallback = fallbackConsoleRequestLog(backend, 'pricing', err?.response?.status ?? null, errorPayload)
-    setConsoleRequestLogRows(extractConsoleRequestLogs(errorPayload.requests, backend, 'pricing', fallback))
-  } finally {
-    setConsoleActionRunning('pricing', backend.id, false)
+    setConsoleSyncRunning(backend.id, false)
   }
 }
 

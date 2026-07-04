@@ -319,15 +319,11 @@ export interface BackendConsoleRequestLog {
   body: string
 }
 
-export interface BackendConsoleCheckinResponse {
+export interface BackendConsoleSyncResponse {
   backend: Backend
+  status?: Record<string, any>
   checkin?: Record<string, any>
   account?: Record<string, any>
-  requests?: BackendConsoleRequestLog[]
-}
-
-export interface BackendConsolePricingResponse {
-  backend: Backend
   pricing?: Record<string, any>
   requests?: BackendConsoleRequestLog[]
 }

@@ -67,30 +67,16 @@ export const useBackendsStore = defineStore('backends', () => {
     }
   }
 
-  const checkinBackend = async (id: number) => {
+  const syncBackendConsole = async (id: number) => {
     try {
-      const response = await backendsApi.checkin(id)
+      const response = await backendsApi.syncConsole(id)
       if (response.backend) {
         replaceBackend(response.backend)
       }
       return response
     } catch (err: any) {
-      const errorMsg = err.response?.data?.error?.message || err.response?.data?.error || 'Backend checkin failed'
-      console.error('Failed to check in backend:', err)
-      throw new Error(errorMsg)
-    }
-  }
-
-  const syncBackendPricing = async (id: number) => {
-    try {
-      const response = await backendsApi.pricing(id)
-      if (response.backend) {
-        replaceBackend(response.backend)
-      }
-      return response
-    } catch (err: any) {
-      const errorMsg = err.response?.data?.error?.message || err.response?.data?.error || 'Backend pricing sync failed'
-      console.error('Failed to sync backend pricing:', err)
+      const errorMsg = err.response?.data?.error?.message || err.response?.data?.error || 'Backend console sync failed'
+      console.error('Failed to sync backend console:', err)
       throw new Error(errorMsg)
     }
   }
@@ -115,8 +101,7 @@ export const useBackendsStore = defineStore('backends', () => {
     fetchBackend,
     createBackend,
     updateBackend,
-    checkinBackend,
-    syncBackendPricing,
+    syncBackendConsole,
     deleteBackend
   }
 })
