@@ -580,10 +580,14 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	usageLog.StatusCode = http.StatusServiceUnavailable
-	usageLog.StatusFamily = handler.StatusFamily(http.StatusServiceUnavailable)
 	if lastErr != nil {
-		usageLog.ErrorMessage = lastErr.Error()
+		if usageLog.StatusCode == 0 {
+			usageLog.StatusCode = http.StatusServiceUnavailable
+			usageLog.StatusFamily = handler.StatusFamily(http.StatusServiceUnavailable)
+		}
+		if usageLog.ErrorMessage == "" {
+			usageLog.ErrorMessage = lastErr.Error()
+		}
 		a.logEvent(r.Context(), slog.LevelWarn, "proxy_request_failed", append(clientAttrs(client),
 			slog.String("endpoint", endpoint),
 			slog.String("model", model),
@@ -592,9 +596,9 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "no backend available")
 		return
 	}
-	usageLog.ErrorMessage = "all candidate backends failed"
 	usageLog.StatusCode = http.StatusServiceUnavailable
 	usageLog.StatusFamily = handler.StatusFamily(http.StatusServiceUnavailable)
+	usageLog.ErrorMessage = "all candidate backends failed"
 	a.logEvent(r.Context(), slog.LevelWarn, "proxy_request_failed", append(clientAttrs(client),
 		slog.String("endpoint", endpoint),
 		slog.String("model", model),

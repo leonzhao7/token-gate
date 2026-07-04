@@ -122,8 +122,8 @@ func (s *Store) BackendRequestStatsSince(ctx context.Context, since time.Time) (
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			backend_id,
-			SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END) AS successes,
-			SUM(CASE WHEN status_code >= 500 OR (status_code >= 400 AND status_code < 500 AND status_code != 400) THEN 1 ELSE 0 END) AS failures
+			SUM(CASE WHEN status_code >= 200 AND status_code < 300 THEN 1 ELSE 0 END) AS successes,
+			SUM(CASE WHEN status_code > 0 AND (status_code < 200 OR status_code >= 300) THEN 1 ELSE 0 END) AS failures
 		FROM usage_logs
 		WHERE backend_id > 0 AND created_at >= ?
 		GROUP BY backend_id

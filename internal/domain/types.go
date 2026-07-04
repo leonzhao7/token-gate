@@ -153,8 +153,5 @@ func NormalizeBackendType(value string) string {
 }
 
 func IsBackendFailureStatus(status int) bool {
-	if status >= http.StatusInternalServerError {
-		return true
-	}
-	return status >= http.StatusBadRequest && status < http.StatusInternalServerError && status != http.StatusBadRequest
+	return status > 0 && (status < http.StatusOK || status >= http.StatusMultipleChoices)
 }

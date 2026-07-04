@@ -213,6 +213,52 @@ func TestProxyReturns503WhenAllCandidatesFail(t *testing.T) {
 	}
 }
 
+func TestProxyFinalFailureUsageLogKeepsLastUpstreamResponse(t *testing.T) {
+	const requestBody = `{"model":"gpt-4o","messages":[{"role":"user","content":"hello"}]}`
+
+	application := newTestApp(t)
+	client := createTestClient(t, application, "client-secret")
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "alpha",
+		BaseURL:   "https://alpha.local/root/v1",
+		APIKey:    "alpha-key",
+		Status:    domain.BackendStatusNormal,
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.statusByName[backend.Name] = http.StatusUnauthorized
+	fixture.responseBodyByName[backend.Name] = `{"error":{"message":"401 Unauthorized"}}`
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected proxy response 503, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	logs, err := application.store.ListUsageLogsPage(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatalf("list usage logs: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected one final usage log, got %d", len(logs))
+	}
+	if logs[0].StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected final usage log to keep upstream status 401, got %#v", logs[0])
+	}
+	if !strings.Contains(logs[0].ResponseBodyPreview, "401 Unauthorized") || !strings.Contains(logs[0].ErrorMessage, "Unauthorized") {
+		t.Fatalf("expected final usage log to keep upstream 401 preview/error, got %#v", logs[0])
+	}
+	if strings.Contains(logs[0].ResponseBodyPreview, "no backend available") || strings.Contains(logs[0].ErrorMessage, "no backend available") {
+		t.Fatalf("final usage log should not store client-facing 503 error, got %#v", logs[0])
+	}
+}
+
 func TestProxyRewritesBackendModelByMapping(t *testing.T) {
 	const (
 		clientToken = "client-secret"

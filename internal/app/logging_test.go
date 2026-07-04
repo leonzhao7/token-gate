@@ -120,6 +120,9 @@ func TestUsageLogRecordsUpstreamErrorBodyOnTerminalFailure(t *testing.T) {
 	if log.BackendName != backend.Name {
 		t.Fatalf("expected failed usage log to keep backend name %q, got %q", backend.Name, log.BackendName)
 	}
+	if log.StatusCode != http.StatusBadGateway {
+		t.Fatalf("expected failed usage log to store upstream status, got %#v", log)
+	}
 	if !strings.Contains(log.ResponseBodyPreview, "alpha upstream exploded") {
 		t.Fatalf("expected failed usage log to store upstream error body, got %#v", log)
 	}
