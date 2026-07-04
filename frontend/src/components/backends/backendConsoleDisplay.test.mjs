@@ -44,3 +44,20 @@ test('filters pricing model rows by configured focus model patterns', async () =
     ['gpt-5.4']
   )
 })
+
+test('formats console quota fields using custom currency metadata', async () => {
+  const { consoleAccountRows } = await loadModule()
+  const account = JSON.stringify({
+    quota: 248540,
+    used_quota: 3250000,
+    custom_currency_exchange_rate: 10,
+    quota_per_unit: 500000,
+    custom_currency_symbol: '硬币',
+  })
+
+  const rows = Object.fromEntries(consoleAccountRows(account).map((row) => [row.label, row.value]))
+
+  assert.equal(rows.Quota, '4.9708 硬币')
+  assert.equal(rows['Used Quota'], '65 硬币')
+  assert.equal(rows['Quota Remaining'], undefined)
+})

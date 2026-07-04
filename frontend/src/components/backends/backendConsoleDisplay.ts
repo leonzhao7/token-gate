@@ -6,8 +6,9 @@ export interface ConsoleAccountSummary {
   role: string
   status: string
   quota: unknown
+  quotaDisplay: string
   usedQuota: unknown
-  remainingQuota: number | null
+  usedQuotaDisplay: string
   lastCheckinAt: string
 }
 
@@ -70,6 +71,25 @@ const finiteNumber = (value: unknown): number | null => {
   return null
 }
 
+const formatConsoleNumber = (value: number): string => {
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: 6
+  })
+}
+
+const formatConsoleQuota = (
+  value: unknown,
+  exchangeRate: number | null,
+  quotaPerUnit: number | null,
+  symbol: string
+): string => {
+  const numericValue = finiteNumber(value)
+  if (numericValue === null || exchangeRate === null || quotaPerUnit === null || quotaPerUnit <= 0 || symbol === '') {
+    return formatConsoleValue(value, '')
+  }
+  return `${formatConsoleNumber((numericValue * exchangeRate) / quotaPerUnit)} ${symbol}`
+}
+
 const formatConsoleTime = (value: unknown): string => {
   const raw = formatConsoleValue(value, '')
   if (!raw) {
@@ -93,8 +113,9 @@ export const consoleAccountSummary = (raw?: string): ConsoleAccountSummary | nul
 
   const quota = account.quota
   const usedQuota = account.used_quota
-  const quotaValue = finiteNumber(quota)
-  const usedQuotaValue = finiteNumber(usedQuota)
+  const exchangeRate = finiteNumber(account.custom_currency_exchange_rate)
+  const quotaPerUnit = finiteNumber(account.quota_per_unit)
+  const currencySymbol = formatConsoleValue(account.custom_currency_symbol, '').trim()
 
   const summary: ConsoleAccountSummary = {
     id: formatConsoleValue(account.id, ''),
@@ -104,8 +125,9 @@ export const consoleAccountSummary = (raw?: string): ConsoleAccountSummary | nul
     role: formatConsoleValue(account.role, ''),
     status: formatConsoleValue(account.status, ''),
     quota,
+    quotaDisplay: formatConsoleQuota(quota, exchangeRate, quotaPerUnit, currencySymbol),
     usedQuota,
-    remainingQuota: quotaValue !== null && usedQuotaValue !== null ? quotaValue - usedQuotaValue : null,
+    usedQuotaDisplay: formatConsoleQuota(usedQuota, exchangeRate, quotaPerUnit, currencySymbol),
     lastCheckinAt: formatConsoleTime(account.last_checkin_at)
   }
 
@@ -126,9 +148,8 @@ export const consoleAccountRows = (raw?: string): DetailRow[] => {
     ['Group', summary.group],
     ['Role', summary.role],
     ['Status', summary.status],
-    ['Quota', summary.quota],
-    ['Used Quota', summary.usedQuota],
-    ['Quota Remaining', summary.remainingQuota],
+    ['Quota', summary.quotaDisplay],
+    ['Used Quota', summary.usedQuotaDisplay],
     ['Last Check-in', summary.lastCheckinAt]
   ]
     .filter(([, value]) => hasConsoleValue(value))
