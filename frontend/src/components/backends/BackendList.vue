@@ -229,22 +229,22 @@
                 </div>
               </div>
 
-              <div v-if="pricingModelRows(backend.console_pricing_json, focusModelPatterns).length > 0" class="detail-section full-width">
+              <div v-if="pricingModelRows(backend.console_pricing_json, focusModelPatterns, backend.console_account_json).length > 0" class="detail-section full-width">
                 <h4 class="section-title">Model Pricing</h4>
                 <div class="pricing-table-wrap">
                   <table class="pricing-table">
                     <thead>
                       <tr>
                         <th>Model</th>
-                        <th>Prompt</th>
-                        <th>Completion</th>
+                        <th>Price</th>
+                        <th>Group</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="row in pricingModelRows(backend.console_pricing_json, focusModelPatterns)" :key="row.model">
+                      <tr v-for="row in pricingModelRows(backend.console_pricing_json, focusModelPatterns, backend.console_account_json)" :key="row.model">
                         <td>{{ row.model }}</td>
-                        <td>{{ row.prompt }}</td>
-                        <td>{{ row.completion }}</td>
+                        <td>{{ row.price }}</td>
+                        <td>{{ row.group }}</td>
                       </tr>
                     </tbody>
                   </table>

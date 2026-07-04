@@ -125,12 +125,12 @@ test('backend expanded details render console self and pricing model summaries',
   assert.match(list, /Console Account/)
   assert.match(list, /consoleAccountSummary\(backend\.console_account_json\)/)
   assert.match(list, /Model Pricing/)
-  assert.match(list, /pricingModelRows\(backend\.console_pricing_json,\s*focusModelPatterns\)/)
+  assert.match(list, /pricingModelRows\(backend\.console_pricing_json,\s*focusModelPatterns,\s*backend\.console_account_json\)/)
   assert.match(helper, /Last Check-in/)
   assert.doesNotMatch(helper, /Quota Remaining/)
   assert.match(list, /Model/)
-  assert.match(list, /Prompt/)
-  assert.match(list, /Completion/)
+  assert.match(list, /Price/)
+  assert.match(list, /Group/)
 })
 
 test('settings and backend list expose console UA and focus model configuration', () => {

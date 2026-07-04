@@ -14,8 +14,8 @@ export interface ConsoleAccountSummary {
 
 export interface PricingModelRow {
   model: string
-  prompt: string
-  completion: string
+  price: string
+  group: string
 }
 
 export interface DetailRow {
@@ -194,6 +194,14 @@ const completionPriceKeys = [
 ]
 
 const modelNameKeys = ['model', 'model_name', 'name', 'id']
+const enableGroupKeys = ['enable_groups', 'enabled_groups', 'groups', 'group']
+
+interface PricingContext {
+  groupRatio: Record<string, number>
+  exchangeRate: number | null
+  quotaPerUnit: number | null
+  currencySymbol: string
+}
 
 const firstPricingField = (record: Record<string, unknown>, keys: string[]): unknown => {
   for (const key of keys) {
@@ -208,60 +216,169 @@ const looksLikePricingRecord = (record: Record<string, unknown>): boolean => {
   return Boolean(
     firstPricingField(record, modelNameKeys) ||
     firstPricingField(record, promptPriceKeys) ||
-    firstPricingField(record, completionPriceKeys)
+    firstPricingField(record, completionPriceKeys) ||
+    firstPricingField(record, enableGroupKeys) ||
+    record.quota_type !== undefined
   )
 }
 
-const pricingRowFromRecord = (model: string, record: Record<string, unknown>): PricingModelRow | null => {
+const normalizeEnableGroups = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => formatConsoleValue(item, '').trim())
+      .filter(Boolean)
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+  const record = asRecord(value)
+  if (record) {
+    return Object.entries(record)
+      .filter(([, enabled]) => enabled !== false && enabled !== null && enabled !== undefined)
+      .map(([group]) => group.trim())
+      .filter(Boolean)
+  }
+  return []
+}
+
+const normalizeGroupRatio = (value: unknown): Record<string, number> => {
+  const record = asRecord(value)
+  if (!record) {
+    return {}
+  }
+  return Object.entries(record).reduce<Record<string, number>>((accumulator, [group, ratio]) => {
+    const numericRatio = finiteNumber(ratio)
+    if (group.trim() && numericRatio !== null) {
+      accumulator[group.trim()] = numericRatio
+    }
+    return accumulator
+  }, {})
+}
+
+const pricingContextFromPayload = (root: Record<string, unknown> | null, source: unknown, accountRaw?: string): PricingContext => {
+  const sourceRecord = asRecord(source)
+  const account = asRecord(parseConsoleJSON(accountRaw))
+  const metadata = account ?? {}
+  return {
+    groupRatio: normalizeGroupRatio(root?.group_ratio ?? sourceRecord?.group_ratio),
+    exchangeRate: finiteNumber(metadata.custom_currency_exchange_rate ?? root?.custom_currency_exchange_rate ?? sourceRecord?.custom_currency_exchange_rate),
+    quotaPerUnit: finiteNumber(metadata.quota_per_unit ?? root?.quota_per_unit ?? sourceRecord?.quota_per_unit),
+    currencySymbol: formatConsoleValue(metadata.custom_currency_symbol ?? root?.custom_currency_symbol ?? sourceRecord?.custom_currency_symbol, '').trim()
+  }
+}
+
+const minGroupRatio = (groups: string[], groupRatio: Record<string, number>): number => {
+  const ratios = groups
+    .map((group) => groupRatio[group])
+    .filter((ratio): ratio is number => Number.isFinite(ratio))
+  return ratios.length > 0 ? Math.min(...ratios) : 1
+}
+
+const formatUnitPrice = (value: number, currencySymbol: string): string => {
+  const amount = formatConsoleNumber(value)
+  return `${currencySymbol ? `${amount} ${currencySymbol}` : amount} / 1M`
+}
+
+const formatRequestPrice = (value: number, context: PricingContext): string => {
+  const converted = context.exchangeRate === null ? value : value * context.exchangeRate
+  const amount = formatConsoleNumber(converted)
+  return `${context.currencySymbol ? `${amount} ${context.currencySymbol}` : amount} 每次`
+}
+
+const formatPricingPrice = (record: Record<string, unknown>, groups: string[], context: PricingContext): string => {
+  const quotaType = finiteNumber(record.quota_type)
+  const modelRatio = finiteNumber(record.model_ratio)
+  const modelPrice = finiteNumber(record.model_price)
+
+  if (quotaType === 1) {
+    return modelPrice === null ? '-' : formatRequestPrice(modelPrice, context)
+  }
+
+  if ((quotaType === 0 || quotaType === null) && modelRatio !== null) {
+    if (context.exchangeRate === null || context.quotaPerUnit === null || context.quotaPerUnit <= 0) {
+      return formatConsoleNumber(modelRatio)
+    }
+    const inputPrice = modelRatio * 1_000_000 / context.quotaPerUnit * context.exchangeRate * minGroupRatio(groups, context.groupRatio)
+    const inputDisplay = `Input: ${formatUnitPrice(inputPrice, context.currencySymbol)}`
+    const completionRatio = finiteNumber(record.completion_ratio)
+    if (completionRatio === null) {
+      return inputDisplay
+    }
+    return `${inputDisplay}; Output: ${formatUnitPrice(inputPrice * completionRatio, context.currencySymbol)}`
+  }
+
+  if (modelPrice !== null) {
+    return formatRequestPrice(modelPrice, context)
+  }
+
+  const prompt = firstPricingField(record, promptPriceKeys)
+  const completion = firstPricingField(record, completionPriceKeys)
+  if (hasConsoleValue(prompt) && hasConsoleValue(completion)) {
+    return `Prompt: ${formatConsoleValue(prompt)}; Completion: ${formatConsoleValue(completion)}`
+  }
+  if (hasConsoleValue(prompt)) {
+    return formatConsoleValue(prompt)
+  }
+  if (hasConsoleValue(completion)) {
+    return formatConsoleValue(completion)
+  }
+  return '-'
+}
+
+const pricingRowFromRecord = (model: string, record: Record<string, unknown>, context: PricingContext): PricingModelRow | null => {
   const rowModel = formatConsoleValue(firstPricingField(record, modelNameKeys), model)
   if (!rowModel) {
     return null
   }
+  const groups = normalizeEnableGroups(firstPricingField(record, enableGroupKeys))
   return {
     model: rowModel,
-    prompt: formatConsoleValue(firstPricingField(record, promptPriceKeys)),
-    completion: formatConsoleValue(firstPricingField(record, completionPriceKeys))
+    price: formatPricingPrice(record, groups, context),
+    group: groups.length > 0 ? groups.join(', ') : '-'
   }
 }
 
-const pricingRowsFromModelsField = (models: unknown): PricingModelRow[] => {
+const pricingRowsFromModelsField = (models: unknown, context: PricingContext): PricingModelRow[] => {
   if (!Array.isArray(models)) {
     return []
   }
   return models.flatMap((model, index) => {
     const record = asRecord(model)
     if (record) {
-      const row = pricingRowFromRecord(`model-${index + 1}`, record)
+      const row = pricingRowFromRecord(`model-${index + 1}`, record, context)
       return row ? [row] : []
     }
     const modelName = formatConsoleValue(model, '')
-    return modelName ? [{ model: modelName, prompt: '-', completion: '-' }] : []
+    return modelName ? [{ model: modelName, price: '-', group: '-' }] : []
   })
 }
 
-const pricingRowsFromVendors = (vendors: unknown): PricingModelRow[] => {
+const pricingRowsFromVendors = (vendors: unknown, context: PricingContext): PricingModelRow[] => {
   if (!Array.isArray(vendors)) {
     return []
   }
   return vendors.flatMap((vendor) => {
     const record = asRecord(vendor)
-    return record ? pricingRowsFromModelsField(record.models) : []
+    return record ? pricingRowsFromModelsField(record.models, context) : []
   })
 }
 
-const pricingRowsFromValue = (value: unknown): PricingModelRow[] => {
+const pricingRowsFromValue = (value: unknown, context: PricingContext): PricingModelRow[] => {
   if (Array.isArray(value)) {
     return value.flatMap((item, index) => {
       const record = asRecord(item)
       if (record?.models) {
-        return pricingRowsFromModelsField(record.models)
+        return pricingRowsFromModelsField(record.models, context)
       }
       if (record) {
-        const row = pricingRowFromRecord(`model-${index + 1}`, record)
+        const row = pricingRowFromRecord(`model-${index + 1}`, record, context)
         return row ? [row] : []
       }
       const modelName = formatConsoleValue(item, '')
-      return modelName ? [{ model: modelName, prompt: '-', completion: '-' }] : []
+      return modelName ? [{ model: modelName, price: '-', group: '-' }] : []
     })
   }
 
@@ -270,17 +387,17 @@ const pricingRowsFromValue = (value: unknown): PricingModelRow[] => {
     return []
   }
 
-  const vendorRows = pricingRowsFromVendors(record.vendors)
+  const vendorRows = pricingRowsFromVendors(record.vendors, context)
   if (vendorRows.length > 0) {
     return vendorRows
   }
 
   if (record.models) {
-    return pricingRowsFromModelsField(record.models)
+    return pricingRowsFromModelsField(record.models, context)
   }
 
   if (looksLikePricingRecord(record)) {
-    const row = pricingRowFromRecord('', record)
+    const row = pricingRowFromRecord('', record, context)
     return row ? [row] : []
   }
 
@@ -290,18 +407,18 @@ const pricingRowsFromValue = (value: unknown): PricingModelRow[] => {
       return []
     }
     if (itemRecord.models) {
-      return pricingRowsFromModelsField(itemRecord.models)
+      return pricingRowsFromModelsField(itemRecord.models, context)
     }
     if (!looksLikePricingRecord(itemRecord)) {
       return []
     }
-    const row = pricingRowFromRecord(model, itemRecord)
+    const row = pricingRowFromRecord(model, itemRecord, context)
     return row ? [row] : []
   })
 }
 
-export const pricingModelRows = (raw?: string, focusPatterns?: string): PricingModelRow[] => {
-  const cacheKey = `${raw ?? ''}\n${focusPatterns ?? ''}`
+export const pricingModelRows = (raw?: string, focusPatterns?: string, accountRaw?: string): PricingModelRow[] => {
+  const cacheKey = `${raw ?? ''}\n${focusPatterns ?? ''}\n${accountRaw ?? ''}`
   if (pricingRowsCache.has(cacheKey)) {
     return pricingRowsCache.get(cacheKey) ?? []
   }
@@ -309,9 +426,10 @@ export const pricingModelRows = (raw?: string, focusPatterns?: string): PricingM
   const parsed = parseConsoleJSON(raw)
   const root = asRecord(parsed)
   const source = root && root.data !== undefined ? root.data : parsed
+  const context = pricingContextFromPayload(root, source, accountRaw)
 
   const seen = new Set<string>()
-  const rows = pricingRowsFromValue(source)
+  const rows = pricingRowsFromValue(source, context)
     .filter((row) => row.model.trim() !== '')
     .filter((row) => modelNameMatchesFocusPatterns(row.model, focusPatterns))
     .filter((row) => {

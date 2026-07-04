@@ -45,6 +45,52 @@ test('filters pricing model rows by configured focus model patterns', async () =
   )
 })
 
+test('formats pricing rows with model price and group columns', async () => {
+  const { pricingModelRows } = await loadModule()
+  const account = JSON.stringify({
+    custom_currency_exchange_rate: 10,
+    quota_per_unit: 500000,
+    custom_currency_symbol: '硬币',
+  })
+  const pricing = JSON.stringify({
+    success: true,
+    data: {
+      group_ratio: {
+        default: 1,
+        vip: 0.5,
+      },
+      models: [
+        {
+          model_name: 'gpt-5.4',
+          quota_type: 0,
+          model_ratio: 2,
+          completion_ratio: 3,
+          enable_groups: ['default', 'vip'],
+        },
+        {
+          model_name: 'image-fast',
+          quota_type: 1,
+          model_price: 0.25,
+          enable_groups: ['default'],
+        },
+      ],
+    },
+  })
+
+  assert.deepEqual(pricingModelRows(pricing, '', account), [
+    {
+      model: 'gpt-5.4',
+      price: 'Input: 20 硬币 / 1M; Output: 60 硬币 / 1M',
+      group: 'default, vip',
+    },
+    {
+      model: 'image-fast',
+      price: '2.5 硬币 每次',
+      group: 'default',
+    },
+  ])
+})
+
 test('formats console quota fields using custom currency metadata', async () => {
   const { consoleAccountRows } = await loadModule()
   const account = JSON.stringify({
