@@ -81,15 +81,27 @@
             </div>
             <div class="col col-actions" @click.stop>
               <button
-                class="action-btn text-action-btn"
+                class="action-btn text-action-btn console-action-btn"
+                :class="{ 'is-running': isCheckinRunning(backend.id) }"
+                :disabled="isBackendActionRunning(backend.id)"
+                :aria-busy="isCheckinRunning(backend.id)"
                 title="签到"
                 @click="$emit('checkin', backend)"
-              >签到</button>
+              >
+                <span v-if="isCheckinRunning(backend.id)" class="action-spinner"></span>
+                {{ isCheckinRunning(backend.id) ? '签到中' : '签到' }}
+              </button>
               <button
-                class="action-btn text-action-btn"
+                class="action-btn text-action-btn console-action-btn"
+                :class="{ 'is-running': isPricingRunning(backend.id) }"
+                :disabled="isBackendActionRunning(backend.id)"
+                :aria-busy="isPricingRunning(backend.id)"
                 title="模型广场"
                 @click="$emit('pricing', backend)"
-              >模型广场</button>
+              >
+                <span v-if="isPricingRunning(backend.id)" class="action-spinner"></span>
+                {{ isPricingRunning(backend.id) ? '同步中' : '模型广场' }}
+              </button>
               <button
                 class="action-btn"
                 title="Edit"
@@ -275,10 +287,14 @@ import { consoleAccountRows, consoleAccountSummary, pricingModelRows } from './b
 interface Props {
   backends: Backend[]
   focusModelPatterns?: string
+  runningCheckinIds?: Set<number>
+  runningPricingIds?: Set<number>
 }
 
-withDefaults(defineProps<Props>(), {
-  focusModelPatterns: ''
+const props = withDefaults(defineProps<Props>(), {
+  focusModelPatterns: '',
+  runningCheckinIds: () => new Set<number>(),
+  runningPricingIds: () => new Set<number>(),
 })
 
 const emit = defineEmits<{
@@ -291,6 +307,14 @@ const emit = defineEmits<{
 }>()
 
 const expandedId = ref<number | null>(null)
+
+const isCheckinRunning = (backendId: number) => props.runningCheckinIds.has(backendId)
+
+const isPricingRunning = (backendId: number) => props.runningPricingIds.has(backendId)
+
+const isBackendActionRunning = (backendId: number) => {
+  return isCheckinRunning(backendId) || isPricingRunning(backendId)
+}
 
 const toggleExpand = (id: number) => {
   expandedId.value = expandedId.value === id ? null : id
@@ -609,12 +633,56 @@ const formatTime = (timestamp: string) => {
   transform: scale(1.1);
 }
 
+.action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  transform: none;
+}
+
 .text-action-btn {
   width: auto;
   min-width: 44px;
   padding: 0 8px;
   font-size: 12px;
   color: var(--text-primary);
+}
+
+.console-action-btn {
+  min-width: 76px;
+  height: 30px;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-base);
+  border-radius: var(--radius-md);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  font-weight: 600;
+}
+
+.console-action-btn:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  background: var(--bg-muted);
+  transform: none;
+}
+
+.console-action-btn.is-running {
+  border-color: rgba(0, 112, 243, 0.45);
+  background: rgba(0, 112, 243, 0.08);
+  color: var(--accent-primary);
+}
+
+.action-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: actionSpin 700ms linear infinite;
+}
+
+@keyframes actionSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Expanded Details */

@@ -66,6 +66,8 @@
         v-else
         :backends="paginatedBackends"
         :focus-model-patterns="focusModelPatterns"
+        :running-checkin-ids="runningCheckinIds"
+        :running-pricing-ids="runningPricingIds"
         @create="showCreateModal = true"
         @edit="handleEdit"
         @delete="handleDelete"
@@ -125,6 +127,73 @@
           </div>
         </div>
       </Modal>
+
+      <!-- Console Request Log Modal -->
+      <Modal
+        :show="showConsoleActionLogModal"
+        title="Console Request Log"
+        width="960px"
+        @close="showConsoleActionLogModal = false"
+      >
+        <div class="console-log-modal">
+          <div class="console-log-toolbar">
+            <div class="console-log-context">
+              <strong>{{ consoleActionLogTitle }}</strong>
+              <span>{{ consoleRequestLogRows.length }} requests</span>
+            </div>
+            <Button variant="ghost" size="sm" @click="clearConsoleRequestLogRows">
+              Clear
+            </Button>
+          </div>
+
+          <div class="console-log-table-wrap">
+            <table class="console-log-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Path</th>
+                  <th>HTTP Status</th>
+                  <th>Response Body</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="consoleRequestLogRows.length === 0">
+                  <td colspan="4" class="console-log-empty">Waiting for request results...</td>
+                </tr>
+                <template v-for="row in consoleRequestLogRows" :key="row.id">
+                  <tr class="console-log-row" @click="toggleConsoleLogRow(row.id)">
+                    <td class="console-log-time">{{ row.time }}</td>
+                    <td class="console-log-path">
+                      <span v-if="row.method" class="console-log-method">{{ row.method }}</span>
+                      <span>{{ row.path }}</span>
+                    </td>
+                    <td>
+                      <span :class="['console-log-status', statusClass(row.statusCode)]">
+                        {{ formatConsoleLogStatus(row.statusCode) }}
+                      </span>
+                    </td>
+                    <td class="console-log-body-cell">
+                      <button
+                        type="button"
+                        class="console-log-body-toggle"
+                        @click.stop="toggleConsoleLogRow(row.id)"
+                      >
+                        {{ expandedConsoleLogRowIds.has(row.id) ? 'Hide' : 'Show' }}
+                      </button>
+                      <code>{{ formatConsoleLogPreview(row.body) }}</code>
+                    </td>
+                  </tr>
+                  <tr v-if="expandedConsoleLogRowIds.has(row.id)" class="console-log-expanded">
+                    <td colspan="4">
+                      <pre>{{ formatConsoleLogBody(row.body) }}</pre>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </Modal>
     </div>
   </DefaultLayout>
 </template>
@@ -142,12 +211,34 @@ import BackendList from '@/components/backends/BackendList.vue'
 import BackendForm from '@/components/backends/BackendForm.vue'
 import { useBackendsStore } from '@/stores/backends'
 import { useSettingsStore } from '@/stores/settings'
-import { backendsApi, proxiesApi, type Backend, type CreateBackendRequest, type SocksProxy } from '@/api'
+import {
+  backendsApi,
+  proxiesApi,
+  type Backend,
+  type BackendConsoleRequestLog,
+  type CreateBackendRequest,
+  type SocksProxy,
+} from '@/api'
 import {
   formatModelMappingForInput,
   normalizeBackendProxyId,
   parseModelMappingInput,
 } from '@/components/backends/backendPayload'
+
+type BackendConsoleActionKind = 'checkin' | 'pricing'
+
+interface ConsoleRequestLogRow {
+  id: string
+  backendId: number
+  backendName: string
+  action: BackendConsoleActionKind
+  actionLabel: string
+  time: string
+  method?: string
+  path: string
+  statusCode: number | null
+  body: string
+}
 
 const backendsStore = useBackendsStore()
 const settingsStore = useSettingsStore()
@@ -172,6 +263,13 @@ const submitting = ref(false)
 const exporting = ref(false)
 const importing = ref(false)
 const importFileInput = ref<HTMLInputElement | null>(null)
+const runningCheckinIds = ref<Set<number>>(new Set())
+const runningPricingIds = ref<Set<number>>(new Set())
+const showConsoleActionLogModal = ref(false)
+const consoleActionLogTitle = ref('')
+const consoleRequestLogRows = ref<ConsoleRequestLogRow[]>([])
+const expandedConsoleLogRowIds = ref<Set<string>>(new Set())
+const nextConsoleRequestLogRowId = ref(0)
 
 const filteredBackends = computed(() => {
   let result = backends.value
@@ -296,7 +394,7 @@ const handleToggleStatus = async (backend: Backend) => {
   try {
     await backendsApi.update(backend.id, {
       name: backend.name,
-      backend_type: backend.backend_type || 'new-api',
+      backend_type: backend.backend_type ?? 'new-api',
       base_url: backend.base_url,
       api_key: backend.api_key || '',
       console_url: backend.console_url || '',
@@ -319,21 +417,177 @@ const handleToggleStatus = async (backend: Backend) => {
   }
 }
 
-const handleCheckin = async (backend: Backend) => {
+const setConsoleActionRunning = (action: BackendConsoleActionKind, backendId: number, running: boolean) => {
+  const target = action === 'checkin' ? runningCheckinIds : runningPricingIds
+  const next = new Set(target.value)
+  if (running) {
+    next.add(backendId)
+  } else {
+    next.delete(backendId)
+  }
+  target.value = next
+}
+
+const consoleActionLabel = (action: BackendConsoleActionKind) => {
+  return action === 'checkin' ? '签到' : '模型广场'
+}
+
+const openConsoleActionLog = (backend: Backend, action: BackendConsoleActionKind) => {
+  consoleActionLogTitle.value = `${backend.name} · ${consoleActionLabel(action)}`
+  consoleRequestLogRows.value = []
+  expandedConsoleLogRowIds.value = new Set()
+  showConsoleActionLogModal.value = true
+}
+
+const normalizeConsoleActionError = (err: any) => {
+  if (err?.response?.data) {
+    return err.response.data
+  }
+  if (err?.message) {
+    return { message: err.message }
+  }
+  return { message: 'Unknown console request error' }
+}
+
+const stringifyConsoleBody = (value: unknown) => {
+  if (typeof value === 'string') {
+    return value
+  }
   try {
-    await backendsStore.checkinBackend(backend.id)
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+const formatConsoleLogTime = (value: string) => {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return value || new Date().toLocaleString()
+  }
+  return parsed.toLocaleString()
+}
+
+const actionAdminPath = (backend: Backend, action: BackendConsoleActionKind) => {
+  return `/admin/api/backends/${backend.id}/console/${action}`
+}
+
+const fallbackConsoleRequestLog = (
+  backend: Backend,
+  action: BackendConsoleActionKind,
+  statusCode: number | null,
+  body: unknown
+): BackendConsoleRequestLog => ({
+  time: new Date().toISOString(),
+  method: 'POST',
+  path: actionAdminPath(backend, action),
+  status_code: statusCode ?? 0,
+  body: stringifyConsoleBody(body),
+})
+
+const extractConsoleRequestLogs = (
+  requests: BackendConsoleRequestLog[] | undefined,
+  backend: Backend,
+  action: BackendConsoleActionKind,
+  fallback?: BackendConsoleRequestLog
+): ConsoleRequestLogRow[] => {
+  const source = Array.isArray(requests) && requests.length > 0
+    ? requests
+    : fallback
+      ? [fallback]
+      : []
+
+  return source.map((request) => ({
+    id: `${backend.id}-${action}-${nextConsoleRequestLogRowId.value++}`,
+    backendId: backend.id,
+    backendName: backend.name,
+    action,
+    actionLabel: consoleActionLabel(action),
+    time: formatConsoleLogTime(request.time),
+    method: request.method,
+    path: request.path,
+    statusCode: Number.isFinite(request.status_code) ? request.status_code : null,
+    body: request.body || '',
+  }))
+}
+
+const setConsoleRequestLogRows = (rows: ConsoleRequestLogRow[]) => {
+  consoleRequestLogRows.value = rows
+  expandedConsoleLogRowIds.value = new Set()
+}
+
+const toggleConsoleLogRow = (id: string) => {
+  const next = new Set(expandedConsoleLogRowIds.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  expandedConsoleLogRowIds.value = next
+}
+
+const formatConsoleLogBody = (body: string) => {
+  const text = body || ''
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2)
+  } catch {
+    return text
+  }
+}
+
+const formatConsoleLogPreview = (body: string) => {
+  const text = body ? body.replace(/\s+/g, ' ').trim() : ''
+  if (text.length <= 140) {
+    return text
+  }
+  return `${text.slice(0, 140)}...`
+}
+
+const formatConsoleLogStatus = (statusCode: number | null) => {
+  return statusCode && statusCode > 0 ? String(statusCode) : 'No response'
+}
+
+const statusClass = (statusCode: number | null) => {
+  if (!statusCode) return 'status-none'
+  if (statusCode >= 200 && statusCode < 300) return 'status-success'
+  if (statusCode >= 400) return 'status-error'
+  return 'status-other'
+}
+
+const clearConsoleRequestLogRows = () => {
+  consoleRequestLogRows.value = []
+  expandedConsoleLogRowIds.value = new Set()
+}
+
+const handleCheckin = async (backend: Backend) => {
+  setConsoleActionRunning('checkin', backend.id, true)
+  openConsoleActionLog(backend, 'checkin')
+  try {
+    const response = await backendsApi.checkin(backend.id)
+    setConsoleRequestLogRows(extractConsoleRequestLogs(response.requests, backend, 'checkin'))
     await refreshBackends()
   } catch (err: any) {
-    alert(err.message || 'Backend checkin failed')
+    const errorPayload = normalizeConsoleActionError(err)
+    const fallback = fallbackConsoleRequestLog(backend, 'checkin', err?.response?.status ?? null, errorPayload)
+    setConsoleRequestLogRows(extractConsoleRequestLogs(errorPayload.requests, backend, 'checkin', fallback))
+  } finally {
+    setConsoleActionRunning('checkin', backend.id, false)
   }
 }
 
 const handlePricing = async (backend: Backend) => {
+  setConsoleActionRunning('pricing', backend.id, true)
+  openConsoleActionLog(backend, 'pricing')
   try {
-    await backendsStore.syncBackendPricing(backend.id)
+    const response = await backendsApi.pricing(backend.id)
+    setConsoleRequestLogRows(extractConsoleRequestLogs(response.requests, backend, 'pricing'))
     await refreshBackends()
   } catch (err: any) {
-    alert(err.message || 'Backend pricing sync failed')
+    const errorPayload = normalizeConsoleActionError(err)
+    const fallback = fallbackConsoleRequestLog(backend, 'pricing', err?.response?.status ?? null, errorPayload)
+    setConsoleRequestLogRows(extractConsoleRequestLogs(errorPayload.requests, backend, 'pricing', fallback))
+  } finally {
+    setConsoleActionRunning('pricing', backend.id, false)
   }
 }
 
@@ -391,6 +645,204 @@ onMounted(() => {
 
 .filters-card {
   margin-bottom: var(--spacing-xl);
+}
+
+.console-log-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.console-log-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.console-log-context {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.console-log-context strong {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.console-log-table-wrap {
+  max-height: 62vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.console-log-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.console-log-table th,
+.console-log-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.console-log-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.console-log-table th:nth-child(1),
+.console-log-table td:nth-child(1) {
+  width: 190px;
+}
+
+.console-log-table th:nth-child(2),
+.console-log-table td:nth-child(2) {
+  width: 230px;
+}
+
+.console-log-table th:nth-child(3),
+.console-log-table td:nth-child(3) {
+  width: 120px;
+}
+
+.console-log-row {
+  cursor: pointer;
+}
+
+.console-log-row:hover {
+  background: var(--bg-muted);
+}
+
+.console-log-time {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.console-log-path {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.console-log-path span:last-child {
+  overflow-wrap: anywhere;
+}
+
+.console-log-method {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.console-log-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.status-success {
+  background: rgba(22, 163, 74, 0.1);
+  color: var(--success);
+}
+
+.status-error {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+}
+
+.status-other,
+.status-none {
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+}
+
+.console-log-body-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.console-log-body-cell code {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.console-log-body-toggle {
+  flex: 0 0 auto;
+  min-width: 48px;
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.console-log-body-toggle:hover {
+  border-color: var(--accent-primary);
+}
+
+.console-log-expanded td {
+  padding: 0;
+  background: var(--bg-subtle);
+}
+
+.console-log-expanded pre {
+  max-height: 360px;
+  margin: 0;
+  padding: var(--spacing-md);
+  overflow: auto;
+  color: var(--text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.console-log-empty {
+  height: 96px;
+  color: var(--text-secondary);
+  text-align: center;
+  vertical-align: middle;
 }
 
 .filters {

@@ -25,13 +25,41 @@ test('backend list exposes only checkin and model plaza manual console buttons',
   const list = read('components/backends/BackendList.vue')
 
   assert.match(list, /@click="\$emit\('checkin', backend\)"/)
-  assert.match(list, />签到</)
+  assert.match(list, /title="签到"/)
+  assert.match(list, /'签到'/)
   assert.match(list, /@click="\$emit\('pricing', backend\)"/)
-  assert.match(list, />模型广场</)
+  assert.match(list, /title="模型广场"/)
+  assert.match(list, /'模型广场'/)
   assert.doesNotMatch(list, /console-login/)
   assert.doesNotMatch(list, /console-self/)
   assert.doesNotMatch(list, /user-models/)
   assert.doesNotMatch(list, /\/api\/models/)
+})
+
+test('backend console actions open a request-log modal with expandable response bodies and running button state', () => {
+  const page = read('pages/Backends.vue')
+  const list = read('components/backends/BackendList.vue')
+
+  assert.match(page, /:show="showConsoleActionLogModal"/)
+  assert.match(page, /title="Console Request Log"/)
+  assert.match(page, /consoleRequestLogRows/)
+  assert.match(page, /<th>Time<\/th>/)
+  assert.match(page, /<th>Path<\/th>/)
+  assert.match(page, /<th>HTTP Status<\/th>/)
+  assert.match(page, /<th>Response Body<\/th>/)
+  assert.match(page, /toggleConsoleLogRow\(row\.id\)/)
+  assert.match(page, /formatConsoleLogBody\(row\.body\)/)
+  assert.match(page, /extractConsoleRequestLogs\(response\.requests/)
+  assert.match(page, /const response = await backendsApi\.checkin\(backend\.id\)/)
+  assert.match(page, /const response = await backendsApi\.pricing\(backend\.id\)/)
+  assert.match(page, /:running-checkin-ids="runningCheckinIds"/)
+  assert.match(page, /:running-pricing-ids="runningPricingIds"/)
+  assert.match(list, /runningCheckinIds\?: Set<number>/)
+  assert.match(list, /runningPricingIds\?: Set<number>/)
+  assert.match(list, /isBackendActionRunning\(backend\.id\)/)
+  assert.match(list, /isCheckinRunning\(backend\.id\) \? '签到中' : '签到'/)
+  assert.match(list, /isPricingRunning\(backend\.id\) \? '同步中' : '模型广场'/)
+  assert.match(list, /:disabled="isBackendActionRunning\(backend\.id\)"/)
 })
 
 test('frontend API and store call the new backend console endpoints', () => {
@@ -52,10 +80,21 @@ test('frontend API and store call the new backend console endpoints', () => {
 test('frontend backend types include console state and pricing json fields', () => {
   const types = read('api/types.ts')
 
-  assert.match(types, /backend_type\?: 'new-api'/)
+  assert.match(types, /backend_type\?: '' \| 'new-api'/)
   assert.match(types, /console_cookie\?: string/)
   assert.match(types, /console_account_json\?: string/)
   assert.match(types, /console_pricing_json\?: string/)
+  assert.match(types, /BackendConsoleRequestLog/)
+  assert.match(types, /requests\?: BackendConsoleRequestLog\[\]/)
+})
+
+test('backend form lets backend type be cleared and submitted as empty', () => {
+  const form = read('components/backends/BackendForm.vue')
+
+  assert.match(form, /<option value="">None<\/option>/)
+  assert.match(form, /backend_type: '' \| 'new-api'/)
+  assert.match(form, /backend_type: formData\.value\.backend_type/)
+  assert.match(form, /backend_type: backend\.backend_type \?\? 'new-api'/)
 })
 
 test('backend expanded details render console self and pricing model summaries', () => {

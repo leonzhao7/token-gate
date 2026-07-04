@@ -47,6 +47,7 @@
           v-model="formData.backend_type"
           class="form-select"
         >
+          <option value="">None</option>
           <option value="new-api">new-api</option>
         </select>
       </div>
@@ -226,7 +227,7 @@ const emit = defineEmits<{
 interface BackendFormData {
   name: string
   protocol: 'openai' | 'anthropic'
-  backend_type: 'new-api'
+  backend_type: '' | 'new-api'
   base_url: string
   api_key: string
   model_mapping: string
@@ -308,7 +309,7 @@ watch(() => props.backend, (backend) => {
     formData.value = {
       name: backend.name,
       protocol: backend.protocol || 'openai',
-      backend_type: backend.backend_type || 'new-api',
+      backend_type: backend.backend_type ?? 'new-api',
       base_url: backend.base_url,
       api_key: backend.api_key || '',
       model_mapping: formatModelMappingForInput(backend.model_mapping),

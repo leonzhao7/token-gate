@@ -140,6 +140,8 @@ func NormalizeBackendProtocol(value string) string {
 
 func NormalizeBackendType(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return ""
 	case BackendTypeNewAPI, "newapi", "new_api":
 		return BackendTypeNewAPI
 	default:

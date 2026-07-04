@@ -2561,6 +2561,40 @@ func TestAdminBackendNewAPIConsoleCheckinUsesSavedCookieAndRefreshesBalance(t *t
 	if !reflect.DeepEqual(calls, []string{"GET /api/user/self", "POST /api/user/checkin", "GET /api/user/self"}) {
 		t.Fatalf("unexpected console call sequence: %#v", calls)
 	}
+
+	var response struct {
+		Requests []struct {
+			Time       string `json:"time"`
+			Method     string `json:"method"`
+			Path       string `json:"path"`
+			StatusCode int    `json:"status_code"`
+			Body       string `json:"body"`
+		} `json:"requests"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("unmarshal checkin response: %v", err)
+	}
+	if len(response.Requests) != 3 {
+		t.Fatalf("expected three console request logs, got %#v", response.Requests)
+	}
+	wantLogs := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{http.MethodGet, "/api/user/self", `"username":"tom"`},
+		{http.MethodPost, "/api/user/checkin", `"message":"ok"`},
+		{http.MethodGet, "/api/user/self", `"username":"tom"`},
+	}
+	for i, want := range wantLogs {
+		got := response.Requests[i]
+		if strings.TrimSpace(got.Time) == "" {
+			t.Fatalf("expected request log %d to include time, got %#v", i, got)
+		}
+		if got.Method != want.method || got.Path != want.path || got.StatusCode != http.StatusOK || !strings.Contains(got.Body, want.body) {
+			t.Fatalf("unexpected request log %d: got %#v want method=%s path=%s body containing %q", i, got, want.method, want.path, want.body)
+		}
+	}
 }
 
 func TestAdminBackendConsoleRequestsUseConfiguredUserAgent(t *testing.T) {
@@ -2838,6 +2872,126 @@ func TestAdminBackendNewAPIConsolePricingSavesModelPlazaJSON(t *testing.T) {
 	}
 	if !reflect.DeepEqual(updated.Models, []string{"routed-model"}) {
 		t.Fatalf("pricing sync must not change scheduler models, got %#v", updated.Models)
+	}
+
+	var response struct {
+		Requests []struct {
+			Time       string `json:"time"`
+			Method     string `json:"method"`
+			Path       string `json:"path"`
+			StatusCode int    `json:"status_code"`
+			Body       string `json:"body"`
+		} `json:"requests"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("unmarshal pricing response: %v", err)
+	}
+	if len(response.Requests) != 1 {
+		t.Fatalf("expected one pricing request log, got %#v", response.Requests)
+	}
+	got := response.Requests[0]
+	if strings.TrimSpace(got.Time) == "" || got.Method != http.MethodGet || got.Path != "/api/pricing" || got.StatusCode != http.StatusOK || !strings.Contains(got.Body, `"pricing_version":"2026-07-03"`) {
+		t.Fatalf("unexpected pricing request log: %#v", got)
+	}
+}
+
+func TestAdminBackendNewAPIConsolePricingErrorIncludesRequestLogs(t *testing.T) {
+	application := newTestApp(t)
+
+	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/pricing" {
+			t.Fatalf("unexpected pricing request %s %s", r.Method, r.URL.Path)
+		}
+		return consoleJSONResponse(http.StatusPaymentRequired, nil, `{"success":false,"message":"quota exhausted"}`), nil
+	})})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:          "new-api-pricing-error",
+		Protocol:      domain.BackendProtocolOpenAI,
+		BackendType:   domain.BackendTypeNewAPI,
+		BaseURL:       "https://new-api.local/v1",
+		APIKey:        "backend-key",
+		ConsoleURL:    "https://console.local",
+		ConsoleCookie: "session=valid",
+		Models:        []string{"routed-model"},
+		Endpoints:     []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/pricing", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("expected pricing status 502, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var response struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+		Requests []struct {
+			Method     string `json:"method"`
+			Path       string `json:"path"`
+			StatusCode int    `json:"status_code"`
+			Body       string `json:"body"`
+		} `json:"requests"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("unmarshal pricing error response: %v", err)
+	}
+	if response.Error.Message != "quota exhausted" {
+		t.Fatalf("expected console error message, got %#v", response.Error)
+	}
+	if len(response.Requests) != 1 || response.Requests[0].Method != http.MethodGet || response.Requests[0].Path != "/api/pricing" || response.Requests[0].StatusCode != http.StatusPaymentRequired || !strings.Contains(response.Requests[0].Body, `"quota exhausted"`) {
+		t.Fatalf("expected failed pricing request log, got %#v", response.Requests)
+	}
+}
+
+func TestAdminBackendUpdateCanClearBackendType(t *testing.T) {
+	application := newTestApp(t)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:        "clear-backend-type",
+		Protocol:    domain.BackendProtocolOpenAI,
+		BackendType: domain.BackendTypeNewAPI,
+		BaseURL:     "https://clear-type.local/v1",
+		APIKey:      "backend-key",
+		Weight:      10,
+		Models:      []string{"gpt-4o"},
+		Endpoints:   []string{domain.EndpointChat},
+	})
+
+	body := `{
+		"name":"clear-backend-type",
+		"protocol":"openai",
+		"backend_type":"",
+		"base_url":"https://clear-type.local/v1",
+		"api_key":"backend-key",
+		"console_url":"",
+		"tags":[],
+		"console_username":"",
+		"console_password":"",
+		"console_cookie":"",
+		"notes":"",
+		"proxy_id":0,
+		"status":"normal",
+		"weight":10,
+		"models":["gpt-4o"],
+		"model_mapping":{},
+		"endpoints":["chat"]
+	}`
+	req := httptest.NewRequest(http.MethodPut, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected update status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var updated domain.Backend
+	if err := json.Unmarshal(recorder.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("unmarshal updated backend: %v", err)
+	}
+	if updated.BackendType != "" {
+		t.Fatalf("expected backend_type to be cleared, got %q", updated.BackendType)
 	}
 }
 
