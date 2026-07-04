@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	pathpkg "path"
 	"strconv"
 	"strings"
 	"time"
@@ -494,7 +495,7 @@ func (h *BackendHandler) HandleBackendConsoleCheckin(w http.ResponseWriter, r *h
 			return
 		}
 	}
-	if !result.success() {
+	if !result.success() && !result.alreadyCheckedIn() {
 		h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_failed", append(append(consoleBackendAttrs(backend),
 			slog.String("stage", "checkin_result"),
 			slog.String("new_api_user", accountID),
@@ -522,7 +523,7 @@ func (h *BackendHandler) HandleBackendConsoleCheckin(w http.ResponseWriter, r *h
 		writeConsoleError(w, http.StatusBadGateway, selfResult.errorMessage("new-api self request failed"), recorder)
 		return
 	}
-	accountJSON, err := consoleAccountSummaryJSON(selfResult.Payload, lastCheckinAt)
+	accountJSON, err := consoleAccountSummaryJSON(selfResult.Payload, nil, lastCheckinAt)
 	if err != nil {
 		h.logConsoleEvent(r.Context(), slog.LevelWarn, "newapi_console_checkin_failed", append(consoleBackendAttrs(backend),
 			slog.String("stage", "account_summary"),
@@ -576,7 +577,13 @@ func (h *BackendHandler) HandleBackendConsolePricing(w http.ResponseWriter, r *h
 		writeConsoleError(w, http.StatusBadGateway, result.errorMessage("new-api pricing request failed"), recorder)
 		return
 	}
-	backend.ConsolePricingJSON = result.Raw
+	filteredPricing := filterConsolePricingPayload(result.Payload, h.focusModelPatterns())
+	pricingJSON, err := json.Marshal(filteredPricing)
+	if err != nil {
+		writeConsoleError(w, http.StatusBadGateway, err.Error(), recorder)
+		return
+	}
+	backend.ConsolePricingJSON = string(pricingJSON)
 	updated, err := h.store.UpdateBackend(r.Context(), backend)
 	if err != nil {
 		writeConsoleError(w, http.StatusInternalServerError, err.Error(), recorder)
@@ -585,7 +592,106 @@ func (h *BackendHandler) HandleBackendConsolePricing(w http.ResponseWriter, r *h
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"backend":  updated,
-		"pricing":  result.Payload,
+		"pricing":  filteredPricing,
+		"requests": recorder.Requests,
+	})
+}
+
+func (h *BackendHandler) HandleBackendConsoleSync(w http.ResponseWriter, r *http.Request) {
+	recorder := newNewAPIConsoleRequestRecorder()
+	backend, err := h.consoleBackend(r)
+	if err != nil {
+		writeConsoleError(w, http.StatusBadRequest, err.Error(), recorder)
+		return
+	}
+
+	statusResult, err := h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodGet, "/api/status", nil, backend.ConsoleCookie, "", recorder)
+	if err != nil {
+		writeConsoleError(w, http.StatusBadGateway, err.Error(), recorder)
+		return
+	}
+	if !statusResult.success() {
+		writeConsoleError(w, http.StatusBadGateway, statusResult.errorMessage("new-api status request failed"), recorder)
+		return
+	}
+
+	accountID := consoleStoredAccountID(backend)
+	selfResult, backend, accountID, err := h.newAPIConsoleSelfWithLogin(r.Context(), backend, accountID, recorder)
+	if err != nil {
+		writeConsoleError(w, http.StatusBadGateway, err.Error(), recorder)
+		return
+	}
+	accountID = firstNonEmpty(consoleAccountID(selfResult.Payload), accountID)
+	if accountID == "" {
+		writeConsoleError(w, http.StatusBadGateway, "new-api self response missing user id", recorder)
+		return
+	}
+
+	lastCheckinAt, checkedInToday := consoleLastCheckinStatus(backend, time.Now().UTC())
+	var checkinPayload map[string]any
+	if !checkedInToday {
+		checkinResult, updatedBackend, updatedAccountID, err := h.performNewAPIConsoleCheckin(r.Context(), backend, accountID, recorder)
+		if err != nil {
+			writeConsoleError(w, http.StatusBadGateway, err.Error(), recorder)
+			return
+		}
+		backend = updatedBackend
+		accountID = firstNonEmpty(updatedAccountID, accountID)
+		checkinPayload = checkinResult.Payload
+		lastCheckinAt = time.Now().UTC()
+
+		selfResult, err = h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodGet, "/api/user/self", nil, backend.ConsoleCookie, accountID, recorder)
+		if err != nil {
+			writeConsoleError(w, http.StatusBadGateway, err.Error(), recorder)
+			return
+		}
+		if !selfResult.success() {
+			writeConsoleError(w, http.StatusBadGateway, selfResult.errorMessage("new-api self request failed"), recorder)
+			return
+		}
+	}
+
+	accountJSON, err := consoleAccountSummaryJSON(selfResult.Payload, statusResult.Payload, lastCheckinAt)
+	if err != nil {
+		writeConsoleError(w, http.StatusBadGateway, err.Error(), recorder)
+		return
+	}
+	backend.ConsoleAccountJSON = accountJSON
+	backend, err = h.store.UpdateBackend(r.Context(), backend)
+	if err != nil {
+		writeConsoleError(w, http.StatusInternalServerError, err.Error(), recorder)
+		return
+	}
+
+	pricingResult, err := h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodGet, "/api/pricing", nil, backend.ConsoleCookie, "", recorder)
+	if err != nil {
+		writeConsoleError(w, http.StatusBadGateway, err.Error(), recorder)
+		return
+	}
+	if !pricingResult.success() {
+		writeConsoleError(w, http.StatusBadGateway, pricingResult.errorMessage("new-api pricing request failed"), recorder)
+		return
+	}
+	filteredPricing := filterConsolePricingPayload(pricingResult.Payload, h.focusModelPatterns())
+	pricingJSON, err := json.Marshal(filteredPricing)
+	if err != nil {
+		writeConsoleError(w, http.StatusBadGateway, err.Error(), recorder)
+		return
+	}
+	backend.ConsolePricingJSON = string(pricingJSON)
+
+	updated, err := h.store.UpdateBackend(r.Context(), backend)
+	if err != nil {
+		writeConsoleError(w, http.StatusInternalServerError, err.Error(), recorder)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"backend":  updated,
+		"status":   statusResult.Payload,
+		"checkin":  checkinPayload,
+		"account":  decodeJSONMap(accountJSON),
+		"pricing":  filteredPricing,
 		"requests": recorder.Requests,
 	})
 }
@@ -1110,6 +1216,42 @@ func (h *BackendHandler) consoleBackend(r *http.Request) (domain.Backend, error)
 	return backend, nil
 }
 
+func (h *BackendHandler) performNewAPIConsoleCheckin(ctx context.Context, backend domain.Backend, accountID string, recorder *newAPIConsoleRequestRecorder) (newAPIConsoleResult, domain.Backend, string, error) {
+	result, err := h.doNewAPIConsoleJSON(ctx, backend, http.MethodPost, "/api/user/checkin", nil, backend.ConsoleCookie, accountID, recorder)
+	if err != nil {
+		return newAPIConsoleResult{}, backend, accountID, err
+	}
+	if result.loginRequired() {
+		updated, loginAccountID, err := h.loginNewAPIConsole(ctx, backend, recorder)
+		if err != nil {
+			return newAPIConsoleResult{}, backend, accountID, err
+		}
+		backend = updated
+		accountID = firstNonEmpty(loginAccountID, accountID)
+		selfResult, updated, updatedAccountID, err := h.newAPIConsoleSelfWithLogin(ctx, backend, accountID, recorder)
+		if err != nil {
+			return newAPIConsoleResult{}, backend, accountID, err
+		}
+		backend = updated
+		accountID = firstNonEmpty(updatedAccountID, consoleAccountID(selfResult.Payload), accountID)
+		result, err = h.doNewAPIConsoleJSON(ctx, backend, http.MethodPost, "/api/user/checkin", nil, backend.ConsoleCookie, accountID, recorder)
+		if err != nil {
+			return newAPIConsoleResult{}, backend, accountID, err
+		}
+	}
+	if !result.success() && !result.alreadyCheckedIn() {
+		return newAPIConsoleResult{}, backend, accountID, errors.New(result.errorMessage("new-api checkin failed"))
+	}
+	return result, backend, accountID, nil
+}
+
+func (h *BackendHandler) focusModelPatterns() string {
+	if h.cfg == nil {
+		return ""
+	}
+	return h.cfg.FocusModels
+}
+
 func (h *BackendHandler) newAPIConsoleSelfWithLogin(ctx context.Context, backend domain.Backend, accountID string, recorder *newAPIConsoleRequestRecorder) (newAPIConsoleResult, domain.Backend, string, error) {
 	h.logConsoleEvent(ctx, slog.LevelInfo, "newapi_console_self_started", consoleBackendAttrs(backend)...)
 	selfResult, err := h.doNewAPIConsoleJSON(ctx, backend, http.MethodGet, "/api/user/self", nil, backend.ConsoleCookie, accountID, recorder)
@@ -1350,6 +1492,15 @@ func (r newAPIConsoleResult) loginRequired() bool {
 		strings.Contains(message, "unauthorized")
 }
 
+func (r newAPIConsoleResult) alreadyCheckedIn() bool {
+	message := strings.ToLower(strings.TrimSpace(fmt.Sprint(r.Payload["message"])))
+	return strings.Contains(message, "已签到") ||
+		strings.Contains(message, "已经签到") ||
+		strings.Contains(message, "今日已签") ||
+		strings.Contains(message, "今天已签") ||
+		(strings.Contains(message, "already") && (strings.Contains(message, "check") || strings.Contains(message, "sign")))
+}
+
 func (r newAPIConsoleResult) errorMessage(fallback string) string {
 	message := strings.TrimSpace(fmt.Sprint(r.Payload["message"]))
 	if message != "" && message != "<nil>" {
@@ -1407,7 +1558,7 @@ func mergeCookieValue(raw string, cookie *http.Cookie) string {
 	return strings.Join(out, "; ")
 }
 
-func consoleAccountSummaryJSON(payload map[string]any, lastCheckinAt time.Time) (string, error) {
+func consoleAccountSummaryJSON(payload map[string]any, statusPayload map[string]any, lastCheckinAt time.Time) (string, error) {
 	data, ok := payload["data"].(map[string]any)
 	if !ok {
 		return "", errors.New("new-api self response missing data")
@@ -1425,11 +1576,183 @@ func consoleAccountSummaryJSON(payload map[string]any, lastCheckinAt time.Time) 
 	if !lastCheckinAt.IsZero() {
 		summary["last_checkin_at"] = lastCheckinAt.UTC().Format(time.RFC3339)
 	}
+	if statusData, ok := statusPayload["data"].(map[string]any); ok {
+		for _, key := range []string{"custom_currency_exchange_rate", "custom_currency_symbol", "quota_per_unit"} {
+			if value, ok := statusData[key]; ok {
+				summary[key] = value
+			}
+		}
+	}
 	encoded, err := json.Marshal(summary)
 	if err != nil {
 		return "", err
 	}
 	return string(encoded), nil
+}
+
+func consoleLastCheckinStatus(backend domain.Backend, now time.Time) (time.Time, bool) {
+	payload := decodeJSONMap(backend.ConsoleAccountJSON)
+	parsed, ok := consoleLastCheckinTime(payload, now)
+	if !ok {
+		return time.Time{}, false
+	}
+	return parsed, sameConsoleDate(parsed, now)
+}
+
+func consoleLastCheckinTime(payload map[string]any, now time.Time) (time.Time, bool) {
+	for _, key := range []string{
+		"last_checkin_at",
+		"last_checkin_time",
+		"checkin_time",
+		"checkin_at",
+		"last_checkin_date",
+		"checkin_date",
+	} {
+		parsed, ok := consoleCheckinTimeValue(payload[key], now)
+		if ok {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func consoleCheckinTimeValue(value any, now time.Time) (time.Time, bool) {
+	switch value := value.(type) {
+	case string:
+		return parseConsoleCheckinTime(value, now)
+	case float64:
+		if value <= 0 {
+			return time.Time{}, false
+		}
+		return time.Unix(int64(value), 0), true
+	case int:
+		if value <= 0 {
+			return time.Time{}, false
+		}
+		return time.Unix(int64(value), 0), true
+	case int64:
+		if value <= 0 {
+			return time.Time{}, false
+		}
+		return time.Unix(value, 0), true
+	default:
+		return time.Time{}, false
+	}
+}
+
+func parseConsoleCheckinTime(raw string, now time.Time) (time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006/01/02 15:04:05",
+		"2006/01/02 15:04",
+	} {
+		if parsed, err := time.ParseInLocation(layout, raw, consoleCheckinLocation(now)); err == nil {
+			return parsed, true
+		}
+	}
+	for _, layout := range []string{"2006-01-02", "2006/01/02"} {
+		if parsed, err := time.ParseInLocation(layout, raw, consoleCheckinLocation(now)); err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func consoleCheckinLocation(now time.Time) *time.Location {
+	if now.Location() != nil && now.Location() != time.UTC {
+		return now.Location()
+	}
+	if time.Local != nil {
+		return time.Local
+	}
+	return time.UTC
+}
+
+func sameConsoleDate(value, now time.Time) bool {
+	for _, location := range []*time.Location{consoleCheckinLocation(now), value.Location(), now.Location(), time.UTC} {
+		if location == nil {
+			continue
+		}
+		valueInLocation := value.In(location)
+		nowInLocation := now.In(location)
+		if valueInLocation.Year() == nowInLocation.Year() && valueInLocation.YearDay() == nowInLocation.YearDay() {
+			return true
+		}
+	}
+	return false
+}
+
+func filterConsolePricingPayload(payload map[string]any, focusPatterns string) map[string]any {
+	out := cloneJSONMap(payload)
+	if strings.TrimSpace(focusPatterns) == "" {
+		return out
+	}
+	data, ok := out["data"].([]any)
+	if !ok {
+		return out
+	}
+	filtered := make([]any, 0, len(data))
+	for _, item := range data {
+		record, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if modelNameMatchesFocusPatterns(fmt.Sprint(record["model_name"]), focusPatterns) {
+			filtered = append(filtered, item)
+		}
+	}
+	out["data"] = filtered
+	return out
+}
+
+func cloneJSONMap(value map[string]any) map[string]any {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		out := make(map[string]any, len(value))
+		for key, item := range value {
+			out[key] = item
+		}
+		return out
+	}
+	var out map[string]any
+	if err := json.Unmarshal(encoded, &out); err != nil {
+		out = make(map[string]any, len(value))
+		for key, item := range value {
+			out[key] = item
+		}
+	}
+	return out
+}
+
+func modelNameMatchesFocusPatterns(modelName, patterns string) bool {
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		return false
+	}
+	for _, pattern := range strings.FieldsFunc(patterns, func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\r' || r == '\t'
+	}) {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		if pattern == "*" || pattern == modelName {
+			return true
+		}
+		if strings.ContainsAny(pattern, "*?") {
+			if ok, err := pathpkg.Match(pattern, modelName); err == nil && ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func consoleAccountID(payload map[string]any) string {
