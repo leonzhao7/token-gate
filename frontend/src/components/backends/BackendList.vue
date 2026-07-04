@@ -110,150 +110,165 @@
 
           <!-- Expanded Details -->
           <div v-if="expandedId === backend.id" class="row-details">
-            <div class="details-grid">
-              <div class="detail-section">
-                <h4 class="section-title">Connection</h4>
-                <div class="detail-item">
-                  <span class="detail-label">Base URL</span>
-                  <span class="detail-value">{{ backend.base_url }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">API Key</span>
-                  <span class="detail-value api-key">{{ backend.api_key || 'N/A' }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Protocol</span>
-                  <span class="detail-value">{{ backend.protocol }}</span>
-                </div>
-                <div v-if="backend.proxy" class="detail-item">
-                  <span class="detail-label">Proxy</span>
-                  <span class="detail-value">{{ backend.proxy.name }} ({{ backend.proxy.address }})</span>
-                </div>
-                <div v-if="backend.console_url" class="detail-item">
-                  <span class="detail-label">Console URL</span>
-                  <a :href="backend.console_url" target="_blank" class="detail-link">
-                    {{ backend.console_url }} ↗
-                  </a>
-                </div>
-              </div>
-
-              <div class="detail-section">
-                <h4 class="section-title">Configuration</h4>
-                <div v-if="backend.models && backend.models.length > 0" class="detail-item">
-                  <span class="detail-label">Models</span>
-                  <div class="detail-value">
-                    <span v-for="model in backend.models" :key="model" class="model-chip">
-                      {{ model }}
-                    </span>
+            <div class="details-layout">
+              <!-- Top row: Service + User | Relay Config | 24h Stats -->
+              <div class="details-top">
+                <!-- Backend Service + User Info -->
+                <div class="detail-card">
+                  <div class="card-header">
+                    <svg class="card-icon" width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="4" rx="1.5" stroke="currentColor" stroke-width="1.4"/><rect x="2" y="9" width="12" height="4" rx="1.5" stroke="currentColor" stroke-width="1.4"/><circle cx="4.5" cy="5" r="0.75" fill="currentColor"/><circle cx="4.5" cy="11" r="0.75" fill="currentColor"/></svg>
+                    <span class="card-title">后端服务</span>
                   </div>
-                </div>
-                <div v-if="modelMappingEntries(backend.model_mapping).length > 0" class="detail-item mapping-detail">
-                  <span class="detail-label">Model Mapping</span>
-                  <div class="detail-value mapping-list">
-                    <div
-                      v-for="[clientModel, upstreamModel] in modelMappingEntries(backend.model_mapping)"
-                      :key="clientModel"
-                      class="mapping-row"
-                    >
-                      <span class="mapping-client">{{ clientModel }}</span>
-                      <span class="mapping-arrow">→</span>
-                      <span class="mapping-upstream">{{ upstreamModel }}</span>
+                  <div class="card-body">
+                    <div v-if="backend.console_url" class="kv-row">
+                      <span class="kv-label">Server URL</span>
+                      <a :href="backend.console_url" target="_blank" class="kv-link">{{ backend.console_url }}</a>
+                    </div>
+                    <div v-if="backend.tags && backend.tags.length > 0" class="kv-row">
+                      <span class="kv-label">标签</span>
+                      <div class="chip-list">
+                        <span v-for="tag in backend.tags" :key="tag" class="chip">{{ tag }}</span>
+                      </div>
+                    </div>
+                    <div v-if="backend.notes" class="kv-row">
+                      <span class="kv-label">备注</span>
+                      <span class="kv-value notes-inline">{{ backend.notes }}</span>
+                    </div>
+                  </div>
+                  <!-- User info from console account -->
+                  <div v-if="consoleAccountSummary(backend.console_account_json)" class="card-sub">
+                    <div class="card-sub-header">用户信息</div>
+                    <div class="card-body">
+                      <div
+                        v-for="row in consoleAccountRows(backend.console_account_json)"
+                        :key="row.label"
+                        class="kv-row"
+                      >
+                        <span class="kv-label">{{ row.label }}</span>
+                        <span class="kv-value">{{ row.value }}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-                <div v-if="backend.tags && backend.tags.length > 0" class="detail-item">
-                  <span class="detail-label">Tags</span>
-                  <div class="detail-value">
-                    <span v-for="tag in backend.tags" :key="tag" class="tag-chip">
-                      {{ tag }}
-                    </span>
+
+                <!-- Relay Configuration -->
+                <div class="detail-card">
+                  <div class="card-header">
+                    <svg class="card-icon" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 8h4m4 0h4M8 2v4m0 4v4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.4"/></svg>
+                    <span class="card-title">转发配置</span>
+                  </div>
+                  <div class="card-body">
+                    <div class="kv-row">
+                      <span class="kv-label">Base URL</span>
+                      <span class="kv-value mono">{{ backend.base_url }}</span>
+                    </div>
+                    <div class="kv-row">
+                      <span class="kv-label">API Key</span>
+                      <span class="kv-value mono selectable">{{ backend.api_key || '—' }}</span>
+                    </div>
+                    <div v-if="backend.models && backend.models.length > 0" class="kv-row kv-row-top">
+                      <span class="kv-label">Models</span>
+                      <div class="chip-list">
+                        <span v-for="model in backend.models" :key="model" class="chip chip-model">{{ model }}</span>
+                      </div>
+                    </div>
+                    <div v-if="modelMappingEntries(backend.model_mapping).length > 0" class="kv-row kv-row-top">
+                      <span class="kv-label">模型映射</span>
+                      <div class="mapping-list">
+                        <div
+                          v-for="[clientModel, upstreamModel] in modelMappingEntries(backend.model_mapping)"
+                          :key="clientModel"
+                          class="mapping-row"
+                        >
+                          <span class="mapping-client">{{ clientModel }}</span>
+                          <span class="mapping-arrow">→</span>
+                          <span class="mapping-upstream">{{ upstreamModel }}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div v-if="backend.proxy" class="kv-row">
+                      <span class="kv-label">代理</span>
+                      <span class="kv-value">{{ backend.proxy.name }} <span class="text-dim">({{ backend.proxy.address }})</span></span>
+                    </div>
+                    <div v-if="backend.max_requests_per_minute" class="kv-row">
+                      <span class="kv-label">限速</span>
+                      <span class="kv-value">{{ backend.max_requests_per_minute }} req/min</span>
+                    </div>
                   </div>
                 </div>
-                <div class="detail-item">
-                  <span class="detail-label">Weight</span>
-                  <span class="detail-value">{{ backend.weight }}</span>
-                </div>
-                <div v-if="backend.max_requests_per_minute" class="detail-item">
-                  <span class="detail-label">Rate Limit</span>
-                  <span class="detail-value">{{ backend.max_requests_per_minute }}/min</span>
+
+                <!-- 24h Statistics (from hourly stats API) -->
+                <div class="detail-card">
+                  <div class="card-header">
+                    <svg class="card-icon" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 12l3-4 3 2 4-6 2 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span class="card-title">最近 24h</span>
+                    <span v-if="backendStatsLoading[backend.id]" class="card-badge loading-badge">loading</span>
+                  </div>
+                  <div v-if="backendStats[backend.id]" class="stats-grid">
+                    <div class="stat-cell">
+                      <span class="stat-value">{{ formatCompactNumber(backendStats[backend.id].successes) }}</span>
+                      <span class="stat-label">成功</span>
+                    </div>
+                    <div class="stat-cell">
+                      <span class="stat-value" :class="{ 'stat-danger': backendStats[backend.id].failures > 0 }">
+                        {{ formatCompactNumber(backendStats[backend.id].failures) }}
+                      </span>
+                      <span class="stat-label">失败</span>
+                    </div>
+                    <div class="stat-cell">
+                      <span class="stat-value">{{ formatLatencyMs(backendStats[backend.id].successAvgDurationMs) }}</span>
+                      <span class="stat-label">平均延迟</span>
+                    </div>
+                    <div class="stat-cell">
+                      <span class="stat-value" :class="{ 'stat-danger': backendStats[backend.id].failureRate > 0.1 }">
+                        {{ formatPercent(backendStats[backend.id].failureRate) }}
+                      </span>
+                      <span class="stat-label">失败率</span>
+                    </div>
+                    <div class="stat-cell">
+                      <span class="stat-value">{{ formatCompactNumber(backendStats[backend.id].inputTokens) }}</span>
+                      <span class="stat-label">输入 Tokens</span>
+                    </div>
+                    <div class="stat-cell">
+                      <span class="stat-value">{{ formatCompactNumber(backendStats[backend.id].outputTokens) }}</span>
+                      <span class="stat-label">输出 Tokens</span>
+                    </div>
+                  </div>
+                  <div v-else class="stats-grid stats-empty">
+                    <div class="stat-cell stat-cell-wide">
+                      <span class="stat-label">{{ backendStatsLoading[backend.id] ? '加载中...' : '暂无数据' }}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div class="detail-section">
-                <h4 class="section-title">Statistics</h4>
-                <div class="detail-item">
-                  <span class="detail-label">Total Requests</span>
-                  <span class="detail-value">{{ backend.request_count || 0 }}</span>
+              <!-- Bottom: Models pricing table -->
+              <div v-if="pricingModelRows(backend.console_pricing_json, focusModelPatterns, backend.console_account_json).length > 0" class="details-bottom">
+                <div class="detail-card full-width">
+                  <div class="card-header">
+                    <svg class="card-icon" width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M3 8h7M3 12h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                    <span class="card-title">可用模型</span>
+                    <span v-if="backend.models" class="card-badge">{{ backend.models.length }}</span>
+                  </div>
+                  <div class="pricing-table-wrap">
+                    <table class="pricing-table">
+                      <thead>
+                        <tr>
+                          <th>Model</th>
+                          <th>Price</th>
+                          <th>Group</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="row in pricingModelRows(backend.console_pricing_json, focusModelPatterns, backend.console_account_json)" :key="row.model">
+                          <td>{{ row.model }}</td>
+                          <td>{{ row.price }}</td>
+                          <td>{{ row.group }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-                <div class="detail-item">
-                  <span class="detail-label">Consecutive Failures</span>
-                  <span class="detail-value" :class="{ 'error-text': (backend.consecutive_failures || 0) > 0 }">
-                    {{ backend.consecutive_failures || 0 }}
-                  </span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Avg Latency</span>
-                  <span class="detail-value">
-                    {{ formatLatencySeconds(backend.avg_latency_ms, 'N/A') }}
-                  </span>
-                </div>
-                <div v-if="backend.hourly_requests !== undefined" class="detail-item">
-                  <span class="detail-label">Hourly Requests</span>
-                  <span class="detail-value">{{ backend.hourly_requests }}</span>
-                </div>
-                <div v-if="backend.hourly_failures !== undefined" class="detail-item">
-                  <span class="detail-label">Hourly Failures</span>
-                  <span class="detail-value" :class="{ 'error-text': backend.hourly_failures > 0 }">
-                    {{ backend.hourly_failures }}
-                  </span>
-                </div>
-                <div v-if="backend.last_used_at" class="detail-item">
-                  <span class="detail-label">Last Used</span>
-                  <span class="detail-value">{{ formatTime(backend.last_used_at) }}</span>
-                </div>
-                <div class="detail-item">
-                  <span class="detail-label">Updated</span>
-                  <span class="detail-value">{{ formatTime(backend.updated_at) }}</span>
-                </div>
-              </div>
-
-              <div v-if="consoleAccountSummary(backend.console_account_json)" class="detail-section">
-                <h4 class="section-title">Console Account</h4>
-                <div
-                  v-for="row in consoleAccountRows(backend.console_account_json)"
-                  :key="row.label"
-                  class="detail-item"
-                >
-                  <span class="detail-label">{{ row.label }}</span>
-                  <span class="detail-value">{{ row.value }}</span>
-                </div>
-              </div>
-
-              <div v-if="pricingModelRows(backend.console_pricing_json, focusModelPatterns, backend.console_account_json).length > 0" class="detail-section full-width">
-                <h4 class="section-title">Model Pricing</h4>
-                <div class="pricing-table-wrap">
-                  <table class="pricing-table">
-                    <thead>
-                      <tr>
-                        <th>Model</th>
-                        <th>Price</th>
-                        <th>Group</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="row in pricingModelRows(backend.console_pricing_json, focusModelPatterns, backend.console_account_json)" :key="row.model">
-                        <td>{{ row.model }}</td>
-                        <td>{{ row.price }}</td>
-                        <td>{{ row.group }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div v-if="backend.notes" class="detail-section full-width">
-                <h4 class="section-title">Notes</h4>
-                <p class="notes-text">{{ backend.notes }}</p>
               </div>
             </div>
           </div>
@@ -264,14 +279,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, reactive } from 'vue'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Button from '@/components/ui/Button.vue'
 import type { Backend } from '@/api'
+import { dashboardApi } from '@/api'
 import { formatLatencySeconds } from '@/utils/latency'
 import { formatModelMappingForInput, parseModelMappingInput } from './backendPayload'
 import { consoleAccountRows, consoleAccountSummary, pricingModelRows } from './backendConsoleDisplay'
+import { buildDashboardStats, buildStatsRange, type DashboardStatsSummary } from '@/utils/dashboardStats'
 
 interface Props {
   backends: Backend[]
@@ -360,6 +377,49 @@ const formatTime = (timestamp: string) => {
   if (diffHours < 24) return `${diffHours}h ago`
   const diffDays = Math.floor(diffHours / 24)
   return `${diffDays}d ago`
+}
+
+const backendStats = reactive<Record<number, DashboardStatsSummary>>({})
+const backendStatsLoading = reactive<Record<number, boolean>>({})
+
+watch(expandedId, async (id) => {
+  if (id === null) return
+  if (backendStats[id]) return
+  const backend = props.backends.find((b) => b.id === id)
+  if (!backend) return
+
+  backendStatsLoading[id] = true
+  try {
+    const { startHour, endHour } = buildStatsRange(24)
+    const res = await dashboardApi.getBackendHourlyModelStats({
+      backend: backend.name,
+      start_hour: startHour,
+      end_hour: endHour,
+    })
+    const stats = buildDashboardStats(res.items)
+    backendStats[id] = stats.summary
+  } catch {
+    // leave empty — template shows "暂无数据"
+  } finally {
+    backendStatsLoading[id] = false
+  }
+})
+
+const formatCompactNumber = (n: number): string => {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return String(n)
+}
+
+const formatLatencyMs = (ms: number): string => {
+  if (!ms || ms <= 0) return '-'
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  return `${(ms / 1000).toFixed(2)}s`
+}
+
+const formatPercent = (rate: number): string => {
+  if (!rate || rate <= 0) return '0%'
+  return `${(rate * 100).toFixed(1)}%`
 }
 </script>
 
@@ -567,17 +627,6 @@ const formatTime = (timestamp: string) => {
   font-weight: 600;
 }
 
-.error-text {
-  color: var(--danger);
-  font-weight: 600;
-}
-
-.api-key {
-  font-family: monospace;
-  font-size: 12px;
-  word-break: break-all;
-  user-select: all;
-}
 
 .clickable-badge {
   cursor: pointer;
@@ -667,136 +716,263 @@ const formatTime = (timestamp: string) => {
 
 /* Expanded Details */
 .row-details {
-  padding: var(--spacing-lg);
+  padding: 16px 20px;
   background: var(--bg-base);
   border-top: 1px solid var(--border);
   animation: slideDown 200ms ease;
 }
 
 @keyframes slideDown {
-  from {
-    opacity: 0;
-    max-height: 0;
-  }
-  to {
-    opacity: 1;
-    max-height: 500px;
-  }
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.details-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: var(--spacing-lg);
-}
-
-.detail-section {
+.details-layout {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
+  gap: 12px;
 }
 
-.detail-section.full-width {
-  grid-column: 1 / -1;
+.details-top {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
 }
 
-.section-title {
-  font-size: 13px;
+.details-bottom {
+  display: flex;
+}
+
+/* Detail Card */
+.detail-card {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.detail-card.full-width {
+  flex: 1;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-muted);
+}
+
+.card-icon {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.card-title {
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 0 0 var(--spacing-xs) 0;
 }
 
-.detail-item {
+.card-badge {
+  margin-left: auto;
+  padding: 1px 6px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.card-body {
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card-sub {
+  border-top: 1px solid var(--border);
+}
+
+.card-sub-header {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  background: var(--bg-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Key-Value Rows */
+.kv-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.kv-row-top {
   align-items: flex-start;
-  gap: var(--spacing-md);
-  font-size: 13px;
 }
 
-.detail-label {
-  color: var(--text-secondary);
+.kv-label {
+  color: var(--text-tertiary);
   flex-shrink: 0;
-  min-width: 100px;
+  font-size: 11px;
 }
 
-.detail-value {
+.kv-value {
   color: var(--text-primary);
-  font-weight: 500;
+  text-align: right;
+  word-break: break-all;
+  min-width: 0;
+}
+
+.kv-value.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.kv-value.selectable {
+  user-select: all;
+}
+
+.kv-value.notes-inline {
+  white-space: pre-wrap;
+  max-height: 40px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kv-link {
+  color: var(--accent-primary);
+  text-decoration: none;
+  font-size: 11px;
   text-align: right;
   word-break: break-all;
 }
 
-.detail-link {
-  color: var(--accent-primary);
-  text-decoration: none;
-  transition: opacity 150ms ease;
+.kv-link:hover {
+  text-decoration: underline;
 }
 
-.detail-link:hover {
-  opacity: 0.8;
+.text-dim {
+  color: var(--text-tertiary);
 }
 
-.model-chip,
-.tag-chip {
-  display: inline-block;
-  padding: 3px 8px;
-  margin: 2px;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.mapping-detail {
-  align-items: flex-start;
-}
-
+/* Mapping */
 .mapping-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
   align-items: flex-end;
 }
 
 .mapping-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
+  font-size: 11px;
 }
 
-.mapping-client {
-  color: var(--text-primary);
+.mapping-client { color: var(--text-primary); }
+.mapping-arrow { color: var(--text-tertiary); }
+.mapping-upstream { color: var(--accent-primary); }
+
+/* Chips */
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
 }
 
-.mapping-arrow {
-  color: var(--text-tertiary);
-}
-
-.mapping-upstream {
-  color: var(--accent-primary);
-}
-
-.notes-text {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-primary);
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
-
-.pricing-table-wrap {
-  width: 100%;
-  max-height: 280px;
-  overflow: auto;
+.chip {
+  display: inline-block;
+  padding: 2px 7px;
+  background: var(--bg-base);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.chip-model {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.model-chip-list {
+  padding: 10px 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  background: var(--border);
+}
+
+.stat-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 8px;
+  background: var(--bg-subtle);
+  gap: 2px;
+}
+
+.stat-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.stat-value.stat-danger {
+  color: var(--danger);
+}
+
+.stat-label {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.stats-empty {
+  background: transparent;
+}
+
+.stat-cell-wide {
+  grid-column: 1 / -1;
+}
+
+.loading-badge {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Pricing Table */
+.pricing-table-wrap {
+  max-height: 260px;
+  overflow: auto;
 }
 
 .pricing-table {
@@ -807,7 +983,7 @@ const formatTime = (timestamp: string) => {
 
 .pricing-table th,
 .pricing-table td {
-  padding: 8px 10px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   text-align: right;
   white-space: nowrap;
@@ -816,9 +992,10 @@ const formatTime = (timestamp: string) => {
 .pricing-table th {
   position: sticky;
   top: 0;
-  background: var(--bg-subtle);
+  background: var(--bg-muted);
   color: var(--text-secondary);
   font-weight: 600;
+  font-size: 11px;
   z-index: 1;
 }
 
@@ -834,10 +1011,22 @@ const formatTime = (timestamp: string) => {
 }
 
 /* Responsive */
+@media (max-width: 1400px) {
+  .details-top {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 @media (max-width: 1200px) {
   .col-proxy,
   .col-tags {
     display: none;
+  }
+}
+
+@media (max-width: 1000px) {
+  .details-top {
+    grid-template-columns: 1fr;
   }
 }
 
