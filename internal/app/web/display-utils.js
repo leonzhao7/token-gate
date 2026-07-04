@@ -130,6 +130,7 @@
   }
 
   function backendProtocolLabel(protocol) {
+    if (protocol === "both") return "OpenAI + Anthropic";
     return protocol === "anthropic" ? "Claude / Anthropic" : "OpenAI";
   }
 

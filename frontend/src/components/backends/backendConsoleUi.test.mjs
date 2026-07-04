@@ -97,6 +97,20 @@ test('backend form lets backend type be cleared and submitted as empty', () => {
   assert.match(form, /backend_type: backend\.backend_type \?\? 'new-api'/)
 })
 
+test('backend form exposes dual protocol plus tags and description fields', () => {
+  const form = read('components/backends/BackendForm.vue')
+  const types = read('api/types.ts')
+
+  assert.match(types, /protocol: 'openai' \| 'anthropic' \| 'both'/)
+  assert.match(form, /<option value="both">OpenAI \+ Anthropic<\/option>/)
+  assert.match(form, /v-model="formData\.tags"/)
+  assert.match(form, /parseBackendTagInput\(formData\.value\.tags\)/)
+  assert.match(form, /<label class="form-label" for="description">Description<\/label>/)
+  assert.match(form, /id="description"/)
+  assert.match(form, /v-model="formData\.notes"/)
+  assert.match(form, /notes: formData\.value\.notes\.trim\(\)/)
+})
+
 test('backend expanded details render console self and pricing model summaries', () => {
   const list = read('components/backends/BackendList.vue')
   const helper = read('components/backends/backendConsoleDisplay.ts')

@@ -336,6 +336,14 @@
                     <select name="protocol">
                       <option value="openai">OpenAI compatible</option>
                       <option value="anthropic">Claude / Anthropic</option>
+                      <option value="both">OpenAI + Anthropic</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <span>Backend Type</span>
+                    <select name="backend_type">
+                      <option value="">None</option>
+                      <option value="new-api">new-api</option>
                     </select>
                   </label>
                   <label class="field">
@@ -364,6 +372,10 @@
                       <input name="console_password" type="password" placeholder="optional" />
                     </label>
                   </div>
+                  <label class="field">
+                    <span>Console Cookie</span>
+                    <textarea name="console_cookie" rows="3" placeholder="session=..."></textarea>
+                  </label>
                   <label class="field">
                     <span>Notes</span>
                     <textarea name="notes" rows="3" placeholder="Operator notes"></textarea>

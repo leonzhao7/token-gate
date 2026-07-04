@@ -50,6 +50,13 @@ test('parses comma-separated backend models into the backend API array shape', a
   assert.deepEqual(parseModelListInput(''), [])
 })
 
+test('parses comma-separated backend tags into the backend API array shape', async () => {
+  const { parseBackendTagInput } = await loadModule()
+
+  assert.deepEqual(parseBackendTagInput(' hk, priority, , vip '), ['hk', 'priority', 'vip'])
+  assert.deepEqual(parseBackendTagInput(''), [])
+})
+
 test('normalizes proxy id from current and legacy backend payloads', async () => {
   const { normalizeBackendProxyId } = await loadModule()
 

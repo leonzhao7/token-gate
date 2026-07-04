@@ -5,7 +5,7 @@ export interface Backend {
   name: string
   base_url: string
   api_key: string
-  protocol: 'openai' | 'anthropic'
+  protocol: 'openai' | 'anthropic' | 'both'
   backend_type?: '' | 'new-api'
   weight: number
   priority?: number
@@ -261,7 +261,7 @@ export interface Config {
 
 export interface CreateBackendRequest {
   name: string
-  protocol?: 'openai' | 'anthropic'
+  protocol?: 'openai' | 'anthropic' | 'both'
   backend_type?: '' | 'new-api'
   base_url: string
   api_key: string
@@ -285,7 +285,7 @@ export interface UpdateBackendRequest extends Partial<CreateBackendRequest> {
 
 export interface BackendImportExportItem {
   name: string
-  protocol: 'openai' | 'anthropic'
+  protocol: 'openai' | 'anthropic' | 'both'
   backend_type?: '' | 'new-api'
   base_url: string
   api_key: string

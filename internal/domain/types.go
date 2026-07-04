@@ -20,6 +20,7 @@ const (
 
 	BackendProtocolOpenAI    = "openai"
 	BackendProtocolAnthropic = "anthropic"
+	BackendProtocolBoth      = "both"
 
 	BackendTypeNewAPI = "new-api"
 )
@@ -133,6 +134,8 @@ func NormalizeBackendProtocol(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case BackendProtocolAnthropic, "claude":
 		return BackendProtocolAnthropic
+	case BackendProtocolBoth, "dual", "openai+anthropic", "anthropic+openai":
+		return BackendProtocolBoth
 	default:
 		return BackendProtocolOpenAI
 	}

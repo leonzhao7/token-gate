@@ -802,6 +802,120 @@ func TestProxySupportsAnthropicMessagesClientAndBackend(t *testing.T) {
 	}
 }
 
+func TestProxyForwardsAnthropicMessagesNativelyForDualProtocolBackend(t *testing.T) {
+	const (
+		clientToken = "dual-client-secret"
+		requestBody = `{"model":"claude-3-5-sonnet-latest","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}`
+	)
+
+	application := newTestApp(t)
+	createTestClient(t, application, clientToken)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "dual-protocol",
+		Protocol:  "both",
+		BaseURL:   "https://dual.local/root/v1",
+		APIKey:    "backend-dual-key",
+		Weight:    1,
+		Models:    []string{"claude-3-5-sonnet-latest"},
+		Endpoints: []string{domain.EndpointMessages, domain.EndpointResponses},
+	})
+	if backend.Protocol != "both" {
+		t.Fatalf("expected dual protocol to be preserved, got %q", backend.Protocol)
+	}
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages?beta=1", strings.NewReader(requestBody))
+	req.Header.Set("X-Api-Key", clientToken)
+	req.Header.Set("Anthropic-Version", "2023-06-01")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	records := fixture.recordsSnapshot()
+	if len(records) != 1 {
+		t.Fatalf("expected one upstream attempt, got %d: %#v", len(records), records)
+	}
+	record := records[0]
+	if record.path != "/root/v1/messages" {
+		t.Fatalf("expected native anthropic messages path, got %q", record.path)
+	}
+	if record.authorization != "" {
+		t.Fatalf("dual backend should use anthropic auth for messages, got Authorization %q", record.authorization)
+	}
+	if record.xAPIKey != "backend-dual-key" {
+		t.Fatalf("dual backend x-api-key mismatch: %q", record.xAPIKey)
+	}
+	if record.anthropicVersion != "2023-06-01" {
+		t.Fatalf("anthropic version header mismatch: %q", record.anthropicVersion)
+	}
+	if record.body != requestBody {
+		t.Fatalf("body changed: got %q want %q", record.body, requestBody)
+	}
+}
+
+func TestProxyForwardsOpenAIResponsesNativelyForDualProtocolBackend(t *testing.T) {
+	const (
+		clientToken = "dual-openai-client-secret"
+		requestBody = `{"model":"gpt-4o","input":"hello detail","max_output_tokens":16}`
+	)
+
+	application := newTestApp(t)
+	createTestClient(t, application, clientToken)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "dual-openai",
+		Protocol:  "both",
+		BaseURL:   "https://dual-openai.local/root/v1",
+		APIKey:    "backend-dual-openai-key",
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointMessages, domain.EndpointResponses},
+	})
+	if backend.Protocol != "both" {
+		t.Fatalf("expected dual protocol to be preserved, got %q", backend.Protocol)
+	}
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses?trace=1", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+clientToken)
+	req.Header.Set("Anthropic-Version", "2023-06-01")
+	recorder := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	records := fixture.recordsSnapshot()
+	if len(records) != 1 {
+		t.Fatalf("expected one upstream attempt, got %d: %#v", len(records), records)
+	}
+	record := records[0]
+	if record.path != "/root/v1/responses" {
+		t.Fatalf("expected native openai responses path, got %q", record.path)
+	}
+	if record.authorization != "Bearer backend-dual-openai-key" {
+		t.Fatalf("dual backend openai authorization mismatch: %q", record.authorization)
+	}
+	if record.xAPIKey != "" {
+		t.Fatalf("dual backend should not use anthropic auth for responses, got x-api-key %q", record.xAPIKey)
+	}
+	if record.anthropicVersion != "" {
+		t.Fatalf("openai request should strip anthropic version header, got %q", record.anthropicVersion)
+	}
+	if record.body != requestBody {
+		t.Fatalf("body changed: got %q want %q", record.body, requestBody)
+	}
+}
+
 func TestProxyTranslatesMessagesToResponsesForOpenAIBackend(t *testing.T) {
 	const (
 		clientToken = "client-secret"

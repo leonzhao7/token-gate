@@ -390,12 +390,14 @@ const resourceCrud = ResourceCrudUtils.createResourceCrud({
       focusField: "name",
       defaults: {
         protocol: "openai",
+        backend_type: "",
         api_key: { placeholder: "Backend API key" },
         proxy_id: "0",
         model_mapping: "",
         weight: 1,
         status: "normal",
         console_url: "",
+        console_cookie: "",
         tags: "",
         console_username: "",
         console_password: "",
@@ -405,10 +407,12 @@ const resourceCrud = ResourceCrudUtils.createResourceCrud({
         form.elements.name.value = backend.name || "";
         form.elements.status.value = backend.status || "normal";
         form.elements.protocol.value = backend.protocol || "openai";
+        form.elements.backend_type.value = backend.backend_type || "";
         form.elements.base_url.value = backend.base_url || "";
         form.elements.api_key.value = backend.api_key || "";
         form.elements.api_key.placeholder = "Backend API key";
         form.elements.console_url.value = backend.console_url || "";
+        form.elements.console_cookie.value = backend.console_cookie || "";
         form.elements.tags.value = (backend.tags || []).join(", ");
         form.elements.console_username.value = backend.console_username || "";
         form.elements.console_password.value = backend.console_password || "";
@@ -936,6 +940,7 @@ backendForm.addEventListener("submit", async (event) => {
       ? state.backends.find((backend) => String(backend.id) === String(state.editingBackendID))
       : null;
     data.console_url = String(data.console_url || "").trim();
+    data.console_cookie = String(data.console_cookie || "").trim();
     data.tags = splitList(data.tags);
     data.console_username = String(data.console_username || "").trim();
     data.console_password = String(data.console_password || "").trim();

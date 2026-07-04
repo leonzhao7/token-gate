@@ -104,8 +104,8 @@ func (s *Service) DoWithPath(ctx context.Context, incoming *http.Request, backen
 	request.Header.Del("X-Api-Key")
 	request.Header.Del("Host")
 	request.Header.Del("Content-Length")
-	sanitizeBackendHeaders(request.Header, backend)
-	applyBackendAuth(request.Header, backend)
+	sanitizeBackendHeaders(request.Header, backend, upstreamPath)
+	applyBackendAuth(request.Header, backend, upstreamPath)
 
 	client, err := s.clientForBackend(backend)
 	if err != nil {
@@ -267,8 +267,19 @@ func bearerValue(raw string) string {
 	return "Bearer " + value
 }
 
-func applyBackendAuth(header http.Header, backend domain.Backend) {
-	switch domain.NormalizeBackendProtocol(backend.Protocol) {
+func EffectiveBackendProtocolForPath(backend domain.Backend, path string) string {
+	protocol := domain.NormalizeBackendProtocol(backend.Protocol)
+	if protocol != domain.BackendProtocolBoth {
+		return protocol
+	}
+	if EndpointForPath(path) == domain.EndpointMessages {
+		return domain.BackendProtocolAnthropic
+	}
+	return domain.BackendProtocolOpenAI
+}
+
+func applyBackendAuth(header http.Header, backend domain.Backend, path string) {
+	switch EffectiveBackendProtocolForPath(backend, path) {
 	case domain.BackendProtocolAnthropic:
 		header.Set("X-Api-Key", strings.TrimSpace(backend.APIKey))
 	default:
@@ -276,8 +287,8 @@ func applyBackendAuth(header http.Header, backend domain.Backend) {
 	}
 }
 
-func sanitizeBackendHeaders(header http.Header, backend domain.Backend) {
-	switch domain.NormalizeBackendProtocol(backend.Protocol) {
+func sanitizeBackendHeaders(header http.Header, backend domain.Backend, path string) {
+	switch EffectiveBackendProtocolForPath(backend, path) {
 	case domain.BackendProtocolAnthropic:
 		return
 	default:

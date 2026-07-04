@@ -29,7 +29,7 @@
       </div>
 
       <div class="form-group">
-        <label class="form-label" for="protocol">Protocol</label>
+        <label class="form-label" for="protocol">Upstream Protocol</label>
         <select
           id="protocol"
           v-model="formData.protocol"
@@ -37,6 +37,7 @@
         >
           <option value="openai">OpenAI</option>
           <option value="anthropic">Anthropic</option>
+          <option value="both">OpenAI + Anthropic</option>
         </select>
       </div>
 
@@ -88,6 +89,28 @@
         ></textarea>
         <p class="form-hint">JSON object: client model to upstream model.</p>
         <p v-if="modelMappingError" class="form-error">{{ modelMappingError }}</p>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="tags">Tags</label>
+        <input
+          id="tags"
+          v-model="formData.tags"
+          type="text"
+          class="form-input"
+          placeholder="hk, priority, vip"
+        />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="description">Description</label>
+        <textarea
+          id="description"
+          v-model="formData.notes"
+          class="form-input form-textarea description-textarea"
+          rows="3"
+          placeholder="Operator notes"
+        ></textarea>
       </div>
     </div>
 
@@ -203,6 +226,7 @@ import type { Backend, SocksProxy, CreateBackendRequest } from '@/api'
 import {
   formatModelMappingForInput,
   normalizeBackendProxyId,
+  parseBackendTagInput,
   parseModelListInput,
   parseModelMappingInput,
 } from './backendPayload'
@@ -226,7 +250,7 @@ const emit = defineEmits<{
 
 interface BackendFormData {
   name: string
-  protocol: 'openai' | 'anthropic'
+  protocol: 'openai' | 'anthropic' | 'both'
   backend_type: '' | 'new-api'
   base_url: string
   api_key: string
@@ -237,10 +261,10 @@ interface BackendFormData {
   endpoints: string[]
   console_url: string
   console_cookie: string
-  tags?: string[]
+  tags: string
   console_username: string
   console_password: string
-  notes?: string
+  notes: string
 }
 
 const defaultFormData = (): BackendFormData => ({
@@ -256,8 +280,10 @@ const defaultFormData = (): BackendFormData => ({
   endpoints: [],
   console_url: '',
   console_cookie: '',
+  tags: '',
   console_username: '',
-  console_password: ''
+  console_password: '',
+  notes: ''
 })
 
 const formData = ref<BackendFormData>(defaultFormData())
@@ -291,10 +317,10 @@ const handleSubmit = () => {
     api_key: formData.value.api_key,
     console_url: formData.value.console_url.trim(),
     console_cookie: formData.value.console_cookie.trim(),
-    tags: formData.value.tags || [],
+    tags: parseBackendTagInput(formData.value.tags),
     console_username: formData.value.console_username.trim(),
     console_password: formData.value.console_password.trim(),
-    notes: formData.value.notes || '',
+    notes: formData.value.notes.trim(),
     proxy_id: formData.value.proxy_id || 0,
     weight: formData.value.weight,
     models: parseModelListInput(formData.value.models),
@@ -319,7 +345,7 @@ watch(() => props.backend, (backend) => {
       endpoints: backend.endpoints || [],
       console_url: backend.console_url || '',
       console_cookie: backend.console_cookie || '',
-      tags: backend.tags || [],
+      tags: (backend.tags || []).join(', '),
       console_username: backend.console_username || '',
       console_password: backend.console_password || '',
       notes: backend.notes || ''
@@ -384,6 +410,10 @@ watch(() => props.backend, (backend) => {
   resize: vertical;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   line-height: 1.5;
+}
+
+.description-textarea {
+  font-family: inherit;
 }
 
 .form-input:focus,

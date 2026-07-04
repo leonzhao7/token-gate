@@ -33,7 +33,7 @@ func PrepareExchange(clientPath string, backend domain.Backend, body []byte) (Pr
 	clientEndpoint := EndpointForPath(clientPath)
 	switch clientEndpoint {
 	case domain.EndpointMessages:
-		if domain.NormalizeBackendProtocol(backend.Protocol) != domain.BackendProtocolOpenAI {
+		if EffectiveBackendProtocolForPath(backend, clientPath) != domain.BackendProtocolOpenAI {
 			return exchange, nil
 		}
 		stream, err := requestStreams(body)
@@ -56,7 +56,7 @@ func PrepareExchange(clientPath string, backend domain.Backend, body []byte) (Pr
 		exchange.AdaptResponse = adaptJSONResponse(ConvertResponsesResponseToMessagesResponse)
 		return exchange, nil
 	case domain.EndpointResponses:
-		if domain.NormalizeBackendProtocol(backend.Protocol) != domain.BackendProtocolAnthropic {
+		if EffectiveBackendProtocolForPath(backend, clientPath) != domain.BackendProtocolAnthropic {
 			return exchange, nil
 		}
 		stream, err := requestStreams(body)
