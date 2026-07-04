@@ -48,6 +48,10 @@ test('filters pricing model rows by configured focus model patterns', async () =
 test('formats console quota fields using custom currency metadata', async () => {
   const { consoleAccountRows } = await loadModule()
   const account = JSON.stringify({
+    display_name: 'Tom Admin',
+    group: 'default',
+    role: 'admin',
+    status: 'active',
     quota: 248540,
     used_quota: 3250000,
     custom_currency_exchange_rate: 10,
@@ -60,4 +64,8 @@ test('formats console quota fields using custom currency metadata', async () => 
   assert.equal(rows.Quota, '4.9708 硬币')
   assert.equal(rows['Used Quota'], '65 硬币')
   assert.equal(rows['Quota Remaining'], undefined)
+  assert.equal(rows['Display Name'], undefined)
+  assert.equal(rows.Group, undefined)
+  assert.equal(rows.Role, undefined)
+  assert.equal(rows.Status, undefined)
 })

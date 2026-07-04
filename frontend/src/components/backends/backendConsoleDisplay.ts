@@ -144,10 +144,6 @@ export const consoleAccountRows = (raw?: string): DetailRow[] => {
   return [
     ['User ID', summary.id],
     ['Username', summary.username],
-    ['Display Name', summary.displayName],
-    ['Group', summary.group],
-    ['Role', summary.role],
-    ['Status', summary.status],
     ['Quota', summary.quotaDisplay],
     ['Used Quota', summary.usedQuotaDisplay],
     ['Last Check-in', summary.lastCheckinAt]
