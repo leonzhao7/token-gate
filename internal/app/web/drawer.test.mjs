@@ -172,7 +172,6 @@ test("buildDrawerActivitySections normalizes event usage and backend activity ca
       base_url: "https://edge-a.example/v1",
       status: "normal",
       models: ["gpt-5.4", "gpt-image-2"],
-      endpoints: ["chat", "images"],
       socks_proxy: { name: "proxy-a" },
     }],
   });
@@ -226,7 +225,6 @@ test("buildDrawerActivitySections normalizes event usage and backend activity ca
       meta: [
         { label: "Proxy", value: "proxy-a" },
         { label: "Models", value: "2" },
-        { label: "Endpoints", value: "2" },
       ],
     }],
   });

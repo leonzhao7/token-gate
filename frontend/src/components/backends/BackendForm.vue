@@ -258,7 +258,6 @@ interface BackendFormData {
   proxy_id: number
   weight: number
   models: string
-  endpoints: string[]
   console_url: string
   console_cookie: string
   tags: string
@@ -277,7 +276,6 @@ const defaultFormData = (): BackendFormData => ({
   proxy_id: 0,
   weight: 10,
   models: '',
-  endpoints: [],
   console_url: '',
   console_cookie: '',
   tags: '',
@@ -324,8 +322,7 @@ const handleSubmit = () => {
     proxy_id: formData.value.proxy_id || 0,
     weight: formData.value.weight,
     models: parseModelListInput(formData.value.models),
-    model_mapping: parseModelMappingInput(formData.value.model_mapping),
-    endpoints: formData.value.endpoints || []
+    model_mapping: parseModelMappingInput(formData.value.model_mapping)
   })
 }
 
@@ -342,7 +339,6 @@ watch(() => props.backend, (backend) => {
       proxy_id: normalizeBackendProxyId(backend),
       weight: backend.weight,
       models: (backend.models || []).join(', '),
-      endpoints: backend.endpoints || [],
       console_url: backend.console_url || '',
       console_cookie: backend.console_cookie || '',
       tags: (backend.tags || []).join(', '),

@@ -126,7 +126,6 @@
         source.notes,
         ...ensureArray(source.tags),
         ...ensureArray(source.models),
-        ...ensureArray(source.endpoints),
       );
     }
     if (resourceKey === "clients") {

@@ -420,7 +420,6 @@ const resourceCrud = ResourceCrudUtils.createResourceCrud({
         form.elements.proxy_id.value = String(backend.proxy_id || 0);
         form.elements.models.value = (backend.models || []).join(", ");
         form.elements.model_mapping.value = helpers.formatModelMappingInput(backend.model_mapping);
-        form.elements.endpoints.value = (backend.endpoints || []).join(", ");
         form.elements.weight.value = backend.weight || 1;
       },
     },
@@ -947,7 +946,6 @@ backendForm.addEventListener("submit", async (event) => {
     data.notes = String(data.notes || "").trim();
     data.models = splitList(data.models);
     data.model_mapping = parseModelMapping(data.model_mapping);
-    data.endpoints = splitList(data.endpoints);
     data.weight = Number(data.weight || 1);
     data.proxy_id = Number(data.proxy_id || 0);
     data.status = ResourceRuntimeUtils.resolveSubmittedBackendStatus({

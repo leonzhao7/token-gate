@@ -407,7 +407,6 @@ const handleToggleStatus = async (backend: Backend) => {
       weight: backend.weight,
       models: backend.models || [],
       model_mapping: parseModelMappingInput(formatModelMappingForInput(backend.model_mapping)),
-      endpoints: backend.endpoints || [],
       protocol: backend.protocol,
       proxy_id: normalizeBackendProxyId(backend),
     })

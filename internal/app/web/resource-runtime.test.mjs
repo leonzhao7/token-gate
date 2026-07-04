@@ -1407,7 +1407,6 @@ test("app.js wires backend proxy options through backend form lifecycle helpers"
       proxy_id: 7,
       models: ["gpt-4.1"],
       model_mapping: {},
-      endpoints: ["responses"],
       weight: 1,
       failure_count: 0
     }];
@@ -1661,7 +1660,7 @@ function createDisplayUtilsStub(overrides = {}) {
       return String(value);
     },
     formatBackendCoverage() {
-      return "1 models / 1 endpoints";
+      return "1 models";
     },
     formatBackendRecentStats() {
       return "30m 0 ok / 0 fail";

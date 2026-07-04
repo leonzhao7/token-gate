@@ -31,13 +31,11 @@ export interface Backend {
   avg_latency?: number
   last_used_at?: string
   model_count?: number
-  endpoint_count?: number
   hourly_requests?: number
   hourly_failures?: number
   total_requests?: number
   error_count?: number
   models?: string[]
-  endpoints?: string[]
   proxy?: SocksProxy
 }
 
@@ -275,7 +273,6 @@ export interface CreateBackendRequest {
   status?: string
   model_mapping?: Record<string, string>
   models?: string[]
-  endpoints?: string[]
   weight?: number
 }
 
@@ -303,7 +300,6 @@ export interface BackendImportExportItem {
   weight: number
   models: string[]
   model_mapping: Record<string, string>
-  endpoints: string[]
 }
 
 export interface BackendImportExportPayload {

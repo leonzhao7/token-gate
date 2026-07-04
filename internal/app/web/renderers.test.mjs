@@ -56,7 +56,6 @@ test("createResourceTableModel normalizes rows and columns for premium list page
 test("createQuickDetailSections keeps backend inline expansion focused on routing and capability metadata", () => {
   const sections = createQuickDetailSections("backends", {
     base_url: "https://edge.example.com/v1",
-    endpoints: ["chat", "responses"],
     proxy: { name: "tokyo-egress" },
     model_mapping: { "gpt-4o": "gpt-4o-prod" },
   });
@@ -74,7 +73,6 @@ test("createQuickDetailSections keeps backend inline expansion focused on routin
       title: "Capabilities",
       tone: "neutral",
       items: [
-        { label: "Endpoints", value: "chat, responses" },
         { label: "Mapping", value: '"gpt-4o":"gpt-4o-prod"' },
       ],
     },
@@ -89,7 +87,6 @@ test("createQuickDetailSections surfaces backend console metadata in inline expa
     proxy: { name: "tokyo-egress" },
     base_url: "https://edge.example.com/v1",
     model_mapping: { "gpt-4o": "gpt-4o-prod" },
-    endpoints: ["chat", "responses"],
     last_used_at: "2026-06-19T13:00:00Z",
     hourly_requests: 19,
     hourly_failures: 2,
@@ -118,7 +115,6 @@ test("createQuickDetailSections surfaces backend console metadata in inline expa
       title: "Capabilities",
       tone: "neutral",
       items: [
-        { label: "Endpoints", value: "chat, responses" },
         { label: "Mapping", value: '"gpt-4o":"gpt-4o-prod"' },
       ],
     },

@@ -64,10 +64,7 @@
     const modelCount = Number.isFinite(Number(backend?.model_count))
       ? Number(backend.model_count)
       : ensureArray(backend?.models).filter(Boolean).length;
-    const endpointCount = Number.isFinite(Number(backend?.endpoint_count))
-      ? Number(backend.endpoint_count)
-      : ensureArray(backend?.endpoints).filter(Boolean).length;
-    return `${modelCount} models / ${endpointCount} endpoints`;
+    return `${modelCount} models`;
   }
 
   function formatTagList(value) {

@@ -39,7 +39,7 @@ test("applyResourceView filters, searches, and sorts proxies with the shared vie
   assert.deepEqual(filtered.map((item) => item.id), [3, 1]);
 });
 
-test("applyResourceView searches backend fields across base url, status, models, and endpoints", () => {
+test("applyResourceView searches backend fields across base url, status, and models", () => {
   const items = [
     {
       id: 11,
@@ -47,7 +47,6 @@ test("applyResourceView searches backend fields across base url, status, models,
       base_url: "https://east.example/v1",
       status: "normal",
       models: ["gpt-5.4"],
-      endpoints: ["responses"],
       updated_at: "2026-06-18T12:00:00Z",
     },
     {
@@ -56,7 +55,6 @@ test("applyResourceView searches backend fields across base url, status, models,
       base_url: "https://west.example/v1",
       status: "disabled",
       models: ["claude-sonnet-4"],
-      endpoints: ["messages"],
       updated_at: "2026-06-19T12:00:00Z",
     },
   ];
@@ -70,7 +68,7 @@ test("applyResourceView searches backend fields across base url, status, models,
 
   assert.deepEqual(
     applyResourceView("backends", items, {
-      backends: { query: "responses", filter: "normal", sort: "updated_desc" },
+      backends: { query: "gpt-5.4", filter: "normal", sort: "updated_desc" },
     }).map((item) => item.id),
     [11],
   );

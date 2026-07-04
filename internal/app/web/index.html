@@ -396,16 +396,10 @@
                       <input name="model_mapping" placeholder="gpt-5.4=gpt-5.4-test, gpt-4o=gpt-4o-prod" />
                     </label>
                   </div>
-                  <div class="field-grid two-col">
-                    <label class="field">
-                      <span>Endpoints</span>
-                      <input name="endpoints" placeholder="chat,responses,embeddings,images,messages" required />
-                    </label>
-                    <label class="field">
-                      <span>Weight</span>
-                      <input name="weight" type="number" min="1" value="1" />
-                    </label>
-                  </div>
+                  <label class="field">
+                    <span>Weight</span>
+                    <input name="weight" type="number" min="1" value="1" />
+                  </label>
                   <div class="button-row">
                     <button id="backendSubmitBtn" type="submit">新增 Backend</button>
                     <button class="ghost-button hidden" id="backendCancelBtn" type="button">取消</button>

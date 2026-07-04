@@ -54,7 +54,6 @@ type BackendView struct {
 	AvgLatencyMS   float64            `json:"avg_latency_ms"`
 	LastUsedAt     *time.Time         `json:"last_used_at,omitempty"`
 	ModelCount     int                `json:"model_count"`
-	EndpointCount  int                `json:"endpoint_count"`
 	HourlyRequests int                `json:"hourly_requests"`
 	HourlyFailures int                `json:"hourly_failures"`
 	RecentStats    BackendRecentStats `json:"recent_stats"`
@@ -90,7 +89,7 @@ type backendImportExportItem struct {
 	Weight              int               `json:"weight"`
 	Models              []string          `json:"models"`
 	ModelMapping        map[string]string `json:"model_mapping"`
-	Endpoints           []string          `json:"endpoints"`
+	Endpoints           []string          `json:"endpoints,omitempty"`
 }
 
 type BackendUsageSummary struct {
@@ -289,7 +288,6 @@ func (h *BackendHandler) HandleCreateBackend(w http.ResponseWriter, r *http.Requ
 		Weight:          payload.Weight,
 		Models:          payload.Models,
 		ModelMapping:    payload.ModelMapping,
-		Endpoints:       payload.Endpoints,
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -385,7 +383,6 @@ func (h *BackendHandler) HandleUpdateBackend(w http.ResponseWriter, r *http.Requ
 	current.Weight = payload.Weight
 	current.Models = payload.Models
 	current.ModelMapping = payload.ModelMapping
-	current.Endpoints = payload.Endpoints
 
 	backend, err := h.store.UpdateBackend(r.Context(), current)
 	if err != nil {
@@ -661,7 +658,6 @@ func (h *BackendHandler) validateBackendImportPayload(ctx context.Context, paylo
 			Weight:              item.Weight,
 			Models:              item.Models,
 			ModelMapping:        item.ModelMapping,
-			Endpoints:           item.Endpoints,
 		})
 	}
 	return backends, nil
@@ -688,7 +684,6 @@ func backendToImportExportItem(backend domain.Backend) backendImportExportItem {
 		Weight:              backend.Weight,
 		Models:              backend.Models,
 		ModelMapping:        backend.ModelMapping,
-		Endpoints:           backend.Endpoints,
 	}
 }
 
@@ -738,7 +733,6 @@ func (h *BackendHandler) HandleBackendDetail(w http.ResponseWriter, r *http.Requ
 			detailEntry("notes", "Notes", detail.Backend.Notes),
 			detailEntry("models", "Models", detail.Backend.Models),
 			detailEntry("model_mapping", "Model Mapping", detail.Backend.ModelMapping),
-			detailEntry("endpoints", "Endpoints", detail.Backend.Endpoints),
 			detailEntry("base_url", "Base URL", detail.Backend.BaseURL),
 			detailEntry("console_account", "Console Account", decodeJSONMap(detail.Backend.ConsoleAccountJSON)),
 			detailEntry("console_pricing", "Console Pricing", decodeJSONMap(detail.Backend.ConsolePricingJSON)),
@@ -953,7 +947,6 @@ func BuildBackendViews(backends []domain.Backend, summaries map[int64]BackendUsa
 			AvgLatencyMS:   summary.AvgLatencyMS,
 			LastUsedAt:     summary.LastUsedAt,
 			ModelCount:     len(backend.Models),
-			EndpointCount:  len(backend.Endpoints),
 			HourlyRequests: hourly.Requests,
 			HourlyFailures: hourly.Failures,
 			RecentStats: BackendRecentStats{

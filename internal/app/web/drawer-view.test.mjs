@@ -179,7 +179,6 @@ test("renderDrawerTabPanel upgrades overview payload into a summary hero with hi
 test("renderDrawerTabPanel upgrades configuration payload into grouped config cards", () => {
   const markup = DrawerViewUtils.renderDrawerTabPanel("configuration", {
     models: ["gpt-5.4", "gpt-image-2"],
-    endpoints: ["chat", "images"],
     model_mapping: { "gpt-5.4": "gpt-5.4-test" },
     base_url: "https://edge-a.example/v1",
   }, {

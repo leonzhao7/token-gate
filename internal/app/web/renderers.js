@@ -40,7 +40,6 @@
           detailItem("Base URL", source.base_url),
         ]),
         detailSection("Capabilities", "neutral", [
-          detailItem("Endpoints", Array.isArray(source.endpoints) ? source.endpoints.join(", ") : ""),
           detailItem("Mapping", objectPreview(source.model_mapping)),
         ]),
         detailSection("Recent Usage", "warning", [

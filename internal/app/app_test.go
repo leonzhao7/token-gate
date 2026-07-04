@@ -2315,13 +2315,12 @@ func TestBackendListIncludesRecentRequestStats(t *testing.T) {
 
 	var payload struct {
 		Items []struct {
-			ID            int64      `json:"id"`
-			RequestCount  int        `json:"request_count"`
-			AvgLatencyMS  float64    `json:"avg_latency_ms"`
-			LastUsedAt    *time.Time `json:"last_used_at"`
-			ModelCount    int        `json:"model_count"`
-			EndpointCount int        `json:"endpoint_count"`
-			RecentStats   struct {
+			ID           int64      `json:"id"`
+			RequestCount int        `json:"request_count"`
+			AvgLatencyMS float64    `json:"avg_latency_ms"`
+			LastUsedAt   *time.Time `json:"last_used_at"`
+			ModelCount   int        `json:"model_count"`
+			RecentStats  struct {
 				WindowMinutes int `json:"window_minutes"`
 				Successes     int `json:"successes"`
 				Failures      int `json:"failures"`
@@ -2331,8 +2330,17 @@ func TestBackendListIncludesRecentRequestStats(t *testing.T) {
 	if err := json.Unmarshal(listRecorder.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal backend list: %v", err)
 	}
+	var rawPayload struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(listRecorder.Body.Bytes(), &rawPayload); err != nil {
+		t.Fatalf("unmarshal raw backend list: %v", err)
+	}
 	if len(payload.Items) != 1 {
 		t.Fatalf("expected one backend item, got %d", len(payload.Items))
+	}
+	if len(rawPayload.Items) != 1 {
+		t.Fatalf("expected one raw backend item, got %d", len(rawPayload.Items))
 	}
 	if payload.Items[0].ID != backend.ID {
 		t.Fatalf("unexpected backend item: %#v", payload.Items[0])
@@ -2346,8 +2354,14 @@ func TestBackendListIncludesRecentRequestStats(t *testing.T) {
 	if payload.Items[0].LastUsedAt == nil || payload.Items[0].LastUsedAt.IsZero() {
 		t.Fatalf("expected last_used_at to be populated, got %#v", payload.Items[0].LastUsedAt)
 	}
-	if payload.Items[0].ModelCount != 1 || payload.Items[0].EndpointCount != 1 {
-		t.Fatalf("unexpected capability counts: models=%d endpoints=%d", payload.Items[0].ModelCount, payload.Items[0].EndpointCount)
+	if payload.Items[0].ModelCount != 1 {
+		t.Fatalf("unexpected model count: %d", payload.Items[0].ModelCount)
+	}
+	if _, ok := rawPayload.Items[0]["endpoint_count"]; ok {
+		t.Fatalf("backend list should not include endpoint_count: %#v", rawPayload.Items[0])
+	}
+	if _, ok := rawPayload.Items[0]["endpoints"]; ok {
+		t.Fatalf("backend list should not include endpoints: %#v", rawPayload.Items[0])
 	}
 	if payload.Items[0].RecentStats.WindowMinutes != 30 || payload.Items[0].RecentStats.Successes != 1 || payload.Items[0].RecentStats.Failures != 1 {
 		t.Fatalf("unexpected recent stats: %#v", payload.Items[0].RecentStats)
@@ -2465,14 +2479,13 @@ func TestBackendListIncludesUsageAndRelationshipSummaries(t *testing.T) {
 
 	var payload struct {
 		Items []struct {
-			ID            int64     `json:"id"`
-			APIKey        string    `json:"api_key"`
-			RequestCount  int       `json:"request_count"`
-			AvgLatencyMS  float64   `json:"avg_latency_ms"`
-			LastUsedAt    time.Time `json:"last_used_at"`
-			ModelCount    int       `json:"model_count"`
-			EndpointCount int       `json:"endpoint_count"`
-			Proxy         *struct {
+			ID           int64     `json:"id"`
+			APIKey       string    `json:"api_key"`
+			RequestCount int       `json:"request_count"`
+			AvgLatencyMS float64   `json:"avg_latency_ms"`
+			LastUsedAt   time.Time `json:"last_used_at"`
+			ModelCount   int       `json:"model_count"`
+			Proxy        *struct {
 				Name string `json:"name"`
 			} `json:"proxy"`
 		} `json:"items"`
@@ -2480,8 +2493,17 @@ func TestBackendListIncludesUsageAndRelationshipSummaries(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal backend list: %v", err)
 	}
+	var rawPayload struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &rawPayload); err != nil {
+		t.Fatalf("unmarshal raw backend list: %v", err)
+	}
 	if len(payload.Items) != 1 {
 		t.Fatalf("expected one backend item, got %#v", payload.Items)
+	}
+	if len(rawPayload.Items) != 1 {
+		t.Fatalf("expected one raw backend item, got %#v", rawPayload.Items)
 	}
 	item := payload.Items[0]
 	if item.ID != backend.ID {
@@ -2496,8 +2518,14 @@ func TestBackendListIncludesUsageAndRelationshipSummaries(t *testing.T) {
 	if item.LastUsedAt.IsZero() {
 		t.Fatalf("expected last_used_at populated, got %#v", item)
 	}
-	if item.ModelCount != 2 || item.EndpointCount != 2 {
+	if item.ModelCount != 2 {
 		t.Fatalf("unexpected relationship counts: %#v", item)
+	}
+	if _, ok := rawPayload.Items[0]["endpoint_count"]; ok {
+		t.Fatalf("backend list should not include endpoint_count: %#v", rawPayload.Items[0])
+	}
+	if _, ok := rawPayload.Items[0]["endpoints"]; ok {
+		t.Fatalf("backend list should not include endpoints: %#v", rawPayload.Items[0])
 	}
 	if item.Proxy == nil || item.Proxy.Name != proxyItem.Name {
 		t.Fatalf("expected proxy relationship in payload, got %#v", item.Proxy)

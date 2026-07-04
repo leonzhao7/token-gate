@@ -60,7 +60,7 @@ type Backend struct {
 	Weight              int               `json:"weight"`
 	Models              []string          `json:"models"`
 	ModelMapping        map[string]string `json:"model_mapping"`
-	Endpoints           []string          `json:"endpoints"`
+	Endpoints           []string          `json:"-"`
 	CreatedAt           time.Time         `json:"created_at"`
 	UpdatedAt           time.Time         `json:"updated_at"`
 }

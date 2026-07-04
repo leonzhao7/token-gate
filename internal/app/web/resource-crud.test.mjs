@@ -160,7 +160,6 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
       proxy_id: createInput(),
       models: createInput(),
       model_mapping: createInput(),
-      endpoints: createInput(),
       weight: createInput(),
     },
   };
@@ -222,7 +221,6 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
           form.elements.proxy_id.value = String(item.proxy_id || 0);
           form.elements.models.value = (item.models || []).join(", ");
           form.elements.model_mapping.value = helpers.formatModelMappingInput(item.model_mapping);
-          form.elements.endpoints.value = (item.endpoints || []).join(", ");
           form.elements.weight.value = item.weight || 1;
         },
       },
@@ -261,7 +259,6 @@ test("createResourceCrud drives backend create, edit, and reset without backend-
   assert.equal(backendForm.elements.notes.value, "night shift");
   assert.equal(backendForm.elements.models.value, "gpt-4.1, claude-sonnet-4");
   assert.equal(backendForm.elements.model_mapping.value, "gpt-4=gpt-4.1");
-  assert.equal(backendForm.elements.endpoints.value, "responses, messages");
   assert.equal(backendSubmitBtn.textContent, "保存 Backend");
   assert.equal(backendEditBanner.textContent, "正在编辑 Backend: edge-a");
   assert.equal(backendEditBanner.classList.contains("hidden"), false);

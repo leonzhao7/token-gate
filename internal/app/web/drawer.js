@@ -227,7 +227,6 @@
     const status = stringValue(backend?.status || "normal");
     const proxyName = stringValue(backend?.socks_proxy?.name || backend?.proxy?.name || backend?.proxy_name || backend?.proxyName);
     const models = ensureArray(backend?.models);
-    const endpoints = ensureArray(backend?.endpoints);
     return {
       title: name || baseURL || "Backend",
       summary: baseURL || "-",
@@ -239,7 +238,6 @@
       meta: compactMeta([
         { label: "Proxy", value: proxyName },
         { label: "Models", value: models.length ? String(models.length) : "" },
-        { label: "Endpoints", value: endpoints.length ? String(endpoints.length) : "" },
       ]),
     };
   }

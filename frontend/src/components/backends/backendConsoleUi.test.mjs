@@ -111,6 +111,17 @@ test('backend form exposes dual protocol plus tags and description fields', () =
   assert.match(form, /notes: formData\.value\.notes\.trim\(\)/)
 })
 
+test('backend form and types no longer expose endpoint configuration', () => {
+  const form = read('components/backends/BackendForm.vue')
+  const types = read('api/types.ts')
+
+  assert.doesNotMatch(form, /formData\.endpoints/)
+  assert.doesNotMatch(form, /endpoints: formData\.value\.endpoints/)
+  assert.doesNotMatch(form, /backend\.endpoints/)
+  assert.doesNotMatch(types, /endpoints\??: string\[\]/)
+  assert.doesNotMatch(types, /endpoint_count\?: number/)
+})
+
 test('backend expanded details render console self and pricing model summaries', () => {
   const list = read('components/backends/BackendList.vue')
   const helper = read('components/backends/backendConsoleDisplay.ts')
