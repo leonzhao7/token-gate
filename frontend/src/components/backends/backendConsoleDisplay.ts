@@ -100,6 +100,8 @@ const quotaDisplaySymbol = (displayType: unknown, customSymbol: string): string 
   switch (formatConsoleValue(displayType, '').trim().toUpperCase()) {
     case 'CUSTOM':
       return customSymbol
+    case 'CNY':
+      return '¥'
     case 'USD':
       return '$'
     default:
