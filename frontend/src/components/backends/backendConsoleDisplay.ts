@@ -238,6 +238,7 @@ const looksLikePricingRecord = (record: Record<string, unknown>): boolean => {
     firstPricingField(record, promptPriceKeys) ||
     firstPricingField(record, completionPriceKeys) ||
     firstPricingField(record, enableGroupKeys) ||
+    hasConsoleValue(record.billing_expr) ||
     record.quota_type !== undefined
   )
 }
@@ -303,6 +304,79 @@ const formatUnitPrice = (value: number, currencySymbol: string): string => {
   return `${formatConsoleAmountWithSymbol(amount, currencySymbol)} / 1M`
 }
 
+const standardTierExpression = (billingExpression: string): string | null => {
+  const match = /tier\s*\(\s*(['"])standard\1\s*,/i.exec(billingExpression)
+  if (!match) {
+    return null
+  }
+
+  let quote: string | null = null
+  let depth = 0
+  const start = match.index + match[0].length
+
+  for (let index = start; index < billingExpression.length; index += 1) {
+    const character = billingExpression[index]
+    const previous = billingExpression[index - 1]
+
+    if (quote) {
+      if (character === quote && previous !== '\\') {
+        quote = null
+      }
+      continue
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character
+      continue
+    }
+
+    if (character === '(') {
+      depth += 1
+      continue
+    }
+
+    if (character === ')') {
+      if (depth === 0) {
+        return billingExpression.slice(start, index).trim()
+      }
+      depth -= 1
+    }
+  }
+
+  return null
+}
+
+const numericCoefficientPattern = '[+-]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)'
+
+const billingVariableCoefficient = (expression: string, variable: 'p' | 'c'): number | null => {
+  const variableThenNumber = new RegExp(`\\b${variable}\\b\\s*\\*\\s*(${numericCoefficientPattern})`, 'i')
+  const numberThenVariable = new RegExp(`(${numericCoefficientPattern})\\s*\\*\\s*\\b${variable}\\b`, 'i')
+  const match = variableThenNumber.exec(expression) ?? numberThenVariable.exec(expression)
+  return match ? finiteNumber(match[1]) : null
+}
+
+const formatBillingExpressionPrice = (billingExpression: unknown, groups: string[], context: PricingContext): string | null => {
+  const expression = formatConsoleValue(billingExpression, '').trim()
+  if (!expression) {
+    return null
+  }
+
+  const standardExpression = standardTierExpression(expression)
+  if (!standardExpression) {
+    return null
+  }
+
+  const inputCoefficient = billingVariableCoefficient(standardExpression, 'p')
+  const outputCoefficient = billingVariableCoefficient(standardExpression, 'c')
+  if (inputCoefficient === null || outputCoefficient === null) {
+    return null
+  }
+
+  const groupRatio = minGroupRatio(groups, context.groupRatio)
+  const inputDisplay = `Input: ${formatUnitPrice(inputCoefficient * groupRatio, context.currencySymbol)}`
+  return `${inputDisplay}; Output: ${formatUnitPrice(outputCoefficient * groupRatio, context.currencySymbol)}`
+}
+
 const formatRequestPrice = (value: number, context: PricingContext): string => {
   const converted = context.exchangeRate === null ? value : value * context.exchangeRate
   const amount = formatConsoleNumber(converted)
@@ -310,6 +384,10 @@ const formatRequestPrice = (value: number, context: PricingContext): string => {
 }
 
 const formatPricingPrice = (record: Record<string, unknown>, groups: string[], context: PricingContext): string => {
+  if (hasConsoleValue(record.billing_expr)) {
+    return formatBillingExpressionPrice(record.billing_expr, groups, context) ?? '-'
+  }
+
   const quotaType = finiteNumber(record.quota_type)
   const modelRatio = finiteNumber(record.model_ratio)
   const modelPrice = finiteNumber(record.model_price)

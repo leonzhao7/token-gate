@@ -91,6 +91,39 @@ test('formats pricing rows with model price and group columns', async () => {
   ])
 })
 
+test('formats billing expression standard tier prices before model ratio fallback', async () => {
+  const { pricingModelRows } = await loadModule()
+  const account = JSON.stringify({
+    custom_currency_symbol: '硬币',
+  })
+  const pricing = JSON.stringify({
+    success: true,
+    data: {
+      group_ratio: {
+        default: 1,
+        vip: 0.1,
+      },
+      models: [
+        {
+          model_name: 'gpt-billing',
+          billing_expr: '(len <= 272000 ? tier("standard", p * 2.5 + c * 15 + cr * 0.25) : tier("long_context", p * 5 + c * 22.5 + cr * 0.5)) * (param("service_tier") == "fast" ? 5 : 1)',
+          model_ratio: 99,
+          completion_ratio: 99,
+          enable_groups: ['default', 'vip'],
+        },
+      ],
+    },
+  })
+
+  assert.deepEqual(pricingModelRows(pricing, '', account), [
+    {
+      model: 'gpt-billing',
+      price: 'Input: 0.25 硬币 / 1M; Output: 1.5 硬币 / 1M',
+      group: 'default, vip',
+    },
+  ])
+})
+
 test('formats console quota fields using custom currency metadata', async () => {
   const { consoleAccountRows } = await loadModule()
   const account = JSON.stringify({
