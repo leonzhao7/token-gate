@@ -18,6 +18,18 @@
             <option value="abnormal">Abnormal</option>
             <option value="disabled">Disabled</option>
           </select>
+          <select
+            v-model="modelFilter"
+            class="filter-select model-filter-input"
+            @change="handleFilterChange"
+          >
+            <option value="">All Models</option>
+            <option value="gpt">gpt</option>
+            <option value="claude">claude</option>
+            <option value="glm">glm</option>
+            <option value="deepseek">deepseek</option>
+            <option value="image">image</option>
+          </select>
           <div class="filter-group">
             <label class="filter-label">Per Page </label>
             <select v-model.number="pageSize" class="filter-select" @change="handlePageSizeChange">
@@ -248,6 +260,7 @@ const focusModelPatterns = computed(() => settingsStore.config?.focus_models || 
 
 const searchQuery = ref('')
 const statusFilter = ref('')
+const modelFilter = ref('')
 const proxies = ref<SocksProxy[]>([])
 const currentPage = ref(1)
 const pageSize = ref(25)
@@ -281,6 +294,13 @@ const filteredBackends = computed(() => {
 
   if (statusFilter.value) {
     result = result.filter(b => b.status === statusFilter.value)
+  }
+
+  if (modelFilter.value) {
+    const keyword = modelFilter.value.toLowerCase()
+    result = result.filter(b =>
+      b.models && b.models.some(m => m.toLowerCase().includes(keyword))
+    )
   }
 
   return result
@@ -865,6 +885,10 @@ onMounted(() => {
 
 .filter-select {
   width: 150px;
+}
+
+.model-filter-input {
+  width: 170px;
 }
 
 .delete-confirmation {
