@@ -2,12 +2,10 @@ package app
 
 import (
 	"context"
-	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -21,9 +19,6 @@ import (
 	"token-gate/internal/scheduler"
 	"token-gate/internal/store"
 )
-
-//go:embed web/*
-var webFS embed.FS
 
 type ctxKey string
 
@@ -178,11 +173,6 @@ func (a *App) routes() {
 		}
 		http.Redirect(w, r, "/admin/", http.StatusTemporaryRedirect)
 	})
-
-	subFS, err := fs.Sub(webFS, "web")
-	if err == nil {
-		a.mux.Handle("/admin/", http.StripPrefix("/admin/", http.FileServerFS(subFS)))
-	}
 
 	a.mux.Handle("GET /v1/models", a.clientAuth(http.HandlerFunc(a.handlePublicModels)))
 	a.mux.Handle("/v1/", a.clientAuth(http.HandlerFunc(a.handleProxy)))
