@@ -597,7 +597,8 @@ func (h *BackendHandler) HandleBackendConsolePricing(w http.ResponseWriter, r *h
 		return
 	}
 
-	result, err := h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodGet, "/api/pricing", nil, backend.ConsoleCookie, "", recorder)
+	accountID := consoleStoredAccountID(backend)
+	result, err := h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodGet, "/api/pricing", nil, backend.ConsoleCookie, accountID, recorder)
 	if err != nil {
 		writeConsoleError(w, http.StatusBadGateway, err.Error(), recorder)
 		return
@@ -687,6 +688,7 @@ func (h *BackendHandler) HandleBackendConsoleSync(w http.ResponseWriter, r *http
 			writeConsoleSyncError(w, http.StatusBadGateway, selfResult.errorMessage("new-api self request failed"), recorder, stream)
 			return
 		}
+		accountID = firstNonEmpty(consoleAccountID(selfResult.Payload), accountID)
 	}
 
 	accountJSON, err := consoleAccountSummaryJSON(selfResult.Payload, statusResult.Payload, lastCheckinAt)
@@ -701,7 +703,7 @@ func (h *BackendHandler) HandleBackendConsoleSync(w http.ResponseWriter, r *http
 		return
 	}
 
-	pricingResult, err := h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodGet, "/api/pricing", nil, backend.ConsoleCookie, "", recorder)
+	pricingResult, err := h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodGet, "/api/pricing", nil, backend.ConsoleCookie, accountID, recorder)
 	if err != nil {
 		writeConsoleSyncError(w, http.StatusBadGateway, err.Error(), recorder, stream)
 		return

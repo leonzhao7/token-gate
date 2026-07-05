@@ -3153,19 +3153,23 @@ func TestAdminBackendNewAPIConsolePricingSavesModelPlazaJSON(t *testing.T) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/pricing" {
 			t.Fatalf("unexpected pricing request %s %s", r.Method, r.URL.Path)
 		}
+		if r.Header.Get("new-user-id") != "1929" {
+			t.Fatalf("expected new-user-id header 1929, got %q", r.Header.Get("new-user-id"))
+		}
 		return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"pricing_version":"2026-07-03","vendors":[{"name":"openai","models":["gpt-4o"]}],"group_ratio":{"default":1}}}`), nil
 	})})
 
 	backend := createTestBackend(t, application, domain.Backend{
-		Name:          "new-api-pricing",
-		Protocol:      domain.BackendProtocolOpenAI,
-		BackendType:   domain.BackendTypeNewAPI,
-		BaseURL:       "https://new-api.local/v1",
-		APIKey:        "backend-key",
-		ConsoleURL:    "https://console.local",
-		ConsoleCookie: "session=valid",
-		Models:        []string{"routed-model"},
-		Endpoints:     []string{domain.EndpointChat},
+		Name:               "new-api-pricing",
+		Protocol:           domain.BackendProtocolOpenAI,
+		BackendType:        domain.BackendTypeNewAPI,
+		BaseURL:            "https://new-api.local/v1",
+		APIKey:             "backend-key",
+		ConsoleURL:         "https://console.local",
+		ConsoleCookie:      "session=valid",
+		ConsoleAccountJSON: `{"id":1929}`,
+		Models:             []string{"routed-model"},
+		Endpoints:          []string{domain.EndpointChat},
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/pricing", nil)
@@ -3241,6 +3245,9 @@ func TestAdminBackendNewAPIConsoleSyncSavesStatusAccountAndFilteredPricing(t *te
 		case "/api/pricing":
 			if r.Method != http.MethodGet {
 				t.Fatalf("expected GET pricing, got %s", r.Method)
+			}
+			if r.Header.Get("new-user-id") != "1929" {
+				t.Fatalf("expected new-user-id header 1929 for pricing, got %q", r.Header.Get("new-user-id"))
 			}
 			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":[{"model_name":"gpt-5.4","model_ratio":2},{"model_name":"claude-sonnet-4","model_ratio":3},{"model_name":"gpt-5.5-tools","model_ratio":4}]}`), nil
 		default:
