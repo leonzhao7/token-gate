@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	pathpkg "path"
@@ -1508,6 +1509,7 @@ func (h *BackendHandler) doNewAPIConsoleJSON(ctx context.Context, backend domain
 		request.Header.Set("new-user-id", newAPIUser)
 		request.Header.Set("New-Api-User", newAPIUser)
 	}
+	defer h.sleepAfterNewAPIConsoleRequest(ctx, backend, method, path)
 
 	client := h.consoleHTTPClient
 	if client == nil {
@@ -1566,6 +1568,25 @@ func (h *BackendHandler) doNewAPIConsoleJSON(ctx context.Context, backend domain
 		slog.Duration("duration", time.Since(startedAt)),
 	), consoleResultAttrs(result)...)...)
 	return result, nil
+}
+
+func (h *BackendHandler) sleepAfterNewAPIConsoleRequest(ctx context.Context, backend domain.Backend, method, path string) {
+	// Custom clients are used by tests and local probes; avoid turning those into slow sleeps.
+	if h.consoleHTTPClient != nil {
+		return
+	}
+	delay := time.Duration(rand.IntN(10)+1) * time.Second
+	h.logConsoleEvent(ctx, slog.LevelInfo, "newapi_console_request_delay_started", append(consoleBackendAttrs(backend),
+		slog.String("method", method),
+		slog.String("path", path),
+		slog.Duration("delay", delay),
+	)...)
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+	case <-timer.C:
+	}
 }
 
 func (h *BackendHandler) backendConsoleUserAgent() string {
