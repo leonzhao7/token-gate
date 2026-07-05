@@ -72,26 +72,27 @@ type backendImportExportPayload struct {
 }
 
 type backendImportExportItem struct {
-	Name                string            `json:"name"`
-	Protocol            string            `json:"protocol"`
-	BackendType         string            `json:"backend_type"`
-	BaseURL             string            `json:"base_url"`
-	APIKey              string            `json:"api_key"`
-	ConsoleURL          string            `json:"console_url"`
-	Tags                []string          `json:"tags"`
-	ConsoleUsername     string            `json:"console_username"`
-	ConsolePassword     string            `json:"console_password"`
-	ConsoleCookie       string            `json:"console_cookie"`
-	ConsoleAccountJSON  string            `json:"console_account_json"`
-	ConsolePricingJSON  string            `json:"console_pricing_json"`
-	Notes               string            `json:"notes"`
-	ProxyID             int64             `json:"proxy_id"`
-	Status              string            `json:"status"`
-	ConsecutiveFailures int               `json:"consecutive_failures"`
-	Weight              int               `json:"weight"`
-	Models              []string          `json:"models"`
-	ModelMapping        map[string]string `json:"model_mapping"`
-	Endpoints           []string          `json:"endpoints,omitempty"`
+	Name                 string            `json:"name"`
+	Protocol             string            `json:"protocol"`
+	BackendType          string            `json:"backend_type"`
+	BaseURL              string            `json:"base_url"`
+	APIKey               string            `json:"api_key"`
+	ConsoleURL           string            `json:"console_url"`
+	Tags                 []string          `json:"tags"`
+	ConsoleUsername      string            `json:"console_username"`
+	ConsolePassword      string            `json:"console_password"`
+	ConsoleAuthorization string            `json:"console_authorization"`
+	ConsoleCookie        string            `json:"console_cookie"`
+	ConsoleAccountJSON   string            `json:"console_account_json"`
+	ConsolePricingJSON   string            `json:"console_pricing_json"`
+	Notes                string            `json:"notes"`
+	ProxyID              int64             `json:"proxy_id"`
+	Status               string            `json:"status"`
+	ConsecutiveFailures  int               `json:"consecutive_failures"`
+	Weight               int               `json:"weight"`
+	Models               []string          `json:"models"`
+	ModelMapping         map[string]string `json:"model_mapping"`
+	Endpoints            []string          `json:"endpoints,omitempty"`
 }
 
 type BackendUsageSummary struct {
@@ -237,24 +238,25 @@ func (h *BackendHandler) HandleImportBackends(w http.ResponseWriter, r *http.Req
 
 func (h *BackendHandler) HandleCreateBackend(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
-		Name            string            `json:"name"`
-		Protocol        string            `json:"protocol"`
-		BackendType     string            `json:"backend_type"`
-		BaseURL         string            `json:"base_url"`
-		APIKey          string            `json:"api_key"`
-		ConsoleURL      string            `json:"console_url"`
-		Tags            []string          `json:"tags"`
-		ConsoleUsername string            `json:"console_username"`
-		ConsolePassword string            `json:"console_password"`
-		ConsoleCookie   string            `json:"console_cookie"`
-		ConsoleUserID   *string           `json:"console_user_id"`
-		Notes           string            `json:"notes"`
-		ProxyID         int64             `json:"proxy_id"`
-		Status          string            `json:"status"`
-		Weight          int               `json:"weight"`
-		Models          []string          `json:"models"`
-		ModelMapping    map[string]string `json:"model_mapping"`
-		Endpoints       []string          `json:"endpoints"`
+		Name                 string            `json:"name"`
+		Protocol             string            `json:"protocol"`
+		BackendType          string            `json:"backend_type"`
+		BaseURL              string            `json:"base_url"`
+		APIKey               string            `json:"api_key"`
+		ConsoleURL           string            `json:"console_url"`
+		Tags                 []string          `json:"tags"`
+		ConsoleUsername      string            `json:"console_username"`
+		ConsolePassword      string            `json:"console_password"`
+		ConsoleAuthorization string            `json:"console_authorization"`
+		ConsoleCookie        string            `json:"console_cookie"`
+		ConsoleUserID        *string           `json:"console_user_id"`
+		Notes                string            `json:"notes"`
+		ProxyID              int64             `json:"proxy_id"`
+		Status               string            `json:"status"`
+		Weight               int               `json:"weight"`
+		Models               []string          `json:"models"`
+		ModelMapping         map[string]string `json:"model_mapping"`
+		Endpoints            []string          `json:"endpoints"`
 	}
 	if err := decodeJSON(r, &payload); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -274,6 +276,15 @@ func (h *BackendHandler) HandleCreateBackend(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	backendType := domain.NormalizeBackendType(payload.BackendType)
+	consoleAuthorization := strings.TrimSpace(payload.ConsoleAuthorization)
+	if backendType != domain.BackendTypeSub2API {
+		consoleAuthorization = ""
+	}
+	consoleCookie := strings.TrimSpace(payload.ConsoleCookie)
+	if backendType != domain.BackendTypeNewAPI {
+		consoleCookie = ""
+	}
 	consoleAccountJSON := ""
 	if payload.ConsoleUserID != nil {
 		var accountErr error
@@ -285,22 +296,23 @@ func (h *BackendHandler) HandleCreateBackend(w http.ResponseWriter, r *http.Requ
 	}
 
 	backend, err := h.store.CreateBackend(r.Context(), domain.Backend{
-		Name:               payload.Name,
-		Protocol:           domain.NormalizeBackendProtocol(payload.Protocol),
-		BackendType:        domain.NormalizeBackendType(payload.BackendType),
-		BaseURL:            payload.BaseURL,
-		APIKey:             payload.APIKey,
-		ConsoleURL:         payload.ConsoleURL,
-		Tags:               payload.Tags,
-		ConsoleUsername:    payload.ConsoleUsername,
-		ConsolePassword:    payload.ConsolePassword,
-		ConsoleCookie:      payload.ConsoleCookie,
-		ConsoleAccountJSON: consoleAccountJSON,
-		Notes:              payload.Notes,
-		ProxyID:            payload.ProxyID,
-		Weight:             payload.Weight,
-		Models:             payload.Models,
-		ModelMapping:       payload.ModelMapping,
+		Name:                 payload.Name,
+		Protocol:             domain.NormalizeBackendProtocol(payload.Protocol),
+		BackendType:          backendType,
+		BaseURL:              payload.BaseURL,
+		APIKey:               payload.APIKey,
+		ConsoleURL:           payload.ConsoleURL,
+		Tags:                 payload.Tags,
+		ConsoleUsername:      payload.ConsoleUsername,
+		ConsolePassword:      payload.ConsolePassword,
+		ConsoleAuthorization: consoleAuthorization,
+		ConsoleCookie:        consoleCookie,
+		ConsoleAccountJSON:   consoleAccountJSON,
+		Notes:                payload.Notes,
+		ProxyID:              payload.ProxyID,
+		Weight:               payload.Weight,
+		Models:               payload.Models,
+		ModelMapping:         payload.ModelMapping,
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -328,24 +340,25 @@ func (h *BackendHandler) HandleUpdateBackend(w http.ResponseWriter, r *http.Requ
 	}
 
 	var payload struct {
-		Name            string            `json:"name"`
-		Protocol        string            `json:"protocol"`
-		BackendType     string            `json:"backend_type"`
-		BaseURL         string            `json:"base_url"`
-		APIKey          string            `json:"api_key"`
-		ConsoleURL      string            `json:"console_url"`
-		Tags            []string          `json:"tags"`
-		ConsoleUsername string            `json:"console_username"`
-		ConsolePassword string            `json:"console_password"`
-		ConsoleCookie   string            `json:"console_cookie"`
-		ConsoleUserID   *string           `json:"console_user_id"`
-		Notes           string            `json:"notes"`
-		ProxyID         int64             `json:"proxy_id"`
-		Status          string            `json:"status"`
-		Weight          int               `json:"weight"`
-		Models          []string          `json:"models"`
-		ModelMapping    map[string]string `json:"model_mapping"`
-		Endpoints       []string          `json:"endpoints"`
+		Name                 string            `json:"name"`
+		Protocol             string            `json:"protocol"`
+		BackendType          string            `json:"backend_type"`
+		BaseURL              string            `json:"base_url"`
+		APIKey               string            `json:"api_key"`
+		ConsoleURL           string            `json:"console_url"`
+		Tags                 []string          `json:"tags"`
+		ConsoleUsername      string            `json:"console_username"`
+		ConsolePassword      string            `json:"console_password"`
+		ConsoleAuthorization string            `json:"console_authorization"`
+		ConsoleCookie        string            `json:"console_cookie"`
+		ConsoleUserID        *string           `json:"console_user_id"`
+		Notes                string            `json:"notes"`
+		ProxyID              int64             `json:"proxy_id"`
+		Status               string            `json:"status"`
+		Weight               int               `json:"weight"`
+		Models               []string          `json:"models"`
+		ModelMapping         map[string]string `json:"model_mapping"`
+		Endpoints            []string          `json:"endpoints"`
 	}
 	if err := decodeJSON(r, &payload); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -379,7 +392,16 @@ func (h *BackendHandler) HandleUpdateBackend(w http.ResponseWriter, r *http.Requ
 	current.Tags = payload.Tags
 	current.ConsoleUsername = payload.ConsoleUsername
 	current.ConsolePassword = payload.ConsolePassword
-	current.ConsoleCookie = payload.ConsoleCookie
+	if current.BackendType == domain.BackendTypeSub2API {
+		current.ConsoleAuthorization = strings.TrimSpace(payload.ConsoleAuthorization)
+	} else {
+		current.ConsoleAuthorization = ""
+	}
+	if current.BackendType == domain.BackendTypeNewAPI {
+		current.ConsoleCookie = strings.TrimSpace(payload.ConsoleCookie)
+	} else {
+		current.ConsoleCookie = ""
+	}
 	if payload.ConsoleUserID != nil {
 		current.ConsoleAccountJSON, err = consoleAccountJSONWithUserID(current.ConsoleAccountJSON, *payload.ConsoleUserID)
 		if err != nil {
@@ -785,25 +807,26 @@ func (h *BackendHandler) validateBackendImportPayload(ctx context.Context, paylo
 			return nil, fmt.Errorf("backend %q consecutive_failures must be >= 0", name)
 		}
 		backends = append(backends, domain.Backend{
-			Name:                name,
-			Protocol:            domain.NormalizeBackendProtocol(item.Protocol),
-			BackendType:         domain.NormalizeBackendType(item.BackendType),
-			BaseURL:             item.BaseURL,
-			APIKey:              item.APIKey,
-			ConsoleURL:          item.ConsoleURL,
-			Tags:                item.Tags,
-			ConsoleUsername:     item.ConsoleUsername,
-			ConsolePassword:     item.ConsolePassword,
-			ConsoleCookie:       item.ConsoleCookie,
-			ConsoleAccountJSON:  item.ConsoleAccountJSON,
-			ConsolePricingJSON:  item.ConsolePricingJSON,
-			Notes:               item.Notes,
-			ProxyID:             item.ProxyID,
-			Status:              status,
-			ConsecutiveFailures: item.ConsecutiveFailures,
-			Weight:              item.Weight,
-			Models:              item.Models,
-			ModelMapping:        item.ModelMapping,
+			Name:                 name,
+			Protocol:             domain.NormalizeBackendProtocol(item.Protocol),
+			BackendType:          domain.NormalizeBackendType(item.BackendType),
+			BaseURL:              item.BaseURL,
+			APIKey:               item.APIKey,
+			ConsoleURL:           item.ConsoleURL,
+			Tags:                 item.Tags,
+			ConsoleUsername:      item.ConsoleUsername,
+			ConsolePassword:      item.ConsolePassword,
+			ConsoleAuthorization: item.ConsoleAuthorization,
+			ConsoleCookie:        item.ConsoleCookie,
+			ConsoleAccountJSON:   item.ConsoleAccountJSON,
+			ConsolePricingJSON:   item.ConsolePricingJSON,
+			Notes:                item.Notes,
+			ProxyID:              item.ProxyID,
+			Status:               status,
+			ConsecutiveFailures:  item.ConsecutiveFailures,
+			Weight:               item.Weight,
+			Models:               item.Models,
+			ModelMapping:         item.ModelMapping,
 		})
 	}
 	return backends, nil
@@ -811,25 +834,26 @@ func (h *BackendHandler) validateBackendImportPayload(ctx context.Context, paylo
 
 func backendToImportExportItem(backend domain.Backend) backendImportExportItem {
 	return backendImportExportItem{
-		Name:                backend.Name,
-		Protocol:            domain.NormalizeBackendProtocol(backend.Protocol),
-		BackendType:         domain.NormalizeBackendType(backend.BackendType),
-		BaseURL:             backend.BaseURL,
-		APIKey:              backend.APIKey,
-		ConsoleURL:          backend.ConsoleURL,
-		Tags:                backend.Tags,
-		ConsoleUsername:     backend.ConsoleUsername,
-		ConsolePassword:     backend.ConsolePassword,
-		ConsoleCookie:       backend.ConsoleCookie,
-		ConsoleAccountJSON:  backend.ConsoleAccountJSON,
-		ConsolePricingJSON:  backend.ConsolePricingJSON,
-		Notes:               backend.Notes,
-		ProxyID:             backend.ProxyID,
-		Status:              backend.Status,
-		ConsecutiveFailures: backend.ConsecutiveFailures,
-		Weight:              backend.Weight,
-		Models:              backend.Models,
-		ModelMapping:        backend.ModelMapping,
+		Name:                 backend.Name,
+		Protocol:             domain.NormalizeBackendProtocol(backend.Protocol),
+		BackendType:          domain.NormalizeBackendType(backend.BackendType),
+		BaseURL:              backend.BaseURL,
+		APIKey:               backend.APIKey,
+		ConsoleURL:           backend.ConsoleURL,
+		Tags:                 backend.Tags,
+		ConsoleUsername:      backend.ConsoleUsername,
+		ConsolePassword:      backend.ConsolePassword,
+		ConsoleAuthorization: backend.ConsoleAuthorization,
+		ConsoleCookie:        backend.ConsoleCookie,
+		ConsoleAccountJSON:   backend.ConsoleAccountJSON,
+		ConsolePricingJSON:   backend.ConsolePricingJSON,
+		Notes:                backend.Notes,
+		ProxyID:              backend.ProxyID,
+		Status:               backend.Status,
+		ConsecutiveFailures:  backend.ConsecutiveFailures,
+		Weight:               backend.Weight,
+		Models:               backend.Models,
+		ModelMapping:         backend.ModelMapping,
 	}
 }
 

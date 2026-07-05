@@ -87,6 +87,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 			tag_list TEXT NOT NULL DEFAULT '[]',
 			console_username TEXT NOT NULL DEFAULT '',
 			console_password TEXT NOT NULL DEFAULT '',
+			console_authorization TEXT NOT NULL DEFAULT '',
 			console_cookie TEXT NOT NULL DEFAULT '',
 			console_account_json TEXT NOT NULL DEFAULT '{}',
 			console_pricing_json TEXT NOT NULL DEFAULT '{}',
@@ -241,6 +242,10 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	if err := ensureColumn(ctx, db, "backends", "console_password", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate backends console_password: %w", err)
+	}
+	if err := ensureColumn(ctx, db, "backends", "console_authorization", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate backends console_authorization: %w", err)
 	}
 	if err := ensureColumn(ctx, db, "backends", "console_cookie", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		_ = db.Close()

@@ -148,6 +148,54 @@ func TestBackendConsoleStateRoundTrips(t *testing.T) {
 	}
 }
 
+func TestBackendSub2APIAuthorizationRoundTrips(t *testing.T) {
+	st := openTestStore(t)
+	defer st.Close()
+	ctx := context.Background()
+
+	backend, err := st.CreateBackend(ctx, domain.Backend{
+		Name:                 "edge-sub2api",
+		Protocol:             domain.BackendProtocolOpenAI,
+		BackendType:          domain.BackendTypeSub2API,
+		BaseURL:              "https://edge-sub2api.local/v1",
+		APIKey:               "edge-key",
+		ConsoleURL:           "https://console.edge-sub2api.local",
+		ConsoleAuthorization: "Bearer initial-sub2api-token",
+		Models:               []string{"gpt-4o"},
+		Endpoints:            []string{domain.EndpointChat},
+	})
+	if err != nil {
+		t.Fatalf("CreateBackend returned error: %v", err)
+	}
+
+	if backend.BackendType != domain.BackendTypeSub2API {
+		t.Fatalf("expected backend_type to round-trip, got %q", backend.BackendType)
+	}
+	if backend.ConsoleAuthorization != "Bearer initial-sub2api-token" {
+		t.Fatalf("expected console authorization to round-trip, got %q", backend.ConsoleAuthorization)
+	}
+
+	backend.ConsoleAuthorization = "Bearer rotated-sub2api-token"
+	updated, err := st.UpdateBackend(ctx, backend)
+	if err != nil {
+		t.Fatalf("UpdateBackend returned error: %v", err)
+	}
+	if updated.ConsoleAuthorization != "Bearer rotated-sub2api-token" {
+		t.Fatalf("expected updated console authorization, got %#v", updated)
+	}
+
+	listed, err := st.ListBackends(ctx)
+	if err != nil {
+		t.Fatalf("ListBackends returned error: %v", err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("expected one listed backend, got %#v", listed)
+	}
+	if listed[0].BackendType != domain.BackendTypeSub2API || listed[0].ConsoleAuthorization != "Bearer rotated-sub2api-token" {
+		t.Fatalf("expected listed sub2api backend with authorization, got %#v", listed[0])
+	}
+}
+
 func TestOpenCreatesBackendHourlyModelStatsTable(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()

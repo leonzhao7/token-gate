@@ -6,7 +6,7 @@ export interface Backend {
   base_url: string
   api_key: string
   protocol: 'openai' | 'anthropic' | 'both'
-  backend_type?: '' | 'new-api'
+  backend_type?: '' | 'new-api' | 'sub2api'
   weight: number
   priority?: number
   max_requests_per_minute?: number
@@ -19,6 +19,7 @@ export interface Backend {
   console_url?: string
   console_username?: string
   console_password?: string
+  console_authorization?: string
   console_cookie?: string
   console_account_json?: string
   console_pricing_json?: string
@@ -260,10 +261,11 @@ export interface Config {
 export interface CreateBackendRequest {
   name: string
   protocol?: 'openai' | 'anthropic' | 'both'
-  backend_type?: '' | 'new-api'
+  backend_type?: '' | 'new-api' | 'sub2api'
   base_url: string
   api_key: string
   console_url?: string
+  console_authorization?: string
   console_cookie?: string
   console_user_id?: string
   tags?: string[]
@@ -284,10 +286,11 @@ export interface UpdateBackendRequest extends Partial<CreateBackendRequest> {
 export interface BackendImportExportItem {
   name: string
   protocol: 'openai' | 'anthropic' | 'both'
-  backend_type?: '' | 'new-api'
+  backend_type?: '' | 'new-api' | 'sub2api'
   base_url: string
   api_key: string
   console_url?: string
+  console_authorization?: string
   console_cookie?: string
   console_account_json?: string
   console_pricing_json?: string

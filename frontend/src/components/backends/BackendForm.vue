@@ -26,6 +26,7 @@
           <select id="backend-type" v-model="formData.backend_type">
             <option value="">通用</option>
             <option value="new-api">new-api</option>
+            <option value="sub2api">sub2api</option>
           </select>
         </div>
       </div>
@@ -67,7 +68,17 @@
         </div>
       </div>
 
-      <div class="form-field">
+      <div v-if="isSub2APIBackendType" class="form-field">
+        <label for="console-authorization">Authorization</label>
+        <textarea
+          id="console-authorization"
+          v-model="formData.console_authorization"
+          rows="2"
+          placeholder="Bearer sk-..."
+        ></textarea>
+      </div>
+
+      <div v-if="isNewAPIBackendType" class="form-field">
         <label for="console-cookie">Cookie</label>
         <textarea
           id="console-cookie"
@@ -77,7 +88,7 @@
         ></textarea>
       </div>
 
-      <div class="form-field">
+      <div v-if="isNewAPIBackendType" class="form-field">
         <label for="console-user-id">用户 ID</label>
         <input
           id="console-user-id"
@@ -255,7 +266,7 @@ const emit = defineEmits<{
 interface BackendFormData {
   name: string
   protocol: 'openai' | 'anthropic' | 'both'
-  backend_type: '' | 'new-api'
+  backend_type: '' | 'new-api' | 'sub2api'
   base_url: string
   api_key: string
   model_mapping: string
@@ -263,6 +274,7 @@ interface BackendFormData {
   weight: number
   models: string
   console_url: string
+  console_authorization: string
   console_cookie: string
   console_user_id: string
   tags: string
@@ -282,6 +294,7 @@ const defaultFormData = (): BackendFormData => ({
   weight: 10,
   models: '',
   console_url: '',
+  console_authorization: '',
   console_cookie: '',
   console_user_id: '',
   tags: '',
@@ -293,6 +306,8 @@ const defaultFormData = (): BackendFormData => ({
 const formData = ref<BackendFormData>(defaultFormData())
 const showApiKey = ref(false)
 const showConsolePassword = ref(false)
+const isNewAPIBackendType = computed(() => formData.value.backend_type === 'new-api')
+const isSub2APIBackendType = computed(() => formData.value.backend_type === 'sub2api')
 
 const modelMappingError = computed(() => {
   try {
@@ -322,8 +337,9 @@ const handleSubmit = () => {
     base_url: formData.value.base_url.trim(),
     api_key: formData.value.api_key,
     console_url: formData.value.console_url.trim(),
-    console_cookie: formData.value.console_cookie.trim(),
-    console_user_id: formData.value.console_user_id.trim(),
+    console_authorization: formData.value.backend_type === 'sub2api' ? formData.value.console_authorization.trim() : '',
+    console_cookie: formData.value.backend_type === 'new-api' ? formData.value.console_cookie.trim() : '',
+    console_user_id: formData.value.backend_type === 'new-api' ? formData.value.console_user_id.trim() : '',
     tags: parseBackendTagInput(formData.value.tags),
     console_username: formData.value.console_username.trim(),
     console_password: formData.value.console_password.trim(),
@@ -348,6 +364,7 @@ watch(() => props.backend, (backend) => {
       weight: backend.weight,
       models: (backend.models || []).join(', '),
       console_url: backend.console_url || '',
+      console_authorization: backend.console_authorization || '',
       console_cookie: backend.console_cookie || '',
       console_user_id: extractConsoleUserID(backend.console_account_json),
       tags: (backend.tags || []).join(', '),

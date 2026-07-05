@@ -22,7 +22,8 @@ const (
 	BackendProtocolAnthropic = "anthropic"
 	BackendProtocolBoth      = "both"
 
-	BackendTypeNewAPI = "new-api"
+	BackendTypeNewAPI  = "new-api"
+	BackendTypeSub2API = "sub2api"
 )
 
 type ClientKey struct {
@@ -38,31 +39,32 @@ type ClientKey struct {
 }
 
 type Backend struct {
-	ID                  int64             `json:"id"`
-	Name                string            `json:"name"`
-	Protocol            string            `json:"protocol"`
-	BackendType         string            `json:"backend_type"`
-	BaseURL             string            `json:"base_url"`
-	APIKey              string            `json:"api_key,omitempty"`
-	ConsoleURL          string            `json:"console_url"`
-	Tags                []string          `json:"tags"`
-	ConsoleUsername     string            `json:"console_username"`
-	ConsolePassword     string            `json:"console_password,omitempty"`
-	ConsoleCookie       string            `json:"console_cookie,omitempty"`
-	ConsoleAccountJSON  string            `json:"console_account_json"`
-	ConsolePricingJSON  string            `json:"console_pricing_json"`
-	Notes               string            `json:"notes"`
-	ProxyID             int64             `json:"proxy_id"`
-	Proxy               *SocksProxy       `json:"proxy,omitempty"`
-	Status              string            `json:"status"`
-	ConsecutiveFailures int               `json:"consecutive_failures"`
-	RecoverAt           *time.Time        `json:"recover_at,omitempty"`
-	Weight              int               `json:"weight"`
-	Models              []string          `json:"models"`
-	ModelMapping        map[string]string `json:"model_mapping"`
-	Endpoints           []string          `json:"-"`
-	CreatedAt           time.Time         `json:"created_at"`
-	UpdatedAt           time.Time         `json:"updated_at"`
+	ID                   int64             `json:"id"`
+	Name                 string            `json:"name"`
+	Protocol             string            `json:"protocol"`
+	BackendType          string            `json:"backend_type"`
+	BaseURL              string            `json:"base_url"`
+	APIKey               string            `json:"api_key,omitempty"`
+	ConsoleURL           string            `json:"console_url"`
+	Tags                 []string          `json:"tags"`
+	ConsoleUsername      string            `json:"console_username"`
+	ConsolePassword      string            `json:"console_password,omitempty"`
+	ConsoleAuthorization string            `json:"console_authorization,omitempty"`
+	ConsoleCookie        string            `json:"console_cookie,omitempty"`
+	ConsoleAccountJSON   string            `json:"console_account_json"`
+	ConsolePricingJSON   string            `json:"console_pricing_json"`
+	Notes                string            `json:"notes"`
+	ProxyID              int64             `json:"proxy_id"`
+	Proxy                *SocksProxy       `json:"proxy,omitempty"`
+	Status               string            `json:"status"`
+	ConsecutiveFailures  int               `json:"consecutive_failures"`
+	RecoverAt            *time.Time        `json:"recover_at,omitempty"`
+	Weight               int               `json:"weight"`
+	Models               []string          `json:"models"`
+	ModelMapping         map[string]string `json:"model_mapping"`
+	Endpoints            []string          `json:"-"`
+	CreatedAt            time.Time         `json:"created_at"`
+	UpdatedAt            time.Time         `json:"updated_at"`
 }
 
 type SocksProxy struct {
@@ -147,6 +149,8 @@ func NormalizeBackendType(value string) string {
 		return ""
 	case BackendTypeNewAPI, "newapi", "new_api":
 		return BackendTypeNewAPI
+	case BackendTypeSub2API, "sub-2-api", "sub_2_api":
+		return BackendTypeSub2API
 	default:
 		return BackendTypeNewAPI
 	}

@@ -85,7 +85,7 @@
                 :class="{ 'is-running': isConsoleSyncRunning(backend.id) }"
                 :disabled="isConsoleSyncDisabled(backend)"
                 :aria-busy="isConsoleSyncRunning(backend.id)"
-                :title="canSyncConsole(backend) ? '同步' : '仅 new-api 类型支持同步'"
+                :title="canSyncConsole(backend) ? '同步' : '仅通用类型不支持同步'"
                 @click="$emit('sync-console', backend)"
               >
                 <span v-if="isConsoleSyncRunning(backend.id)" class="action-spinner"></span>
@@ -312,7 +312,7 @@ const emit = defineEmits<{
 const expandedId = ref<number | null>(null)
 
 const isConsoleSyncRunning = (backendId: number) => props.runningConsoleSyncIds.has(backendId)
-const canSyncConsole = (backend: Backend) => backend.backend_type === 'new-api'
+const canSyncConsole = (backend: Backend) => backend.backend_type === 'new-api' || backend.backend_type === 'sub2api'
 const isConsoleSyncDisabled = (backend: Backend) => !canSyncConsole(backend) || isConsoleSyncRunning(backend.id)
 
 const toggleExpand = (id: number) => {

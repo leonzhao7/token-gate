@@ -2689,6 +2689,97 @@ func TestAdminBackendCreateUpdateAndListIncludeConsoleMetadata(t *testing.T) {
 	}
 }
 
+func TestAdminBackendCreateUpdateAndListIncludeSub2APIAuthorization(t *testing.T) {
+	application := newTestApp(t)
+
+	createReq := httptest.NewRequest(http.MethodPost, "/admin/api/backends", strings.NewReader(`{
+		"name":"relay-sub2api",
+		"backend_type":"sub2api",
+		"base_url":"https://relay-sub2api.local/v1",
+		"api_key":"relay-key",
+		"console_url":"https://console.relay-sub2api.local",
+		"console_authorization":"Bearer create-sub2api-token",
+		"weight":1,
+		"models":["gpt-4o"]
+	}`))
+	createReq.Header.Set("Authorization", "Bearer test-admin")
+	createRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(createRecorder, createReq)
+	if createRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected create status 201, got %d body=%s", createRecorder.Code, createRecorder.Body.String())
+	}
+
+	var created domain.Backend
+	if err := json.Unmarshal(createRecorder.Body.Bytes(), &created); err != nil {
+		t.Fatalf("unmarshal create backend: %v", err)
+	}
+	if created.BackendType != domain.BackendTypeSub2API {
+		t.Fatalf("expected created backend type sub2api, got %#v", created)
+	}
+	if created.ConsoleAuthorization != "Bearer create-sub2api-token" {
+		t.Fatalf("expected created console authorization, got %#v", created)
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/admin/api/backends/"+strconv.FormatInt(created.ID, 10), strings.NewReader(`{
+		"name":"relay-sub2api",
+		"protocol":"openai",
+		"backend_type":"sub2api",
+		"base_url":"https://relay-sub2api.local/v1",
+		"api_key":"relay-key",
+		"console_url":"https://console.relay-sub2api-2.local",
+		"console_authorization":"Bearer update-sub2api-token",
+		"proxy_id":0,
+		"status":"normal",
+		"weight":1,
+		"models":["gpt-4o"],
+		"model_mapping":{}
+	}`))
+	updateReq.Header.Set("Authorization", "Bearer test-admin")
+	updateRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(updateRecorder, updateReq)
+	if updateRecorder.Code != http.StatusOK {
+		t.Fatalf("expected update status 200, got %d body=%s", updateRecorder.Code, updateRecorder.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/api/backends", nil)
+	listReq.Header.Set("Authorization", "Bearer test-admin")
+	listRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(listRecorder, listReq)
+	if listRecorder.Code != http.StatusOK {
+		t.Fatalf("expected list status 200, got %d body=%s", listRecorder.Code, listRecorder.Body.String())
+	}
+
+	var payload struct {
+		Items []struct {
+			ID                   int64  `json:"id"`
+			BackendType          string `json:"backend_type"`
+			ConsoleURL           string `json:"console_url"`
+			ConsoleAuthorization string `json:"console_authorization"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(listRecorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal backend list: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one backend item, got %#v", payload.Items)
+	}
+	item := payload.Items[0]
+	if item.ID != created.ID || item.BackendType != domain.BackendTypeSub2API {
+		t.Fatalf("expected sub2api backend in list payload, got %#v", item)
+	}
+	if item.ConsoleURL != "https://console.relay-sub2api-2.local" || item.ConsoleAuthorization != "Bearer update-sub2api-token" {
+		t.Fatalf("expected updated sub2api console metadata in list payload, got %#v", item)
+	}
+
+	updated, err := application.store.GetBackend(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("get updated backend: %v", err)
+	}
+	if updated.BackendType != domain.BackendTypeSub2API || updated.ConsoleAuthorization != "Bearer update-sub2api-token" {
+		t.Fatalf("expected stored sub2api authorization, got %#v", updated)
+	}
+}
+
 func TestAdminBackendNewAPIConsoleCheckinUsesConfiguredCookieAndStoredUserIDDirectly(t *testing.T) {
 	application := newTestApp(t)
 
