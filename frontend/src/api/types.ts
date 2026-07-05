@@ -265,6 +265,7 @@ export interface CreateBackendRequest {
   api_key: string
   console_url?: string
   console_cookie?: string
+  console_user_id?: string
   tags?: string[]
   console_username?: string
   console_password?: string
@@ -327,6 +328,11 @@ export interface BackendConsoleSyncResponse {
   pricing?: Record<string, any>
   requests?: BackendConsoleRequestLog[]
 }
+
+export type BackendConsoleStreamEvent =
+  | { type: 'request'; request: BackendConsoleRequestLog }
+  | { type: 'complete'; response: BackendConsoleSyncResponse }
+  | { type: 'error'; status?: number; message?: string; requests?: BackendConsoleRequestLog[] }
 
 export interface CreateProxyRequest {
   name: string

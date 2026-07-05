@@ -2589,6 +2589,7 @@ func TestAdminBackendCreateUpdateAndListIncludeConsoleMetadata(t *testing.T) {
 		"tags":["hk","priority"],
 		"console_username":"admin-a",
 		"console_password":"secret-a",
+		"console_user_id":"1929",
 		"notes":"primary relay",
 		"weight":1,
 		"models":["gpt-4o","claude-sonnet-4"],
@@ -2614,6 +2615,10 @@ func TestAdminBackendCreateUpdateAndListIncludeConsoleMetadata(t *testing.T) {
 	if created.Notes != "primary relay" {
 		t.Fatalf("expected created backend notes, got %#v", created)
 	}
+	createdAccount := decodeJSONPayload(t, created.ConsoleAccountJSON)
+	if createdAccount["id"] != "1929" {
+		t.Fatalf("expected created backend account id from console_user_id, got %#v", createdAccount)
+	}
 
 	updateReq := httptest.NewRequest(http.MethodPut, "/admin/api/backends/"+strconv.FormatInt(created.ID, 10), strings.NewReader(`{
 		"name":"relay-a",
@@ -2626,6 +2631,7 @@ func TestAdminBackendCreateUpdateAndListIncludeConsoleMetadata(t *testing.T) {
 		"tags":["priority","vip"],
 		"console_username":"admin-b",
 		"console_password":"secret-b",
+		"console_user_id":"2048",
 		"notes":"updated relay",
 		"weight":1,
 		"models":["gpt-4o","claude-sonnet-4"],
@@ -2672,6 +2678,126 @@ func TestAdminBackendCreateUpdateAndListIncludeConsoleMetadata(t *testing.T) {
 	}
 	if item.ConsoleUsername != "admin-b" || item.ConsolePassword != "secret-b" || item.Notes != "updated relay" {
 		t.Fatalf("expected updated console metadata in list payload, got %#v", item)
+	}
+	updated, err := application.store.GetBackend(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("get updated backend: %v", err)
+	}
+	updatedAccount := decodeJSONPayload(t, updated.ConsoleAccountJSON)
+	if updatedAccount["id"] != "2048" {
+		t.Fatalf("expected updated backend account id from console_user_id, got %#v", updatedAccount)
+	}
+}
+
+func TestAdminBackendNewAPIConsoleCheckinUsesConfiguredCookieAndStoredUserIDDirectly(t *testing.T) {
+	application := newTestApp(t)
+
+	var calls []string
+	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		if r.Header.Get("Cookie") != "session=valid" {
+			t.Fatalf("expected saved cookie, got %q", r.Header.Get("Cookie"))
+		}
+		switch r.URL.Path {
+		case "/api/user/checkin":
+			if r.Method != http.MethodPost {
+				t.Fatalf("expected POST checkin, got %s", r.Method)
+			}
+			if r.Header.Get("new-user-id") != "1929" {
+				t.Fatalf("expected new-user-id header 1929, got %q", r.Header.Get("new-user-id"))
+			}
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"message":"ok"}`), nil
+		case "/api/user/self":
+			if len(calls) == 1 {
+				t.Fatalf("self should not be called before direct checkin when cookie and stored user id are configured")
+			}
+			if r.Method != http.MethodGet {
+				t.Fatalf("expected GET self, got %s", r.Method)
+			}
+			if r.Header.Get("new-user-id") != "1929" {
+				t.Fatalf("expected new-user-id header 1929 on refresh self, got %q", r.Header.Get("new-user-id"))
+			}
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"username":"tom","display_name":"Tom Admin","group":"default","role":1,"status":1,"id":1929,"quota":248540,"used_quota":3250000}}`), nil
+		case "/api/user/login":
+			t.Fatalf("login should not be called when cookie and stored user id are configured")
+		default:
+			t.Fatalf("unexpected console path %s", r.URL.Path)
+		}
+		return nil, errors.New("unreachable console path")
+	})})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:               "new-api-console-direct-checkin",
+		Protocol:           domain.BackendProtocolOpenAI,
+		BackendType:        domain.BackendTypeNewAPI,
+		BaseURL:            "https://new-api.local/v1",
+		APIKey:             "backend-key",
+		ConsoleURL:         "https://console.local",
+		ConsoleUsername:    "tom",
+		ConsolePassword:    "tom_passwd",
+		ConsoleCookie:      "session=valid",
+		ConsoleAccountJSON: `{"id":"1929","username":"cached"}`,
+		Models:             []string{"gpt-4o"},
+		Endpoints:          []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/checkin", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected checkin status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !reflect.DeepEqual(calls, []string{"POST /api/user/checkin", "GET /api/user/self"}) {
+		t.Fatalf("unexpected console call sequence: %#v", calls)
+	}
+}
+
+func TestAdminBackendNewAPIConsoleCheckinWithConfiguredCookieAndUserIDDoesNotRetryFailure(t *testing.T) {
+	application := newTestApp(t)
+
+	var calls []string
+	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		switch r.URL.Path {
+		case "/api/user/checkin":
+			if r.Header.Get("Cookie") != "session=expired" {
+				t.Fatalf("expected saved cookie, got %q", r.Header.Get("Cookie"))
+			}
+			if r.Header.Get("new-user-id") != "1929" {
+				t.Fatalf("expected new-user-id header 1929, got %q", r.Header.Get("new-user-id"))
+			}
+			return consoleJSONResponse(http.StatusUnauthorized, nil, `{"success":false,"message":"未登录"}`), nil
+		case "/api/user/self", "/api/user/login":
+			t.Fatalf("checkin failure should not trigger %s", r.URL.Path)
+		default:
+			t.Fatalf("unexpected console path %s", r.URL.Path)
+		}
+		return nil, errors.New("unreachable console path")
+	})})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:               "new-api-console-direct-checkin-failure",
+		Protocol:           domain.BackendProtocolOpenAI,
+		BackendType:        domain.BackendTypeNewAPI,
+		BaseURL:            "https://new-api.local/v1",
+		APIKey:             "backend-key",
+		ConsoleURL:         "https://console.local",
+		ConsoleUsername:    "tom",
+		ConsolePassword:    "tom_passwd",
+		ConsoleCookie:      "session=expired",
+		ConsoleAccountJSON: `{"id":"1929","username":"cached"}`,
+		Models:             []string{"gpt-4o"},
+		Endpoints:          []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/checkin", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("expected checkin failure status 502, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !reflect.DeepEqual(calls, []string{"POST /api/user/checkin"}) {
+		t.Fatalf("unexpected console call sequence: %#v", calls)
 	}
 }
 
@@ -3098,7 +3224,7 @@ func TestAdminBackendNewAPIConsoleSyncSavesStatusAccountAndFilteredPricing(t *te
 			if r.Method != http.MethodGet {
 				t.Fatalf("expected GET status, got %s", r.Method)
 			}
-			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"custom_currency_exchange_rate":10,"custom_currency_symbol":"硬币","quota_per_unit":500000,"system_name":"relay"}}`), nil
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"custom_currency_exchange_rate":10,"custom_currency_symbol":"硬币","quota_display_type":"CUSTOM","quota_per_unit":500000,"system_name":"relay"}}`), nil
 		case "/api/user/self":
 			if r.Method != http.MethodGet {
 				t.Fatalf("expected GET self, got %s", r.Method)
@@ -3131,6 +3257,7 @@ func TestAdminBackendNewAPIConsoleSyncSavesStatusAccountAndFilteredPricing(t *te
 		APIKey:             "backend-key",
 		ConsoleURL:         "https://console.local",
 		ConsoleCookie:      "session=valid",
+		ConsoleAccountJSON: `{"id":1929}`,
 		ConsolePricingJSON: `{"existing":true}`,
 		Models:             []string{"routed-model"},
 		Endpoints:          []string{domain.EndpointChat},
@@ -3143,7 +3270,7 @@ func TestAdminBackendNewAPIConsoleSyncSavesStatusAccountAndFilteredPricing(t *te
 		t.Fatalf("expected sync status 200, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
 
-	if !reflect.DeepEqual(calls, []string{"GET /api/status", "GET /api/user/self", "POST /api/user/checkin", "GET /api/user/self", "GET /api/pricing"}) {
+	if !reflect.DeepEqual(calls, []string{"GET /api/status", "POST /api/user/checkin", "GET /api/user/self", "GET /api/pricing"}) {
 		t.Fatalf("unexpected console call sequence: %#v", calls)
 	}
 
@@ -3155,7 +3282,7 @@ func TestAdminBackendNewAPIConsoleSyncSavesStatusAccountAndFilteredPricing(t *te
 	if account["username"] != "tom" || account["id"] != float64(1929) || account["quota"] != float64(248540) || account["used_quota"] != float64(3250000) {
 		t.Fatalf("expected saved account summary, got %#v", account)
 	}
-	if account["custom_currency_exchange_rate"] != float64(10) || account["custom_currency_symbol"] != "硬币" || account["quota_per_unit"] != float64(500000) {
+	if account["custom_currency_exchange_rate"] != float64(10) || account["custom_currency_symbol"] != "硬币" || account["quota_display_type"] != "CUSTOM" || account["quota_per_unit"] != float64(500000) {
 		t.Fatalf("expected status currency metadata in account summary, got %#v", account)
 	}
 	if lastCheckinAt, ok := account["last_checkin_at"].(string); !ok || strings.TrimSpace(lastCheckinAt) == "" {
@@ -3196,8 +3323,77 @@ func TestAdminBackendNewAPIConsoleSyncSavesStatusAccountAndFilteredPricing(t *te
 	if response.Account["custom_currency_symbol"] != "硬币" {
 		t.Fatalf("expected account metadata in response, got %#v", response.Account)
 	}
-	if len(response.Requests) != 5 {
+	if len(response.Requests) != 4 {
 		t.Fatalf("expected sync request logs, got %#v", response.Requests)
+	}
+}
+
+func TestAdminBackendNewAPIConsoleSyncStreamsRequestLogs(t *testing.T) {
+	application := newTestApp(t)
+
+	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		switch r.URL.Path {
+		case "/api/status":
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"custom_currency_exchange_rate":1,"custom_currency_symbol":"$","quota_display_type":"USD","quota_per_unit":500000}}`), nil
+		case "/api/user/checkin":
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"message":"checked in"}`), nil
+		case "/api/user/self":
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"username":"tom","id":1929,"quota":200,"used_quota":50}}`), nil
+		case "/api/pricing":
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":[{"model_name":"gpt-5.4","model_ratio":2}]}`), nil
+		default:
+			t.Fatalf("unexpected console path %s", r.URL.Path)
+		}
+		return nil, errors.New("unreachable console path")
+	})})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:               "new-api-sync-stream",
+		Protocol:           domain.BackendProtocolOpenAI,
+		BackendType:        domain.BackendTypeNewAPI,
+		BaseURL:            "https://new-api.local/v1",
+		APIKey:             "backend-key",
+		ConsoleURL:         "https://console.local",
+		ConsoleCookie:      "session=valid",
+		ConsoleAccountJSON: `{"id":1929}`,
+		Models:             []string{"routed-model"},
+		Endpoints:          []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/sync?stream=1", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected stream status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Content-Type"); !strings.Contains(got, "application/x-ndjson") {
+		t.Fatalf("expected ndjson content type, got %q body=%s", got, recorder.Body.String())
+	}
+	lines := strings.Split(strings.TrimSpace(recorder.Body.String()), "\n")
+	if len(lines) != 5 {
+		t.Fatalf("expected four request events and one complete event, got %d lines: %s", len(lines), recorder.Body.String())
+	}
+	var first struct {
+		Type    string `json:"type"`
+		Request struct {
+			Method string `json:"method"`
+			Path   string `json:"path"`
+		} `json:"request"`
+	}
+	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
+		t.Fatalf("decode first stream line: %v", err)
+	}
+	if first.Type != "request" || first.Request.Method != http.MethodGet || first.Request.Path != "/api/status" {
+		t.Fatalf("unexpected first stream event: %#v", first)
+	}
+	var last struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal([]byte(lines[len(lines)-1]), &last); err != nil {
+		t.Fatalf("decode last stream line: %v", err)
+	}
+	if last.Type != "complete" {
+		t.Fatalf("expected complete stream event, got %#v", last)
 	}
 }
 
@@ -3358,7 +3554,7 @@ func TestAdminBackendNewAPIConsoleSyncTreatsAlreadyCheckedInAsToday(t *testing.T
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected sync status 200, got %d body=%s", recorder.Code, recorder.Body.String())
 	}
-	if !reflect.DeepEqual(calls, []string{"GET /api/status", "GET /api/user/self", "POST /api/user/checkin", "GET /api/user/self", "GET /api/pricing"}) {
+	if !reflect.DeepEqual(calls, []string{"GET /api/status", "POST /api/user/checkin", "GET /api/user/self", "GET /api/pricing"}) {
 		t.Fatalf("unexpected console call sequence: %#v", calls)
 	}
 

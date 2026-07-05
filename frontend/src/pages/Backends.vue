@@ -509,6 +509,11 @@ const setConsoleRequestLogRows = (rows: ConsoleRequestLogRow[]) => {
   expandedConsoleLogRowIds.value = new Set()
 }
 
+const appendConsoleRequestLogRows = (rows: ConsoleRequestLogRow[]) => {
+  if (rows.length === 0) return
+  consoleRequestLogRows.value = [...consoleRequestLogRows.value, ...rows]
+}
+
 const toggleConsoleLogRow = (id: string) => {
   const next = new Set(expandedConsoleLogRowIds.value)
   if (next.has(id)) {
@@ -556,13 +561,19 @@ const handleConsoleSync = async (backend: Backend) => {
   setConsoleSyncRunning(backend.id, true)
   openConsoleActionLog(backend)
   try {
-    const response = await backendsApi.syncConsole(backend.id)
-    setConsoleRequestLogRows(extractConsoleRequestLogs(response.requests, backend))
+    const response = await backendsApi.syncConsoleStream(backend.id, (request) => {
+      appendConsoleRequestLogRows(extractConsoleRequestLogs([request], backend))
+    })
+    if (consoleRequestLogRows.value.length === 0) {
+      setConsoleRequestLogRows(extractConsoleRequestLogs(response.requests, backend))
+    }
     await refreshBackends()
   } catch (err: any) {
     const errorPayload = normalizeConsoleActionError(err)
     const fallback = fallbackConsoleRequestLog(backend, err?.response?.status ?? null, errorPayload)
-    setConsoleRequestLogRows(extractConsoleRequestLogs(errorPayload.requests, backend, fallback))
+    if (consoleRequestLogRows.value.length === 0) {
+      setConsoleRequestLogRows(extractConsoleRequestLogs(errorPayload.requests, backend, fallback))
+    }
   } finally {
     setConsoleSyncRunning(backend.id, false)
   }

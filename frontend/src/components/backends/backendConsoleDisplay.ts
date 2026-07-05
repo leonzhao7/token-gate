@@ -77,6 +77,11 @@ const formatConsoleNumber = (value: number): string => {
   })
 }
 
+const formatConsoleAmountWithSymbol = (amount: string, symbol: string): string => {
+  if (!symbol) return amount
+  return symbol === '$' ? `$${amount}` : `${amount} ${symbol}`
+}
+
 const formatConsoleQuota = (
   value: unknown,
   exchangeRate: number | null,
@@ -87,7 +92,19 @@ const formatConsoleQuota = (
   if (numericValue === null || exchangeRate === null || quotaPerUnit === null || quotaPerUnit <= 0 || symbol === '') {
     return formatConsoleValue(value, '')
   }
-  return `${formatConsoleNumber((numericValue * exchangeRate) / quotaPerUnit)} ${symbol}`
+  const formatted = formatConsoleNumber((numericValue * exchangeRate) / quotaPerUnit)
+  return formatConsoleAmountWithSymbol(formatted, symbol)
+}
+
+const quotaDisplaySymbol = (displayType: unknown, customSymbol: string): string => {
+  switch (formatConsoleValue(displayType, '').trim().toUpperCase()) {
+    case 'CUSTOM':
+      return customSymbol
+    case 'USD':
+      return '$'
+    default:
+      return customSymbol
+  }
 }
 
 const formatConsoleTime = (value: unknown): string => {
@@ -116,6 +133,7 @@ export const consoleAccountSummary = (raw?: string): ConsoleAccountSummary | nul
   const exchangeRate = finiteNumber(account.custom_currency_exchange_rate)
   const quotaPerUnit = finiteNumber(account.quota_per_unit)
   const currencySymbol = formatConsoleValue(account.custom_currency_symbol, '').trim()
+  const quotaSymbol = quotaDisplaySymbol(account.quota_display_type, currencySymbol)
 
   const summary: ConsoleAccountSummary = {
     id: formatConsoleValue(account.id, ''),
@@ -125,9 +143,9 @@ export const consoleAccountSummary = (raw?: string): ConsoleAccountSummary | nul
     role: formatConsoleValue(account.role, ''),
     status: formatConsoleValue(account.status, ''),
     quota,
-    quotaDisplay: formatConsoleQuota(quota, exchangeRate, quotaPerUnit, currencySymbol),
+    quotaDisplay: formatConsoleQuota(quota, exchangeRate, quotaPerUnit, quotaSymbol),
     usedQuota,
-    usedQuotaDisplay: formatConsoleQuota(usedQuota, exchangeRate, quotaPerUnit, currencySymbol),
+    usedQuotaDisplay: formatConsoleQuota(usedQuota, exchangeRate, quotaPerUnit, quotaSymbol),
     lastCheckinAt: formatConsoleTime(account.last_checkin_at)
   }
 
@@ -262,11 +280,12 @@ const pricingContextFromPayload = (root: Record<string, unknown> | null, source:
   const sourceRecord = asRecord(source)
   const account = asRecord(parseConsoleJSON(accountRaw))
   const metadata = account ?? {}
+  const customSymbol = formatConsoleValue(metadata.custom_currency_symbol ?? root?.custom_currency_symbol ?? sourceRecord?.custom_currency_symbol, '').trim()
   return {
     groupRatio: normalizeGroupRatio(root?.group_ratio ?? sourceRecord?.group_ratio),
     exchangeRate: finiteNumber(metadata.custom_currency_exchange_rate ?? root?.custom_currency_exchange_rate ?? sourceRecord?.custom_currency_exchange_rate),
     quotaPerUnit: finiteNumber(metadata.quota_per_unit ?? root?.quota_per_unit ?? sourceRecord?.quota_per_unit),
-    currencySymbol: formatConsoleValue(metadata.custom_currency_symbol ?? root?.custom_currency_symbol ?? sourceRecord?.custom_currency_symbol, '').trim()
+    currencySymbol: quotaDisplaySymbol(metadata.quota_display_type ?? root?.quota_display_type ?? sourceRecord?.quota_display_type, customSymbol)
   }
 }
 
@@ -279,13 +298,13 @@ const minGroupRatio = (groups: string[], groupRatio: Record<string, number>): nu
 
 const formatUnitPrice = (value: number, currencySymbol: string): string => {
   const amount = formatConsoleNumber(value)
-  return `${currencySymbol ? `${amount} ${currencySymbol}` : amount} / 1M`
+  return `${formatConsoleAmountWithSymbol(amount, currencySymbol)} / 1M`
 }
 
 const formatRequestPrice = (value: number, context: PricingContext): string => {
   const converted = context.exchangeRate === null ? value : value * context.exchangeRate
   const amount = formatConsoleNumber(converted)
-  return `${context.currencySymbol ? `${amount} ${context.currencySymbol}` : amount} 每次`
+  return `${formatConsoleAmountWithSymbol(amount, context.currencySymbol)} 每次`
 }
 
 const formatPricingPrice = (record: Record<string, unknown>, groups: string[], context: PricingContext): string => {

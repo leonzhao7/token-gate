@@ -77,6 +77,16 @@
         ></textarea>
       </div>
 
+      <div class="form-field">
+        <label for="console-user-id">用户 ID</label>
+        <input
+          id="console-user-id"
+          v-model="formData.console_user_id"
+          type="text"
+          placeholder="1929"
+        />
+      </div>
+
       <div class="field-grid cols-2">
         <div class="form-field">
           <label for="tags">标签</label>
@@ -217,6 +227,7 @@ import { ref, computed, watch } from 'vue'
 import Button from '@/components/ui/Button.vue'
 import type { Backend, SocksProxy, CreateBackendRequest } from '@/api'
 import {
+  extractConsoleUserID,
   formatModelMappingForInput,
   normalizeBackendProxyId,
   parseBackendTagInput,
@@ -253,6 +264,7 @@ interface BackendFormData {
   models: string
   console_url: string
   console_cookie: string
+  console_user_id: string
   tags: string
   console_username: string
   console_password: string
@@ -271,6 +283,7 @@ const defaultFormData = (): BackendFormData => ({
   models: '',
   console_url: '',
   console_cookie: '',
+  console_user_id: '',
   tags: '',
   console_username: '',
   console_password: '',
@@ -310,6 +323,7 @@ const handleSubmit = () => {
     api_key: formData.value.api_key,
     console_url: formData.value.console_url.trim(),
     console_cookie: formData.value.console_cookie.trim(),
+    console_user_id: formData.value.console_user_id.trim(),
     tags: parseBackendTagInput(formData.value.tags),
     console_username: formData.value.console_username.trim(),
     console_password: formData.value.console_password.trim(),
@@ -335,6 +349,7 @@ watch(() => props.backend, (backend) => {
       models: (backend.models || []).join(', '),
       console_url: backend.console_url || '',
       console_cookie: backend.console_cookie || '',
+      console_user_id: extractConsoleUserID(backend.console_account_json),
       tags: (backend.tags || []).join(', '),
       console_username: backend.console_username || '',
       console_password: backend.console_password || '',

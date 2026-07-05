@@ -1,4 +1,5 @@
 type ModelMappingInput = string | Record<string, unknown> | null | undefined
+type ConsoleAccountInput = string | Record<string, unknown> | null | undefined
 
 export interface BackendProxyLike {
   proxy_id?: number | null
@@ -68,6 +69,29 @@ const parseCommaSeparatedList = (value: string): string[] => {
 export const parseModelListInput = (value: string): string[] => parseCommaSeparatedList(value)
 
 export const parseBackendTagInput = (value: string): string[] => parseCommaSeparatedList(value)
+
+export const extractConsoleUserID = (value: ConsoleAccountInput): string => {
+  if (!value) return ''
+  let payload: unknown = value
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return ''
+    try {
+      payload = JSON.parse(trimmed) as unknown
+    } catch {
+      return ''
+    }
+  }
+  if (!isPlainRecord(payload)) return ''
+  const id = payload.id
+  if (typeof id === 'number' && Number.isFinite(id) && id > 0) {
+    return String(Math.trunc(id))
+  }
+  if (typeof id === 'string') {
+    return id.trim()
+  }
+  return ''
+}
 
 export const normalizeBackendProxyId = (backend: BackendProxyLike): number => {
   const proxyId = backend.proxy_id
