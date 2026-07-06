@@ -76,6 +76,21 @@ test('backend console actions open a request-log modal with expandable response 
   assert.match(list, /:title="canSyncConsole\(backend\) \? '同步' : '仅通用类型不支持同步'"/)
 })
 
+test('backends page exposes a toolbar batch sync button and batch sync helper usage', () => {
+  const page = read('pages/Backends.vue')
+  const helper = read('pages/backendsBatchSync.ts')
+
+  assert.match(page, />\s*同步\s*<\/Button>/)
+  assert.match(page, /:loading="syncingAllBackends"/)
+  assert.match(page, /:disabled="!syncableBackends\.length"/)
+  assert.match(page, /@click="handleSyncAllBackends"/)
+  assert.match(page, /const syncableBackends = computed\(\(\) => backends\.value\.filter\(canSyncBackendConsole\)\)/)
+  assert.match(page, /await runBackendConsoleSyncBatch\(/)
+  assert.match(helper, /export const canSyncBackendConsole = \(backend: Backend\) => backend\.backend_type === 'new-api' \|\| backend\.backend_type === 'sub2api'/)
+  assert.match(helper, /for \(const backend of syncableBackends\)/)
+  assert.match(helper, /continue/)
+})
+
 test('frontend API and store call the unified backend console sync endpoint', () => {
   const api = read('api/backends.ts')
   const store = read('stores/backends.ts')

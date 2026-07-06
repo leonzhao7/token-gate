@@ -48,6 +48,15 @@
           <Button variant="secondary" size="sm"  @click="showCreateModal = true">
             ➕ Add
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            :loading="syncingAllBackends"
+            :disabled="!syncableBackends.length"
+            @click="handleSyncAllBackends"
+          >
+            同步
+          </Button>
           <Button variant="secondary" size="sm" @click="refreshBackends" :loading="loading">
             🔄 Refresh
           </Button>
@@ -234,6 +243,11 @@ import {
   normalizeBackendProxyId,
   parseModelMappingInput,
 } from '@/components/backends/backendPayload'
+import {
+  canSyncBackendConsole,
+  formatBackendConsoleSyncBatchSummary,
+  runBackendConsoleSyncBatch
+} from './backendsBatchSync'
 
 type BackendConsoleActionKind = 'sync'
 
@@ -273,6 +287,7 @@ const deletingBackend = ref<Backend | null>(null)
 const submitting = ref(false)
 const exporting = ref(false)
 const importing = ref(false)
+const syncingAllBackends = ref(false)
 const importFileInput = ref<HTMLInputElement | null>(null)
 const runningConsoleSyncIds = ref<Set<number>>(new Set())
 const showConsoleActionLogModal = ref(false)
@@ -305,6 +320,8 @@ const filteredBackends = computed(() => {
 
   return result
 })
+
+const syncableBackends = computed(() => backends.value.filter(canSyncBackendConsole))
 
 const totalPages = computed(() => {
   return Math.ceil(filteredBackends.value.length / pageSize.value)
@@ -577,7 +594,7 @@ const clearConsoleRequestLogRows = () => {
   expandedConsoleLogRowIds.value = new Set()
 }
 
-const handleConsoleSync = async (backend: Backend) => {
+const syncBackendConsole = async (backend: Backend) => {
   setConsoleSyncRunning(backend.id, true)
   openConsoleActionLog(backend)
   try {
@@ -594,8 +611,35 @@ const handleConsoleSync = async (backend: Backend) => {
     if (consoleRequestLogRows.value.length === 0) {
       setConsoleRequestLogRows(extractConsoleRequestLogs(errorPayload.requests, backend, fallback))
     }
+    throw err
   } finally {
     setConsoleSyncRunning(backend.id, false)
+  }
+}
+
+const handleConsoleSync = async (backend: Backend) => {
+  try {
+    await syncBackendConsole(backend)
+  } catch {
+    // The request log modal already contains the failure details.
+  }
+}
+
+const handleSyncAllBackends = async () => {
+  if (!syncableBackends.value.length || syncingAllBackends.value) return
+
+  syncingAllBackends.value = true
+  try {
+    const result = await runBackendConsoleSyncBatch({
+      backends: backends.value,
+      syncBackend: syncBackendConsole,
+    })
+    await refreshBackends()
+    alert(formatBackendConsoleSyncBatchSummary(result))
+  } catch (err: any) {
+    alert(err?.message || '批量同步失败')
+  } finally {
+    syncingAllBackends.value = false
   }
 }
 
