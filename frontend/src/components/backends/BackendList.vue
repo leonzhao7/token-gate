@@ -17,10 +17,9 @@
       <div class="table-header">
         <div class="col col-name">Name</div>
         <div class="col col-status">Status</div>
-        <div class="col col-protocol">Protocol</div>
+        <div class="col col-server-url">Server URL</div>
         <div class="col col-models">Models</div>
-        <div class="col col-tags">Tags</div>
-        <div class="col col-proxy">Proxy</div>
+        <div class="col col-checkin">签到</div>
         <div class="col col-weight">Weight</div>
         <div class="col col-latency">Latency</div>
         <div class="col col-actions">Actions</div>
@@ -51,24 +50,20 @@
                 @click="$emit('toggle-status', backend)"
               />
             </div>
-            <div class="col col-protocol">
-              <span class="protocol-badge">{{ backend.protocol }}</span>
+            <div class="col col-server-url">
+              <span v-if="backend.console_url" class="server-url-text" :title="backend.console_url">{{ shortenUrl(backend.console_url) }}</span>
+              <span v-else class="text-muted">—</span>
             </div>
             <div class="col col-models">
-              <span v-if="backend.models && backend.models.length > 0" class="models-preview">
-                {{ backend.models.length }} model{{ backend.models.length > 1 ? 's' : '' }}
+              <span v-if="backend.models && backend.models.length > 0" class="models-preview" :title="backend.models.join(', ')">
+                <span class="models-preview-names">{{ formatModelsPreview(backend.models) }}</span>
+                <span v-if="backend.models.length > 2" class="models-more">+{{ backend.models.length - 2 }}</span>
               </span>
               <span v-else class="text-muted">—</span>
             </div>
-            <div class="col col-tags">
-              <span v-if="backend.tags && backend.tags.length > 0" class="tags-preview">
-                <span class="tag-chip-inline">{{ backend.tags[0] }}</span>
-                <span v-if="backend.tags.length > 1" class="tag-more">+{{ backend.tags.length - 1 }}</span>
-              </span>
-              <span v-else class="text-muted">—</span>
-            </div>
-            <div class="col col-proxy">
-              <span v-if="backend.proxy" class="proxy-name">{{ backend.proxy.name }}</span>
+            <div class="col col-checkin">
+              <span v-if="isCheckedInToday(backend)" class="checkin-badge checkin-done" title="今日已签到">✓</span>
+              <span v-else-if="hasCheckinInfo(backend)" class="checkin-badge checkin-missed" title="今日未签到">✗</span>
               <span v-else class="text-muted">—</span>
             </div>
             <div class="col col-weight">
@@ -263,7 +258,14 @@
                         <tr v-for="row in pricingModelRows(backend.console_pricing_json, focusModelPatterns, backend.console_account_json)" :key="`${row.model}-${row.group}-${row.price}`">
                           <td>{{ row.model }}</td>
                           <td>{{ row.price }}</td>
-                          <td>{{ row.group }}</td>
+                          <td>
+                            <span
+                              v-for="group in row.group.split(', ')"
+                              :key="group"
+                              class="group-tag"
+                              :class="{ 'group-tag-lowest': group === lowestGroupRatioName(backend.console_pricing_json, backend.console_account_json) }"
+                            >{{ group }}</span>
+                          </td>
                         </tr>
                       </tbody>
                     </table>
@@ -287,7 +289,7 @@ import type { Backend } from '@/api'
 import { dashboardApi } from '@/api'
 import { formatLatencySeconds } from '@/utils/latency'
 import { formatModelMappingForInput, parseModelMappingInput } from './backendPayload'
-import { consoleAccountRows, consoleAccountSummary, pricingModelRows } from './backendConsoleDisplay'
+import { consoleAccountRows, consoleAccountSummary, pricingModelRows, lowestGroupRatioName } from './backendConsoleDisplay'
 import { buildDashboardStats, buildStatsRange, type DashboardStatsSummary } from '@/utils/dashboardStats'
 
 interface Props {
@@ -423,6 +425,36 @@ const formatPercent = (rate: number): string => {
   if (!rate || rate <= 0) return '0%'
   return `${(rate * 100).toFixed(1)}%`
 }
+
+const shortenUrl = (url: string): string => {
+  try {
+    const u = new URL(url)
+    return u.hostname + (u.port ? `:${u.port}` : '')
+  } catch {
+    return url
+  }
+}
+
+const formatModelsPreview = (models: string[]): string => {
+  return models.slice(0, 2).join(', ')
+}
+
+const isCheckedInToday = (backend: Backend): boolean => {
+  const summary = consoleAccountSummary(backend.console_account_json)
+  if (!summary?.lastCheckinAt) return false
+  const checkinDate = new Date(summary.lastCheckinAt)
+  if (Number.isNaN(checkinDate.getTime())) return false
+  const today = new Date()
+  return (
+    checkinDate.getFullYear() === today.getFullYear() &&
+    checkinDate.getMonth() === today.getMonth() &&
+    checkinDate.getDate() === today.getDate()
+  )
+}
+
+const hasCheckinInfo = (backend: Backend): boolean => {
+  return backend.backend_type === 'new-api' || backend.backend_type === 'sub2api'
+}
 </script>
 
 <style scoped>
@@ -474,20 +506,21 @@ const formatPercent = (rate: number): string => {
   flex: 0 0 100px;
 }
 
-.col-protocol {
-  flex: 0 0 90px;
+.col-server-url {
+  flex: 1;
+  min-width: 120px;
+  overflow: hidden;
 }
 
 .col-models {
-  flex: 0 0 90px;
+  flex: 1.2;
+  min-width: 120px;
+  overflow: hidden;
 }
 
-.col-tags {
-  flex: 0 0 100px;
-}
-
-.col-proxy {
-  flex: 0 0 100px;
+.col-checkin {
+  flex: 0 0 60px;
+  text-align: center;
 }
 
 .col-weight {
@@ -563,51 +596,61 @@ const formatPercent = (rate: number): string => {
   color: var(--text-primary);
 }
 
-.protocol-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  font-weight: 600;
+.server-url-text {
+  font-size: 13px;
   color: var(--text-secondary);
-  text-transform: uppercase;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
 }
 
 .models-preview {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.tags-preview {
   display: flex;
   align-items: center;
   gap: 4px;
+  overflow: hidden;
 }
 
-.tag-chip-inline {
-  display: inline-block;
-  padding: 2px 6px;
+.models-preview-names {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.models-more {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-tertiary);
   background: var(--bg-subtle);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  font-size: 11px;
-  color: var(--text-secondary);
-  max-width: 70px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding: 1px 4px;
 }
 
-.tag-more {
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
-.proxy-name {
+.checkin-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
   font-size: 12px;
-  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.checkin-done {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.checkin-missed {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
 }
 
 .text-muted {
@@ -1012,6 +1055,16 @@ const formatPercent = (rate: number): string => {
   border-bottom: none;
 }
 
+.group-highlight {
+  display: inline-block;
+  padding: 1px 6px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  color: var(--success, #10b981);
+}
+
 /* Responsive */
 @media (max-width: 1400px) {
   .details-top {
@@ -1020,8 +1073,7 @@ const formatPercent = (rate: number): string => {
 }
 
 @media (max-width: 1200px) {
-  .col-proxy,
-  .col-tags {
+  .col-checkin {
     display: none;
   }
 }

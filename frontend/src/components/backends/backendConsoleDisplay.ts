@@ -622,6 +622,28 @@ const pricingRowsFromValue = (value: unknown, context: PricingContext): PricingM
   })
 }
 
+export const pricingGroupRatioMap = (raw?: string, accountRaw?: string): Record<string, number> => {
+  const parsed = parseConsoleJSON(raw)
+  const root = asRecord(parsed)
+  const source = root && root.data !== undefined ? root.data : parsed
+  const context = pricingContextFromPayload(root, source, accountRaw)
+  return context.groupRatio
+}
+
+export const lowestGroupRatioName = (raw?: string, accountRaw?: string): string | null => {
+  const parsed = parseConsoleJSON(raw)
+  const root = asRecord(parsed)
+  const source = root && root.data !== undefined ? root.data : parsed
+  const context = pricingContextFromPayload(root, source, accountRaw)
+  const entries = Object.entries(context.groupRatio)
+  if (entries.length === 0) return null
+  let minEntry = entries[0]
+  for (const entry of entries) {
+    if (entry[1] < minEntry[1]) minEntry = entry
+  }
+  return minEntry[0]
+}
+
 export const pricingModelRows = (raw?: string, focusPatterns?: string, accountRaw?: string): PricingModelRow[] => {
   const cacheKey = `${raw ?? ''}\n${focusPatterns ?? ''}\n${accountRaw ?? ''}`
   if (pricingRowsCache.has(cacheKey)) {
