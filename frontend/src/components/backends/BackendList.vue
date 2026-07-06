@@ -260,7 +260,7 @@
                         </tr>
                       </thead>
                       <tbody>
-                        <tr v-for="row in pricingModelRows(backend.console_pricing_json, focusModelPatterns, backend.console_account_json)" :key="row.model">
+                        <tr v-for="row in pricingModelRows(backend.console_pricing_json, focusModelPatterns, backend.console_account_json)" :key="`${row.model}-${row.group}-${row.price}`">
                           <td>{{ row.model }}</td>
                           <td>{{ row.price }}</td>
                           <td>{{ row.group }}</td>

@@ -1,6 +1,9 @@
 export interface ConsoleAccountSummary {
   id: string
   username: string
+  email: string
+  balance: unknown
+  balanceDisplay: string
   displayName: string
   group: string
   role: string
@@ -140,6 +143,9 @@ export const consoleAccountSummary = (raw?: string): ConsoleAccountSummary | nul
   const summary: ConsoleAccountSummary = {
     id: formatConsoleValue(account.id, ''),
     username: formatConsoleValue(account.username, ''),
+    email: formatConsoleValue(account.email, ''),
+    balance: account.balance,
+    balanceDisplay: formatConsoleValue(account.balance, ''),
     displayName: formatConsoleValue(account.display_name, ''),
     group: formatConsoleValue(account.group, ''),
     role: formatConsoleValue(account.role, ''),
@@ -164,6 +170,8 @@ export const consoleAccountRows = (raw?: string): DetailRow[] => {
   return [
     ['User ID', summary.id],
     ['Username', summary.username],
+    ['Email', summary.email],
+    ['Balance', summary.balanceDisplay],
     ['Quota', summary.quotaDisplay],
     ['Used Quota', summary.usedQuotaDisplay],
     ['Last Check-in', summary.lastCheckinAt]
@@ -221,6 +229,16 @@ interface PricingContext {
   exchangeRate: number | null
   quotaPerUnit: number | null
   currencySymbol: string
+}
+
+const mergeGroupRatio = (
+  base: Record<string, number>,
+  extra: Record<string, number>
+): Record<string, number> => {
+  return {
+    ...base,
+    ...extra,
+  }
 }
 
 const firstPricingField = (record: Record<string, unknown>, keys: string[]): unknown => {
@@ -290,6 +308,26 @@ const pricingContextFromPayload = (root: Record<string, unknown> | null, source:
     quotaPerUnit: finiteNumber(metadata.quota_per_unit ?? root?.quota_per_unit ?? sourceRecord?.quota_per_unit),
     currencySymbol: quotaDisplaySymbol(metadata.quota_display_type ?? root?.quota_display_type ?? sourceRecord?.quota_display_type, customSymbol)
   }
+}
+
+const channelPlatformGroups = (value: unknown): { names: string[]; ratio: Record<string, number> } => {
+  if (!Array.isArray(value)) {
+    return { names: [], ratio: {} }
+  }
+  const names: string[] = []
+  const ratio: Record<string, number> = {}
+  for (const item of value) {
+    const record = asRecord(item)
+    if (!record) continue
+    const name = formatConsoleValue(record.name, '').trim()
+    if (!name) continue
+    names.push(name)
+    const multiplier = finiteNumber(record.rate_multiplier)
+    if (multiplier !== null) {
+      ratio[name] = multiplier
+    }
+  }
+  return { names, ratio }
 }
 
 const minGroupRatio = (groups: string[], groupRatio: Record<string, number>): number => {
@@ -427,6 +465,23 @@ const formatPricingPrice = (record: Record<string, unknown>, groups: string[], c
   return '-'
 }
 
+const formatChannelPricingPrice = (pricing: Record<string, unknown>, groups: string[], context: PricingContext): string => {
+  if (formatConsoleValue(pricing.billing_mode, '').trim().toLowerCase() !== 'token') {
+    return '-'
+  }
+  const multiplier = minGroupRatio(groups, context.groupRatio)
+  const inputPrice = finiteNumber(pricing.input_price)
+  const outputPrice = finiteNumber(pricing.output_price)
+  const parts: string[] = []
+  if (inputPrice !== null) {
+    parts.push(`Input: ${formatUnitPrice(inputPrice * 1_000_000 * multiplier, context.currencySymbol)}`)
+  }
+  if (outputPrice !== null) {
+    parts.push(`Output: ${formatUnitPrice(outputPrice * 1_000_000 * multiplier, context.currencySymbol)}`)
+  }
+  return parts.length > 0 ? parts.join('; ') : '-'
+}
+
 const pricingRowFromRecord = (model: string, record: Record<string, unknown>, context: PricingContext): PricingModelRow | null => {
   const rowModel = formatConsoleValue(firstPricingField(record, modelNameKeys), model)
   if (!rowModel) {
@@ -455,6 +510,50 @@ const pricingRowsFromModelsField = (models: unknown, context: PricingContext): P
   })
 }
 
+const pricingRowsFromSupportedModels = (
+  models: unknown,
+  groups: string[],
+  context: PricingContext
+): PricingModelRow[] => {
+  if (!Array.isArray(models)) {
+    return []
+  }
+  return models.flatMap((model) => {
+    const record = asRecord(model)
+    if (!record) {
+      return []
+    }
+    const modelName = formatConsoleValue(record.name ?? record.model_name, '').trim()
+    if (!modelName) {
+      return []
+    }
+    const pricing = asRecord(record.pricing)
+    return [{
+      model: modelName,
+      price: pricing ? formatChannelPricingPrice(pricing, groups, context) : '-',
+      group: groups.length > 0 ? groups.join(', ') : '-',
+    }]
+  })
+}
+
+const pricingRowsFromPlatforms = (platforms: unknown, context: PricingContext): PricingModelRow[] => {
+  if (!Array.isArray(platforms)) {
+    return []
+  }
+  return platforms.flatMap((platform) => {
+    const record = asRecord(platform)
+    if (!record) {
+      return []
+    }
+    const { names, ratio } = channelPlatformGroups(record.groups)
+    const platformContext: PricingContext = {
+      ...context,
+      groupRatio: mergeGroupRatio(context.groupRatio, ratio),
+    }
+    return pricingRowsFromSupportedModels(record.supported_models, names, platformContext)
+  })
+}
+
 const pricingRowsFromVendors = (vendors: unknown, context: PricingContext): PricingModelRow[] => {
   if (!Array.isArray(vendors)) {
     return []
@@ -469,6 +568,9 @@ const pricingRowsFromValue = (value: unknown, context: PricingContext): PricingM
   if (Array.isArray(value)) {
     return value.flatMap((item, index) => {
       const record = asRecord(item)
+      if (record?.platforms) {
+        return pricingRowsFromPlatforms(record.platforms, context)
+      }
       if (record?.models) {
         return pricingRowsFromModelsField(record.models, context)
       }
@@ -484,6 +586,10 @@ const pricingRowsFromValue = (value: unknown, context: PricingContext): PricingM
   const record = asRecord(value)
   if (!record) {
     return []
+  }
+
+  if (record.platforms) {
+    return pricingRowsFromPlatforms(record.platforms, context)
   }
 
   const vendorRows = pricingRowsFromVendors(record.vendors, context)
@@ -532,13 +638,14 @@ export const pricingModelRows = (raw?: string, focusPatterns?: string, accountRa
     .filter((row) => row.model.trim() !== '')
     .filter((row) => modelNameMatchesFocusPatterns(row.model, focusPatterns))
     .filter((row) => {
-      if (seen.has(row.model)) {
+      const key = `${row.model}\n${row.group}\n${row.price}`
+      if (seen.has(key)) {
         return false
       }
-      seen.add(row.model)
+      seen.add(key)
       return true
     })
-    .sort((a, b) => a.model.localeCompare(b.model))
+    .sort((a, b) => a.model.localeCompare(b.model) || a.group.localeCompare(b.group) || a.price.localeCompare(b.price))
   pricingRowsCache.set(cacheKey, rows)
   return rows
 }

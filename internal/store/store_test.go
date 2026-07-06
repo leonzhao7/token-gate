@@ -148,7 +148,7 @@ func TestBackendConsoleStateRoundTrips(t *testing.T) {
 	}
 }
 
-func TestBackendSub2APIAuthorizationRoundTrips(t *testing.T) {
+func TestBackendSub2APIConsoleMetadataRoundTrips(t *testing.T) {
 	st := openTestStore(t)
 	defer st.Close()
 	ctx := context.Background()
@@ -161,6 +161,8 @@ func TestBackendSub2APIAuthorizationRoundTrips(t *testing.T) {
 		APIKey:               "edge-key",
 		ConsoleURL:           "https://console.edge-sub2api.local",
 		ConsoleAuthorization: "Bearer initial-sub2api-token",
+		ConsoleCheckinPath:   "/api/v1/checkin",
+		ChannelURL:           "/api/v1/channels",
 		Models:               []string{"gpt-4o"},
 		Endpoints:            []string{domain.EndpointChat},
 	})
@@ -174,14 +176,28 @@ func TestBackendSub2APIAuthorizationRoundTrips(t *testing.T) {
 	if backend.ConsoleAuthorization != "Bearer initial-sub2api-token" {
 		t.Fatalf("expected console authorization to round-trip, got %q", backend.ConsoleAuthorization)
 	}
+	if backend.ConsoleCheckinPath != "/api/v1/checkin" {
+		t.Fatalf("expected console checkin path to round-trip, got %q", backend.ConsoleCheckinPath)
+	}
+	if backend.ChannelURL != "/api/v1/channels" {
+		t.Fatalf("expected channel url to round-trip, got %q", backend.ChannelURL)
+	}
 
 	backend.ConsoleAuthorization = "Bearer rotated-sub2api-token"
+	backend.ConsoleCheckinPath = "/api/v1/daily-checkin"
+	backend.ChannelURL = "/api/v1/catalog"
 	updated, err := st.UpdateBackend(ctx, backend)
 	if err != nil {
 		t.Fatalf("UpdateBackend returned error: %v", err)
 	}
 	if updated.ConsoleAuthorization != "Bearer rotated-sub2api-token" {
 		t.Fatalf("expected updated console authorization, got %#v", updated)
+	}
+	if updated.ConsoleCheckinPath != "/api/v1/daily-checkin" {
+		t.Fatalf("expected updated console checkin path, got %#v", updated)
+	}
+	if updated.ChannelURL != "/api/v1/catalog" {
+		t.Fatalf("expected updated channel url, got %#v", updated)
 	}
 
 	listed, err := st.ListBackends(ctx)
@@ -191,8 +207,8 @@ func TestBackendSub2APIAuthorizationRoundTrips(t *testing.T) {
 	if len(listed) != 1 {
 		t.Fatalf("expected one listed backend, got %#v", listed)
 	}
-	if listed[0].BackendType != domain.BackendTypeSub2API || listed[0].ConsoleAuthorization != "Bearer rotated-sub2api-token" {
-		t.Fatalf("expected listed sub2api backend with authorization, got %#v", listed[0])
+	if listed[0].BackendType != domain.BackendTypeSub2API || listed[0].ConsoleAuthorization != "Bearer rotated-sub2api-token" || listed[0].ConsoleCheckinPath != "/api/v1/daily-checkin" || listed[0].ChannelURL != "/api/v1/catalog" {
+		t.Fatalf("expected listed sub2api backend with console metadata, got %#v", listed[0])
 	}
 }
 

@@ -78,6 +78,26 @@
         ></textarea>
       </div>
 
+      <div v-if="isSub2APIBackendType" class="form-field">
+        <label for="console-checkin-path">签到 Path</label>
+        <input
+          id="console-checkin-path"
+          v-model="formData.console_checkin_path"
+          type="text"
+          placeholder="/api/v1/checkin"
+        />
+      </div>
+
+      <div v-if="isSub2APIBackendType" class="form-field">
+        <label for="channel-url">渠道 URL</label>
+        <input
+          id="channel-url"
+          v-model="formData.channel_url"
+          type="text"
+          placeholder="/api/v1/channels"
+        />
+      </div>
+
       <div v-if="isNewAPIBackendType" class="form-field">
         <label for="console-cookie">Cookie</label>
         <textarea
@@ -275,6 +295,8 @@ interface BackendFormData {
   models: string
   console_url: string
   console_authorization: string
+  console_checkin_path: string
+  channel_url: string
   console_cookie: string
   console_user_id: string
   tags: string
@@ -295,6 +317,8 @@ const defaultFormData = (): BackendFormData => ({
   models: '',
   console_url: '',
   console_authorization: '',
+  console_checkin_path: '',
+  channel_url: '',
   console_cookie: '',
   console_user_id: '',
   tags: '',
@@ -338,6 +362,8 @@ const handleSubmit = () => {
     api_key: formData.value.api_key,
     console_url: formData.value.console_url.trim(),
     console_authorization: formData.value.backend_type === 'sub2api' ? formData.value.console_authorization.trim() : '',
+    console_checkin_path: formData.value.backend_type === 'sub2api' ? formData.value.console_checkin_path.trim() : '',
+    channel_url: formData.value.backend_type === 'sub2api' ? formData.value.channel_url.trim() : '',
     console_cookie: formData.value.backend_type === 'new-api' ? formData.value.console_cookie.trim() : '',
     console_user_id: formData.value.backend_type === 'new-api' ? formData.value.console_user_id.trim() : '',
     tags: parseBackendTagInput(formData.value.tags),
@@ -365,6 +391,8 @@ watch(() => props.backend, (backend) => {
       models: (backend.models || []).join(', '),
       console_url: backend.console_url || '',
       console_authorization: backend.console_authorization || '',
+      console_checkin_path: backend.console_checkin_path || '',
+      channel_url: backend.channel_url || '',
       console_cookie: backend.console_cookie || '',
       console_user_id: extractConsoleUserID(backend.console_account_json),
       tags: (backend.tags || []).join(', '),

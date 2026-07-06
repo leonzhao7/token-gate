@@ -114,6 +114,34 @@ func (s *Service) DoWithPath(ctx context.Context, incoming *http.Request, backen
 	return client.Do(request)
 }
 
+func NewHTTPClientForBackend(backend domain.Backend, responseHeaderTimeout, timeout time.Duration) (*http.Client, error) {
+	if backend.ProxyID == 0 {
+		return &http.Client{
+			Timeout:   timeout,
+			Transport: newTransport(responseHeaderTimeout, nil),
+		}, nil
+	}
+	if backend.Proxy == nil {
+		return nil, errors.New("backend socks5 proxy not found")
+	}
+	if !backend.Proxy.Enabled {
+		return nil, errors.New("backend socks5 proxy is disabled")
+	}
+	if strings.TrimSpace(backend.Proxy.Address) == "" {
+		return nil, errors.New("backend socks5 proxy address is empty")
+	}
+
+	dialer := &socks5Dialer{
+		address:  backend.Proxy.Address,
+		username: backend.Proxy.Username,
+		password: backend.Proxy.Password,
+	}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: newTransport(responseHeaderTimeout, dialer.DialContext),
+	}, nil
+}
+
 func (s *Service) clientForBackend(backend domain.Backend) (*http.Client, error) {
 	if s.client != nil {
 		return s.client, nil

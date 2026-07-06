@@ -50,6 +50,8 @@ type Backend struct {
 	ConsoleUsername      string            `json:"console_username"`
 	ConsolePassword      string            `json:"console_password,omitempty"`
 	ConsoleAuthorization string            `json:"console_authorization,omitempty"`
+	ConsoleCheckinPath   string            `json:"console_checkin_path,omitempty"`
+	ChannelURL           string            `json:"channel_url,omitempty"`
 	ConsoleCookie        string            `json:"console_cookie,omitempty"`
 	ConsoleAccountJSON   string            `json:"console_account_json"`
 	ConsolePricingJSON   string            `json:"console_pricing_json"`

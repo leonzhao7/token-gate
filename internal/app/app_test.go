@@ -2689,7 +2689,7 @@ func TestAdminBackendCreateUpdateAndListIncludeConsoleMetadata(t *testing.T) {
 	}
 }
 
-func TestAdminBackendCreateUpdateAndListIncludeSub2APIAuthorization(t *testing.T) {
+func TestAdminBackendCreateUpdateAndListIncludeSub2APIConsoleMetadata(t *testing.T) {
 	application := newTestApp(t)
 
 	createReq := httptest.NewRequest(http.MethodPost, "/admin/api/backends", strings.NewReader(`{
@@ -2699,6 +2699,8 @@ func TestAdminBackendCreateUpdateAndListIncludeSub2APIAuthorization(t *testing.T
 		"api_key":"relay-key",
 		"console_url":"https://console.relay-sub2api.local",
 		"console_authorization":"Bearer create-sub2api-token",
+		"console_checkin_path":"/api/v1/checkin",
+		"channel_url":"/api/v1/channels",
 		"weight":1,
 		"models":["gpt-4o"]
 	}`))
@@ -2719,6 +2721,12 @@ func TestAdminBackendCreateUpdateAndListIncludeSub2APIAuthorization(t *testing.T
 	if created.ConsoleAuthorization != "Bearer create-sub2api-token" {
 		t.Fatalf("expected created console authorization, got %#v", created)
 	}
+	if created.ConsoleCheckinPath != "/api/v1/checkin" {
+		t.Fatalf("expected created console checkin path, got %#v", created)
+	}
+	if created.ChannelURL != "/api/v1/channels" {
+		t.Fatalf("expected created channel url, got %#v", created)
+	}
 
 	updateReq := httptest.NewRequest(http.MethodPut, "/admin/api/backends/"+strconv.FormatInt(created.ID, 10), strings.NewReader(`{
 		"name":"relay-sub2api",
@@ -2728,6 +2736,8 @@ func TestAdminBackendCreateUpdateAndListIncludeSub2APIAuthorization(t *testing.T
 		"api_key":"relay-key",
 		"console_url":"https://console.relay-sub2api-2.local",
 		"console_authorization":"Bearer update-sub2api-token",
+		"console_checkin_path":"/api/v1/daily-checkin",
+		"channel_url":"/api/v1/catalog",
 		"proxy_id":0,
 		"status":"normal",
 		"weight":1,
@@ -2755,6 +2765,8 @@ func TestAdminBackendCreateUpdateAndListIncludeSub2APIAuthorization(t *testing.T
 			BackendType          string `json:"backend_type"`
 			ConsoleURL           string `json:"console_url"`
 			ConsoleAuthorization string `json:"console_authorization"`
+			ConsoleCheckinPath   string `json:"console_checkin_path"`
+			ChannelURL           string `json:"channel_url"`
 		} `json:"items"`
 	}
 	if err := json.Unmarshal(listRecorder.Body.Bytes(), &payload); err != nil {
@@ -2767,7 +2779,7 @@ func TestAdminBackendCreateUpdateAndListIncludeSub2APIAuthorization(t *testing.T
 	if item.ID != created.ID || item.BackendType != domain.BackendTypeSub2API {
 		t.Fatalf("expected sub2api backend in list payload, got %#v", item)
 	}
-	if item.ConsoleURL != "https://console.relay-sub2api-2.local" || item.ConsoleAuthorization != "Bearer update-sub2api-token" {
+	if item.ConsoleURL != "https://console.relay-sub2api-2.local" || item.ConsoleAuthorization != "Bearer update-sub2api-token" || item.ConsoleCheckinPath != "/api/v1/daily-checkin" || item.ChannelURL != "/api/v1/catalog" {
 		t.Fatalf("expected updated sub2api console metadata in list payload, got %#v", item)
 	}
 
@@ -2775,8 +2787,199 @@ func TestAdminBackendCreateUpdateAndListIncludeSub2APIAuthorization(t *testing.T
 	if err != nil {
 		t.Fatalf("get updated backend: %v", err)
 	}
-	if updated.BackendType != domain.BackendTypeSub2API || updated.ConsoleAuthorization != "Bearer update-sub2api-token" {
-		t.Fatalf("expected stored sub2api authorization, got %#v", updated)
+	if updated.BackendType != domain.BackendTypeSub2API || updated.ConsoleAuthorization != "Bearer update-sub2api-token" || updated.ConsoleCheckinPath != "/api/v1/daily-checkin" || updated.ChannelURL != "/api/v1/catalog" {
+		t.Fatalf("expected stored sub2api console metadata, got %#v", updated)
+	}
+}
+
+func TestAdminBackendSub2APIConsoleSyncCheckinAndAccountSummary(t *testing.T) {
+	application := newTestApp(t)
+
+	var calls []string
+	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		if got := r.Header.Get("Authorization"); got != "Bearer sub2api-token" {
+			t.Fatalf("expected authorization header, got %q", got)
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+
+		switch r.URL.Path {
+		case "/api/v1/checkin":
+			if r.Method != http.MethodPost {
+				t.Fatalf("expected POST checkin, got %s", r.Method)
+			}
+			if strings.TrimSpace(string(body)) != "{}" {
+				t.Fatalf("expected checkin body {}, got %q", string(body))
+			}
+			return consoleJSONResponse(http.StatusOK, nil, `{"code":0,"message":"checked in","data":{"ok":true}}`), nil
+		case "/api/v1/auth/me":
+			if r.Method != http.MethodGet {
+				t.Fatalf("expected GET auth/me, got %s", r.Method)
+			}
+			if strings.TrimSpace(string(body)) != "" {
+				t.Fatalf("expected empty auth/me body, got %q", string(body))
+			}
+			return consoleJSONResponse(http.StatusOK, nil, `{"code":0,"message":"success","data":{"id":13870,"email":"linuxdo-420226@linuxdo-connect.invalid","username":"leon7","balance":2681.86526074}}`), nil
+		case "/api/v1/channels":
+			if r.Method != http.MethodGet {
+				t.Fatalf("expected GET channels, got %s", r.Method)
+			}
+			if strings.TrimSpace(string(body)) != "" {
+				t.Fatalf("expected empty channels body, got %q", string(body))
+			}
+			return consoleJSONResponse(http.StatusOK, nil, `{"code":0,"message":"success","data":[{"name":"GPT","platforms":[{"platform":"openai","groups":[{"id":2,"name":"GPT-Plus","rate_multiplier":0.07},{"id":8,"name":"GPT-Pro","rate_multiplier":0.19}],"supported_models":[{"name":"gpt-5.4","platform":"openai","pricing":{"billing_mode":"token","input_price":0.0000025,"output_price":0.000015}}]}]},{"name":"Claude","platforms":[{"platform":"anthropic","groups":[{"id":1,"name":"CC-MAX","rate_multiplier":1.1},{"id":16,"name":"Claude-逆向高缓存","rate_multiplier":0.2}],"supported_models":[{"name":"claude-sonnet-5","platform":"anthropic","pricing":{"billing_mode":"token","input_price":0.000002,"output_price":0.00001}}]}]}]}`), nil
+		default:
+			t.Fatalf("unexpected console path %s", r.URL.Path)
+		}
+		return nil, errors.New("unreachable console path")
+	})})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:                 "sub2api-sync",
+		Protocol:             domain.BackendProtocolOpenAI,
+		BackendType:          domain.BackendTypeSub2API,
+		BaseURL:              "https://sub2api.local/v1",
+		APIKey:               "backend-key",
+		ConsoleURL:           "https://console.local",
+		ConsoleAuthorization: "Bearer sub2api-token",
+		ConsoleCheckinPath:   "/api/v1/checkin",
+		ChannelURL:           "/api/v1/channels",
+		Models:               []string{"routed-model"},
+		Endpoints:            []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/sync", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected sync status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	if !reflect.DeepEqual(calls, []string{"POST /api/v1/checkin", "GET /api/v1/auth/me", "GET /api/v1/channels"}) {
+		t.Fatalf("unexpected console call sequence: %#v", calls)
+	}
+
+	updated, err := application.store.GetBackend(context.Background(), backend.ID)
+	if err != nil {
+		t.Fatalf("get updated backend: %v", err)
+	}
+	account := decodeJSONPayload(t, updated.ConsoleAccountJSON)
+	if account["id"] != float64(13870) || account["username"] != "leon7" || account["email"] != "linuxdo-420226@linuxdo-connect.invalid" || account["balance"] != 2681.86526074 {
+		t.Fatalf("expected saved sub2api account summary, got %#v", account)
+	}
+	if lastCheckinAt, ok := account["last_checkin_at"].(string); !ok || strings.TrimSpace(lastCheckinAt) == "" {
+		t.Fatalf("expected successful checkin timestamp, got %#v", account)
+	}
+	pricing := decodeJSONPayload(t, updated.ConsolePricingJSON)
+	data, ok := pricing["data"].([]any)
+	if !ok || len(data) != 2 {
+		t.Fatalf("expected saved channel pricing payload, got %#v", pricing)
+	}
+
+	var response struct {
+		Checkin  map[string]any `json:"checkin"`
+		Account  map[string]any `json:"account"`
+		Pricing  map[string]any `json:"pricing"`
+		Requests []struct {
+			Method string `json:"method"`
+			Path   string `json:"path"`
+		} `json:"requests"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("unmarshal sync response: %v", err)
+	}
+	if response.Account["username"] != "leon7" || response.Checkin["code"] != float64(0) {
+		t.Fatalf("expected sync response account/checkin payloads, got %#v", response)
+	}
+	if response.Pricing["code"] != float64(0) {
+		t.Fatalf("expected sync response pricing payload, got %#v", response)
+	}
+	if len(response.Requests) != 3 {
+		t.Fatalf("expected sync request logs, got %#v", response.Requests)
+	}
+}
+
+func TestAdminBackendNewAPIConsoleCheckinUsesConfiguredProxy(t *testing.T) {
+	application := newTestApp(t)
+	t.Setenv("HTTP_PROXY", "")
+	t.Setenv("HTTPS_PROXY", "")
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("http_proxy", "")
+	t.Setenv("https_proxy", "")
+	t.Setenv("no_proxy", "")
+
+	createdProxy := createTestProxy(t, application, domain.SocksProxy{
+		Name:    "broken-console-proxy",
+		Address: "127.0.0.1:1",
+		Enabled: true,
+	})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:               "new-api-checkin-proxy",
+		Protocol:           domain.BackendProtocolOpenAI,
+		BackendType:        domain.BackendTypeNewAPI,
+		BaseURL:            "https://new-api.local/v1",
+		APIKey:             "backend-key",
+		ConsoleURL:         "http://console-target.invalid",
+		ConsoleCookie:      "session=valid",
+		ConsoleAccountJSON: `{"id":1929}`,
+		ProxyID:            createdProxy.ID,
+		Models:             []string{"routed-model"},
+		Endpoints:          []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/checkin", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("expected proxy dial failure status 502, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "127.0.0.1:1") {
+		t.Fatalf("expected error to mention configured proxy address, got body=%s", recorder.Body.String())
+	}
+}
+
+func TestAdminBackendSub2APIConsoleSyncUsesConfiguredProxy(t *testing.T) {
+	application := newTestApp(t)
+	t.Setenv("HTTP_PROXY", "")
+	t.Setenv("HTTPS_PROXY", "")
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("http_proxy", "")
+	t.Setenv("https_proxy", "")
+	t.Setenv("no_proxy", "")
+
+	createdProxy := createTestProxy(t, application, domain.SocksProxy{
+		Name:    "broken-sub2api-console-proxy",
+		Address: "127.0.0.1:1",
+		Enabled: true,
+	})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:                 "sub2api-sync-proxy",
+		Protocol:             domain.BackendProtocolOpenAI,
+		BackendType:          domain.BackendTypeSub2API,
+		BaseURL:              "https://sub2api.local/v1",
+		APIKey:               "backend-key",
+		ConsoleURL:           "http://console-target.invalid",
+		ConsoleAuthorization: "Bearer sub2api-token",
+		ConsoleCheckinPath:   "/api/v1/checkin",
+		ProxyID:              createdProxy.ID,
+		Models:               []string{"routed-model"},
+		Endpoints:            []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/sync", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("expected proxy dial failure status 502, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "127.0.0.1:1") {
+		t.Fatalf("expected error to mention configured proxy address, got body=%s", recorder.Body.String())
 	}
 }
 

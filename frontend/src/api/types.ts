@@ -20,6 +20,8 @@ export interface Backend {
   console_username?: string
   console_password?: string
   console_authorization?: string
+  console_checkin_path?: string
+  channel_url?: string
   console_cookie?: string
   console_account_json?: string
   console_pricing_json?: string
@@ -266,6 +268,8 @@ export interface CreateBackendRequest {
   api_key: string
   console_url?: string
   console_authorization?: string
+  console_checkin_path?: string
+  channel_url?: string
   console_cookie?: string
   console_user_id?: string
   tags?: string[]
@@ -291,6 +295,8 @@ export interface BackendImportExportItem {
   api_key: string
   console_url?: string
   console_authorization?: string
+  console_checkin_path?: string
+  channel_url?: string
   console_cookie?: string
   console_account_json?: string
   console_pricing_json?: string

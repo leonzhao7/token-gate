@@ -124,6 +124,141 @@ test('formats billing expression standard tier prices before model ratio fallbac
   ])
 })
 
+test('formats sub2api channel payload rows using minimum group multiplier', async () => {
+  const { pricingModelRows } = await loadModule()
+  const pricing = JSON.stringify({
+    code: 0,
+    message: 'success',
+    data: [
+      {
+        name: 'Claude',
+        platforms: [
+          {
+            platform: 'anthropic',
+            groups: [
+              { id: 1, name: 'CC-MAX', rate_multiplier: 1.1 },
+              { id: 16, name: 'Claude-逆向高缓存', rate_multiplier: 0.2 },
+            ],
+            supported_models: [
+              {
+                name: 'claude-sonnet-5',
+                platform: 'anthropic',
+                pricing: {
+                  billing_mode: 'token',
+                  input_price: 0.000002,
+                  output_price: 0.00001,
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: 'GPT',
+        platforms: [
+          {
+            platform: 'openai',
+            groups: [
+              { id: 2, name: 'GPT-Plus', rate_multiplier: 0.07 },
+              { id: 8, name: 'GPT-Pro', rate_multiplier: 0.19 },
+            ],
+            supported_models: [
+              {
+                name: 'gpt-5.4',
+                platform: 'openai',
+                pricing: {
+                  billing_mode: 'token',
+                  input_price: 0.0000025,
+                  output_price: 0.000015,
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  })
+
+  assert.deepEqual(pricingModelRows(pricing, ''), [
+    {
+      model: 'claude-sonnet-5',
+      price: 'Input: 0.4 / 1M; Output: 2 / 1M',
+      group: 'CC-MAX, Claude-逆向高缓存',
+    },
+    {
+      model: 'gpt-5.4',
+      price: 'Input: 0.175 / 1M; Output: 1.05 / 1M',
+      group: 'GPT-Plus, GPT-Pro',
+    },
+  ])
+})
+
+test('keeps duplicate sub2api channel models when groups differ across channels', async () => {
+  const { pricingModelRows } = await loadModule()
+  const pricing = JSON.stringify({
+    code: 0,
+    message: 'success',
+    data: [
+      {
+        name: 'DC渠道',
+        platforms: [
+          {
+            platform: 'openai',
+            groups: [
+              { id: 7, name: 'DC 渠道', rate_multiplier: 0.2 },
+            ],
+            supported_models: [
+              {
+                name: 'gpt-5.4',
+                pricing: {
+                  billing_mode: 'token',
+                  input_price: 0.0000025,
+                  output_price: 0.000015,
+                },
+              },
+            ],
+          },
+        ],
+      },
+      {
+        name: '本站渠道',
+        platforms: [
+          {
+            platform: 'openai',
+            groups: [
+              { id: 8, name: 'gpt pro 福利分组', rate_multiplier: 0.3 },
+              { id: 5, name: '赞助组', rate_multiplier: 1 },
+            ],
+            supported_models: [
+              {
+                name: 'gpt-5.4',
+                pricing: {
+                  billing_mode: 'token',
+                  input_price: 0.0000025,
+                  output_price: 0.000015,
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  })
+
+  assert.deepEqual(pricingModelRows(pricing, ''), [
+    {
+      model: 'gpt-5.4',
+      price: 'Input: 0.5 / 1M; Output: 3 / 1M',
+      group: 'DC 渠道',
+    },
+    {
+      model: 'gpt-5.4',
+      price: 'Input: 0.75 / 1M; Output: 4.5 / 1M',
+      group: 'gpt pro 福利分组, 赞助组',
+    },
+  ])
+})
+
 test('formats console quota fields using custom currency metadata', async () => {
   const { consoleAccountRows } = await loadModule()
   const account = JSON.stringify({
