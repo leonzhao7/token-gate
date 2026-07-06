@@ -85,18 +85,6 @@
                       <span class="detail-label">User Agent:</span>
                       <span class="detail-value">{{ log.user_agent || 'N/A' }}</span>
                     </div>
-                    <div class="detail-item">
-                      <span class="detail-label">Input Tokens:</span>
-                      <span class="detail-value">{{ formatTokenCount(log.input_tokens) }}</span>
-                    </div>
-                    <div class="detail-item">
-                      <span class="detail-label">Cache Tokens:</span>
-                      <span class="detail-value">{{ formatTokenCount(log.input_cache_tokens) }}</span>
-                    </div>
-                    <div class="detail-item">
-                      <span class="detail-label">Output Tokens:</span>
-                      <span class="detail-value">{{ formatTokenCount(log.output_tokens) }}</span>
-                    </div>
                     <div v-if="log.error_message" class="detail-item full-width">
                       <span class="detail-label">Error:</span>
                       <span class="detail-value error-message">{{ log.error_message }}</span>
