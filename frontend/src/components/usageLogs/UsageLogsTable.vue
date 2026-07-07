@@ -78,6 +78,10 @@
                       <code class="detail-value">{{ log.request_id }}</code>
                     </div>
                     <div class="detail-item">
+                      <span class="detail-label">Path:</span>
+                      <code class="detail-value detail-code">{{ log.path || 'N/A' }}</code>
+                    </div>
+                    <div class="detail-item">
                       <span class="detail-label">IP Address:</span>
                       <span class="detail-value">{{ log.client_ip || log.ip_address }}</span>
                     </div>
@@ -323,6 +327,11 @@ const formatTokenCount = (value?: number): string => {
 .detail-value {
   font-size: 14px;
   color: var(--text-primary);
+}
+
+.detail-code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  overflow-wrap: anywhere;
 }
 
 .detail-value.error-message {

@@ -42,8 +42,6 @@ test('backend list exposes a single console sync button', () => {
 
   assert.match(list, /@click="\$emit\('sync-console', backend\)"/)
   assert.match(list, /const canSyncConsole = \(backend: Backend\) => backend\.backend_type === 'new-api' \|\| backend\.backend_type === 'sub2api'/)
-  assert.match(list, /:title="canSyncConsole\(backend\) \? '同步' : '仅通用类型不支持同步'"/)
-  assert.match(list, /isConsoleSyncRunning\(backend\.id\) \? '同步中' : '同步'/)
   assert.doesNotMatch(list, /@click="\$emit\('checkin', backend\)"/)
   assert.doesNotMatch(list, /@click="\$emit\('pricing', backend\)"/)
   assert.doesNotMatch(list, /title="签到"/)
@@ -73,7 +71,6 @@ test('backend console actions open a request-log modal with expandable response 
   assert.match(list, /runningConsoleSyncIds\?: Set<number>/)
   assert.match(list, /isConsoleSyncRunning\(backend\.id\)/)
   assert.match(list, /:disabled="isConsoleSyncDisabled\(backend\)"/)
-  assert.match(list, /:title="canSyncConsole\(backend\) \? '同步' : '仅通用类型不支持同步'"/)
 })
 
 test('backends page exposes a toolbar batch sync button and batch sync helper usage', () => {

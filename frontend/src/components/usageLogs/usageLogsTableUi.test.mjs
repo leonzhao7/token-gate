@@ -16,6 +16,7 @@ test('usage logs expanded details do not render token counts', () => {
   assert.doesNotMatch(table, /<span class="detail-label">Cache Tokens:<\/span>/)
   assert.doesNotMatch(table, /<span class="detail-label">Output Tokens:<\/span>/)
   assert.match(table, /<span class="detail-label">Request ID:<\/span>/)
+  assert.match(table, /<span class="detail-label">Path:<\/span>/)
   assert.match(table, /<span class="detail-label">IP Address:<\/span>/)
   assert.match(table, /<span class="detail-label">User Agent:<\/span>/)
 })
