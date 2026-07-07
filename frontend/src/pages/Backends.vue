@@ -40,13 +40,16 @@
             </select>
           </div>
           <Button variant="secondary" size="sm" :loading="exporting" @click="exportBackends">
+            <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M480-480ZM202-65l-56-57 118-118h-90v-80h226v226h-80v-89L202-65Zm278-15v-80h240v-440H520v-200H240v400h-80v-400q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H480Z"/></svg>
             Export
           </Button>
           <Button variant="secondary" size="sm" :loading="importing" @click="openImportPicker">
+            <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v240h-80v-200H520v-200H240v640h360v80H240Zm638 15L760-183v89h-80v-226h226v80h-90l118 118-56 57Zm-638-95v-640 640Z"/></svg>
             Import
           </Button>
           <Button variant="secondary" size="sm"  @click="showCreateModal = true">
-            ➕ Add
+            <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/></svg>
+            Add
           </Button>
           <Button
             variant="secondary"
@@ -55,10 +58,12 @@
             :disabled="!syncableBackends.length"
             @click="handleSyncAllBackends"
           >
+            <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M280-120 80-320l200-200 57 56-104 104h607v80H233l104 104-57 56Zm400-320-57-56 104-104H120v-80h607L623-784l57-56 200 200-200 200Z"/></svg>
             同步
           </Button>
           <Button variant="secondary" size="sm" @click="refreshBackends" :loading="loading">
-            🔄 Refresh
+            <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"/></svg>
+            Refresh
           </Button>
           <input
             ref="importFileInput"
@@ -161,6 +166,7 @@
               <span>{{ consoleRequestLogRows.length }} requests</span>
             </div>
             <Button variant="ghost" size="sm" @click="clearConsoleRequestLogRows">
+              <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M120-280v-80h560v80H120Zm80-160v-80h560v80H200Zm80-160v-80h560v80H280Z"/></svg>
               Clear
             </Button>
           </div>
