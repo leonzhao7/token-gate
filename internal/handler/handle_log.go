@@ -371,7 +371,13 @@ func normalizedTokenUsageFromPayload(payload map[string]any) normalizedTokenUsag
 
 func normalizeProviderUsage(usage map[string]any) normalizedTokenUsage {
 	inputTokens := int64Value(usage["input_tokens"])
+	if inputTokens == 0 {
+		inputTokens = int64Value(usage["prompt_tokens"])
+	}
 	outputTokens := int64Value(usage["output_tokens"])
+	if outputTokens == 0 {
+		outputTokens = int64Value(usage["completion_tokens"])
+	}
 	if looksLikeAnthropicUsage(usage) {
 		cacheTokens := anthropicCacheTokens(usage)
 		return normalizedTokenUsage{
@@ -380,10 +386,14 @@ func normalizeProviderUsage(usage map[string]any) normalizedTokenUsage {
 			InputCacheTokens: cacheTokens,
 		}
 	}
+	cacheTokens := int64Value(usageObject(usage["input_tokens_details"])["cached_tokens"])
+	if cacheTokens == 0 {
+		cacheTokens = int64Value(usageObject(usage["prompt_tokens_details"])["cached_tokens"])
+	}
 	return normalizedTokenUsage{
 		InputTokens:      inputTokens,
 		OutputTokens:     outputTokens,
-		InputCacheTokens: int64Value(usageObject(usage["input_tokens_details"])["cached_tokens"]),
+		InputCacheTokens: cacheTokens,
 	}
 }
 

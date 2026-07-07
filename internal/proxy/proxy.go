@@ -104,6 +104,9 @@ func (s *Service) DoWithPath(ctx context.Context, incoming *http.Request, backen
 	request.Header.Del("X-Api-Key")
 	request.Header.Del("Host")
 	request.Header.Del("Content-Length")
+	// Upstream compression breaks response rewriting and usage extraction because
+	// the gateway inspects response bodies before streaming them back to clients.
+	request.Header.Del("Accept-Encoding")
 	sanitizeBackendHeaders(request.Header, backend, upstreamPath)
 	applyBackendAuth(request.Header, backend, upstreamPath)
 

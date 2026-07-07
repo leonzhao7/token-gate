@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -1326,6 +1327,103 @@ func TestUsageLogsRecordAnthropicResponseTokenUsage(t *testing.T) {
 	}
 	if logs[0].InputTokens != 85803 || logs[0].OutputTokens != 389 || logs[0].InputCacheTokens != 76256 {
 		t.Fatalf("unexpected anthropic token usage: %#v", logs[0])
+	}
+}
+
+func TestProxyDoesNotForwardAcceptEncodingToUpstream(t *testing.T) {
+	const requestBody = `{"model":"claude-opus-4-8","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}`
+
+	application := newTestApp(t)
+	client := createTestClient(t, application, "compressed-upstream-client")
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "compressed-upstream-backend",
+		Protocol:  domain.BackendProtocolAnthropic,
+		BaseURL:   "https://anthropic.local/root/v1",
+		APIKey:    "backend-anthropic-key",
+		Weight:    1,
+		Models:    []string{"claude-opus-4-8"},
+		Endpoints: []string{domain.EndpointMessages},
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.responseBodyByName[backend.Name] = `{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-4-8","content":[{"type":"text","text":"hello from anthropic"}],"usage":{"input_tokens":31581,"output_tokens":1382,"cache_read_input_tokens":87779},"stop_reason":"tool_use"}`
+	fixture.compressResponseByName[backend.Name] = "gzip"
+	fixture.responseHeadersByName[backend.Name] = http.Header{
+		"Content-Type": {"text/plain; charset=utf-8"},
+	}
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(requestBody))
+	req.Header.Set("X-Api-Key", client.Token)
+	req.Header.Set("Anthropic-Version", "2023-06-01")
+	req.Header.Set("Accept-Encoding", "gzip")
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%q", recorder.Code, recorder.Body.Bytes())
+	}
+
+	records := fixture.recordsSnapshot()
+	if len(records) != 1 {
+		t.Fatalf("expected one upstream attempt, got %d: %#v", len(records), records)
+	}
+	if records[0].acceptEncoding != "" {
+		t.Fatalf("expected proxy to strip Accept-Encoding for upstream request, got %q", records[0].acceptEncoding)
+	}
+	if contentEncoding := recorder.Header().Get("Content-Encoding"); contentEncoding != "" {
+		t.Fatalf("expected plain downstream response without content-encoding, got %q", contentEncoding)
+	}
+
+	logs, err := application.store.ListUsageLogsPage(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatalf("list usage logs: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected one usage log, got %d", len(logs))
+	}
+	if logs[0].InputTokens != 119360 || logs[0].OutputTokens != 1382 || logs[0].InputCacheTokens != 87779 {
+		t.Fatalf("unexpected compressed-response token usage: %#v", logs[0])
+	}
+}
+
+func TestUsageLogsRecordChatCompletionsTokenUsage(t *testing.T) {
+	const requestBody = `{"model":"deepseek-v4-pro","temperature":0.1,"max_tokens":256,"stream":false,"messages":[{"role":"user","content":"hello"}]}`
+
+	application := newTestApp(t)
+	client := createTestClient(t, application, "chat-completions-usage-client")
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "chat-completions-usage-backend",
+		Protocol:  domain.BackendProtocolOpenAI,
+		BaseURL:   "https://openai.local/root/v1",
+		APIKey:    "backend-openai-key",
+		Weight:    1,
+		Models:    []string{"deepseek-v4-pro"},
+		Endpoints: []string{domain.EndpointChat},
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.responseBodyByName[backend.Name] = `{"id":"chatcmpl-1","object":"chat.completion","created":1783418195,"model":"deepseek-v4-pro","choices":[{"index":0,"message":{"role":"assistant","content":"{\"profile\":\"java-21\",\"springBootVersion\":\"3.2.0\"}"},"finish_reason":"stop"}],"usage":{"prompt_tokens":242,"total_tokens":817,"completion_tokens":575,"prompt_tokens_details":{"cached_tokens":19},"completion_tokens_details":{"reasoning_tokens":553}}}`
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	logs, err := application.store.ListUsageLogsPage(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatalf("list usage logs: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected one usage log, got %d", len(logs))
+	}
+	if logs[0].InputTokens != 242 || logs[0].OutputTokens != 575 || logs[0].InputCacheTokens != 19 {
+		t.Fatalf("unexpected chat completions token usage: %#v", logs[0])
 	}
 }
 
@@ -6169,30 +6267,33 @@ type upstreamRecord struct {
 	authorization    string
 	xAPIKey          string
 	anthropicVersion string
+	acceptEncoding   string
 	trace            string
 	connection       string
 	body             string
 }
 
 type failoverFixture struct {
-	t                     *testing.T
-	mu                    sync.Mutex
-	hostToName            map[string]string
-	statusByName          map[string]int
-	responseHeadersByName map[string]http.Header
-	responseBodyByName    map[string]string
-	records               []upstreamRecord
+	t                      *testing.T
+	mu                     sync.Mutex
+	hostToName             map[string]string
+	statusByName           map[string]int
+	compressResponseByName map[string]string
+	responseHeadersByName  map[string]http.Header
+	responseBodyByName     map[string]string
+	records                []upstreamRecord
 }
 
 func newFailoverFixture(t *testing.T, backends []domain.Backend) *failoverFixture {
 	t.Helper()
 
 	fixture := &failoverFixture{
-		t:                     t,
-		hostToName:            make(map[string]string),
-		statusByName:          make(map[string]int),
-		responseHeadersByName: make(map[string]http.Header),
-		responseBodyByName:    make(map[string]string),
+		t:                      t,
+		hostToName:             make(map[string]string),
+		statusByName:           make(map[string]int),
+		compressResponseByName: make(map[string]string),
+		responseHeadersByName:  make(map[string]http.Header),
+		responseBodyByName:     make(map[string]string),
 	}
 	for _, backend := range backends {
 		parsed, err := url.Parse(backend.BaseURL)
@@ -6226,6 +6327,7 @@ func (f *failoverFixture) RoundTrip(req *http.Request) (*http.Response, error) {
 		authorization:    req.Header.Get("Authorization"),
 		xAPIKey:          req.Header.Get("X-Api-Key"),
 		anthropicVersion: req.Header.Get("Anthropic-Version"),
+		acceptEncoding:   req.Header.Get("Accept-Encoding"),
 		trace:            req.Header.Get("X-Trace"),
 		connection:       req.Header.Get("Connection"),
 		body:             string(body),
@@ -6235,13 +6337,26 @@ func (f *failoverFixture) RoundTrip(req *http.Request) (*http.Response, error) {
 	if status == 0 {
 		status = http.StatusOK
 	}
-	bodyText := f.responseBodyByName[name]
-	if bodyText == "" {
-		bodyText = `{"backend":"` + name + `"}`
+	bodyBytes := []byte(f.responseBodyByName[name])
+	if len(bodyBytes) == 0 {
+		bodyBytes = []byte(`{"backend":"` + name + `"}`)
 	}
 	header := http.Header{
 		"Content-Type": {"application/json"},
 		"X-Upstream":   {name},
+	}
+	if encoding := f.compressResponseByName[name]; encoding == "gzip" && strings.Contains(req.Header.Get("Accept-Encoding"), "gzip") {
+		var compressed bytes.Buffer
+		zw := gzip.NewWriter(&compressed)
+		if _, err := zw.Write(bodyBytes); err != nil {
+			f.t.Fatalf("gzip response body: %v", err)
+		}
+		if err := zw.Close(); err != nil {
+			f.t.Fatalf("close gzip response body: %v", err)
+		}
+		bodyBytes = compressed.Bytes()
+		header.Set("Content-Encoding", "gzip")
+		header.Set("Vary", "Accept-Encoding")
 	}
 	for key, values := range f.responseHeadersByName[name] {
 		cloned := make([]string, len(values))
@@ -6252,7 +6367,7 @@ func (f *failoverFixture) RoundTrip(req *http.Request) (*http.Response, error) {
 		StatusCode: status,
 		Status:     http.StatusText(status),
 		Header:     header,
-		Body:       io.NopCloser(strings.NewReader(bodyText)),
+		Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
 		Request:    req,
 	}, nil
 }
