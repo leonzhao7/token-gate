@@ -6,6 +6,11 @@ import type {
   ListResponse
 } from './types'
 
+interface ClientKeyMutationResponse {
+  client: ClientKey
+  issued_token: string
+}
+
 export const clientKeysApi = {
   // List client keys
   async list(): Promise<ListResponse<ClientKey>> {
@@ -21,14 +26,14 @@ export const clientKeysApi = {
 
   // Create client key
   async create(clientKey: CreateClientKeyRequest): Promise<ClientKey> {
-    const { data } = await apiClient.post<ClientKey>('/client-keys', clientKey)
-    return data
+    const { data } = await apiClient.post<ClientKeyMutationResponse | ClientKey>('/client-keys', clientKey)
+    return 'client' in data ? data.client : data
   },
 
   // Update client key
   async update(id: number, clientKey: UpdateClientKeyRequest): Promise<ClientKey> {
-    const { data } = await apiClient.put<ClientKey>(`/client-keys/${id}`, clientKey)
-    return data
+    const { data } = await apiClient.put<ClientKeyMutationResponse | ClientKey>(`/client-keys/${id}`, clientKey)
+    return 'client' in data ? data.client : data
   },
 
   // Delete client key
