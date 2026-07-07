@@ -3522,7 +3522,7 @@ func TestAdminBackendNewAPIConsoleSyncSavesStatusAccountAndFilteredPricing(t *te
 			if r.Method != http.MethodGet {
 				t.Fatalf("expected GET status, got %s", r.Method)
 			}
-			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"custom_currency_exchange_rate":10,"custom_currency_symbol":"硬币","quota_display_type":"CUSTOM","quota_per_unit":500000,"system_name":"relay"}}`), nil
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"checkin_enabled":true,"custom_currency_exchange_rate":10,"custom_currency_symbol":"硬币","quota_display_type":"CUSTOM","quota_per_unit":500000,"system_name":"relay"}}`), nil
 		case "/api/user/self":
 			if r.Method != http.MethodGet {
 				t.Fatalf("expected GET self, got %s", r.Method)
@@ -3635,7 +3635,7 @@ func TestAdminBackendNewAPIConsoleSyncStreamsRequestLogs(t *testing.T) {
 	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		switch r.URL.Path {
 		case "/api/status":
-			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"custom_currency_exchange_rate":1,"custom_currency_symbol":"$","quota_display_type":"USD","quota_per_unit":500000}}`), nil
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"checkin_enabled":true,"custom_currency_exchange_rate":1,"custom_currency_symbol":"$","quota_display_type":"USD","quota_per_unit":500000}}`), nil
 		case "/api/user/checkin":
 			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"message":"checked in"}`), nil
 		case "/api/user/self":
@@ -3707,7 +3707,7 @@ func TestAdminBackendNewAPIConsoleSyncSkipsCheckinWhenAlreadyCheckedInToday(t *t
 		calls = append(calls, r.Method+" "+r.URL.Path)
 		switch r.URL.Path {
 		case "/api/status":
-			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"custom_currency_exchange_rate":10,"custom_currency_symbol":"硬币","quota_per_unit":500000}}`), nil
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"checkin_enabled":true,"custom_currency_exchange_rate":10,"custom_currency_symbol":"硬币","quota_per_unit":500000}}`), nil
 		case "/api/user/self":
 			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"username":"tom","id":1929,"quota":200,"used_quota":50}}`), nil
 		case "/api/user/checkin":
@@ -3762,7 +3762,7 @@ func TestAdminBackendNewAPIConsoleSyncMigratesLegacyCheckinTimeAndSkipsCheckin(t
 		calls = append(calls, r.Method+" "+r.URL.Path)
 		switch r.URL.Path {
 		case "/api/status":
-			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"custom_currency_exchange_rate":10,"custom_currency_symbol":"硬币","quota_per_unit":500000}}`), nil
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"checkin_enabled":true,"custom_currency_exchange_rate":10,"custom_currency_symbol":"硬币","quota_per_unit":500000}}`), nil
 		case "/api/user/self":
 			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"username":"tom","id":1929,"quota":200,"used_quota":50}}`), nil
 		case "/api/user/checkin":
@@ -3824,7 +3824,7 @@ func TestAdminBackendNewAPIConsoleSyncTreatsAlreadyCheckedInAsToday(t *testing.T
 		calls = append(calls, r.Method+" "+r.URL.Path)
 		switch r.URL.Path {
 		case "/api/status":
-			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"custom_currency_exchange_rate":10,"custom_currency_symbol":"硬币","quota_per_unit":500000}}`), nil
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"checkin_enabled":true,"custom_currency_exchange_rate":10,"custom_currency_symbol":"硬币","quota_per_unit":500000}}`), nil
 		case "/api/user/self":
 			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"username":"tom","id":1929,"quota":200,"used_quota":50}}`), nil
 		case "/api/user/checkin":
@@ -3869,13 +3869,139 @@ func TestAdminBackendNewAPIConsoleSyncTreatsAlreadyCheckedInAsToday(t *testing.T
 	}
 }
 
+func TestAdminBackendNewAPIConsoleSyncSkipsCheckinWhenStatusDoesNotEnableIt(t *testing.T) {
+	application := newTestApp(t)
+
+	var calls []string
+	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		switch r.URL.Path {
+		case "/api/status":
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"custom_currency_exchange_rate":10,"custom_currency_symbol":"硬币","quota_per_unit":500000}}`), nil
+		case "/api/user/self":
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"username":"tom","id":1929,"quota":200,"used_quota":50}}`), nil
+		case "/api/user/checkin":
+			t.Fatalf("checkin should be skipped when status does not enable it")
+		case "/api/pricing":
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":[{"model_name":"gpt-5.4","model_ratio":2}]}`), nil
+		default:
+			t.Fatalf("unexpected console path %s", r.URL.Path)
+		}
+		return nil, errors.New("unreachable console path")
+	})})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:          "new-api-sync-status-no-checkin",
+		Protocol:      domain.BackendProtocolOpenAI,
+		BackendType:   domain.BackendTypeNewAPI,
+		BaseURL:       "https://new-api.local/v1",
+		APIKey:        "backend-key",
+		ConsoleURL:    "https://console.local",
+		ConsoleCookie: "session=valid",
+		Models:        []string{"routed-model"},
+		Endpoints:     []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/sync", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected sync status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !reflect.DeepEqual(calls, []string{"GET /api/status", "GET /api/user/self", "GET /api/pricing"}) {
+		t.Fatalf("unexpected console call sequence: %#v", calls)
+	}
+
+	updated, err := application.store.GetBackend(context.Background(), backend.ID)
+	if err != nil {
+		t.Fatalf("get updated backend: %v", err)
+	}
+	account := decodeJSONPayload(t, updated.ConsoleAccountJSON)
+	if lastCheckinAt, ok := account["last_checkin_at"].(string); !ok || strings.TrimSpace(lastCheckinAt) == "" {
+		t.Fatalf("expected unsupported checkin flow to save sync completion time, got %#v", account)
+	}
+}
+
+func TestAdminBackendSub2APIConsoleSyncWithoutCheckinPathSavesCompletionTime(t *testing.T) {
+	application := newTestApp(t)
+
+	var calls []string
+	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		if got := r.Header.Get("Authorization"); got != "Bearer sub2api-token" {
+			t.Fatalf("expected authorization header, got %q", got)
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+
+		switch r.URL.Path {
+		case "/api/v1/auth/me":
+			if r.Method != http.MethodGet {
+				t.Fatalf("expected GET auth/me, got %s", r.Method)
+			}
+			if strings.TrimSpace(string(body)) != "" {
+				t.Fatalf("expected empty auth/me body, got %q", string(body))
+			}
+			return consoleJSONResponse(http.StatusOK, nil, `{"code":0,"message":"success","data":{"id":13870,"email":"linuxdo-420226@linuxdo-connect.invalid","username":"leon7","balance":2681.86526074}}`), nil
+		case "/api/v1/channels":
+			if r.Method != http.MethodGet {
+				t.Fatalf("expected GET channels, got %s", r.Method)
+			}
+			if strings.TrimSpace(string(body)) != "" {
+				t.Fatalf("expected empty channels body, got %q", string(body))
+			}
+			return consoleJSONResponse(http.StatusOK, nil, `{"code":0,"message":"success","data":[{"name":"GPT","platforms":[{"platform":"openai","groups":[{"id":2,"name":"GPT-Plus","rate_multiplier":0.07}],"supported_models":[{"name":"gpt-5.4","platform":"openai","pricing":{"billing_mode":"token","input_price":0.0000025,"output_price":0.000015}}]}]}]}`), nil
+		case "/api/v1/checkin":
+			t.Fatalf("checkin should be skipped when console_checkin_path is not configured")
+		default:
+			t.Fatalf("unexpected console path %s", r.URL.Path)
+		}
+		return nil, errors.New("unreachable console path")
+	})})
+
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:                 "sub2api-sync-no-checkin-path",
+		Protocol:             domain.BackendProtocolOpenAI,
+		BackendType:          domain.BackendTypeSub2API,
+		BaseURL:              "https://sub2api.local/v1",
+		APIKey:               "backend-key",
+		ConsoleURL:           "https://console.local",
+		ConsoleAuthorization: "Bearer sub2api-token",
+		ChannelURL:           "/api/v1/channels",
+		Models:               []string{"routed-model"},
+		Endpoints:            []string{domain.EndpointChat},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/sync", nil)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected sync status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if !reflect.DeepEqual(calls, []string{"GET /api/v1/auth/me", "GET /api/v1/channels"}) {
+		t.Fatalf("unexpected console call sequence: %#v", calls)
+	}
+
+	updated, err := application.store.GetBackend(context.Background(), backend.ID)
+	if err != nil {
+		t.Fatalf("get updated backend: %v", err)
+	}
+	account := decodeJSONPayload(t, updated.ConsoleAccountJSON)
+	if lastCheckinAt, ok := account["last_checkin_at"].(string); !ok || strings.TrimSpace(lastCheckinAt) == "" {
+		t.Fatalf("expected sync completion time without checkin path, got %#v", account)
+	}
+}
+
 func TestAdminBackendNewAPIConsoleSyncSavesAccountBeforePricing(t *testing.T) {
 	application := newTestApp(t)
 
 	application.backendHandler.SetConsoleHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
 		switch r.URL.Path {
 		case "/api/status":
-			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"custom_currency_exchange_rate":10,"custom_currency_symbol":"硬币","quota_per_unit":500000}}`), nil
+			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"checkin_enabled":true,"custom_currency_exchange_rate":10,"custom_currency_symbol":"硬币","quota_per_unit":500000}}`), nil
 		case "/api/user/self":
 			return consoleJSONResponse(http.StatusOK, nil, `{"success":true,"data":{"username":"tom","id":1929,"quota":200,"used_quota":50}}`), nil
 		case "/api/user/checkin":

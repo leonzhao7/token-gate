@@ -704,10 +704,12 @@ func (h *BackendHandler) handleNewAPIConsoleSync(w http.ResponseWriter, r *http.
 	}
 
 	lastCheckinAt, checkedInToday := consoleLastCheckinStatus(backend, time.Now().UTC())
+	checkinEnabled := newAPIStatusCheckinEnabled(statusResult.Payload)
+	recordSyncCompletionAsCheckin := !checkinEnabled
 	accountID := consoleStoredAccountID(backend)
 	var selfResult newAPIConsoleResult
 	var checkinPayload map[string]any
-	if checkedInToday {
+	if checkedInToday || !checkinEnabled {
 		selfResult, backend, accountID, err = h.newAPIConsoleSelfWithLogin(r.Context(), backend, accountID, recorder)
 		if err != nil {
 			writeConsoleSyncError(w, http.StatusBadGateway, err.Error(), recorder, stream)
@@ -768,6 +770,15 @@ func (h *BackendHandler) handleNewAPIConsoleSync(w http.ResponseWriter, r *http.
 		writeConsoleSyncError(w, http.StatusBadGateway, err.Error(), recorder, stream)
 		return
 	}
+	if recordSyncCompletionAsCheckin && lastCheckinAt.IsZero() {
+		lastCheckinAt = time.Now().UTC()
+		accountJSON, err = consoleAccountSummaryJSON(selfResult.Payload, statusResult.Payload, lastCheckinAt)
+		if err != nil {
+			writeConsoleSyncError(w, http.StatusBadGateway, err.Error(), recorder, stream)
+			return
+		}
+		backend.ConsoleAccountJSON = accountJSON
+	}
 	backend.ConsolePricingJSON = string(pricingJSON)
 
 	updated, err := h.store.UpdateBackend(r.Context(), backend)
@@ -797,6 +808,7 @@ func (h *BackendHandler) handleSub2APIConsoleSync(w http.ResponseWriter, r *http
 		lastCheckinAt  time.Time
 		pricingPayload map[string]any
 	)
+	recordSyncCompletionAsCheckin := normalizeConsoleAPIPath(backend.ConsoleCheckinPath) == ""
 	if checkinPath := normalizeConsoleAPIPath(backend.ConsoleCheckinPath); checkinPath != "" {
 		checkinResult, err := h.doSub2APIConsoleJSON(r.Context(), backend, http.MethodPost, checkinPath, []byte("{}"), recorder)
 		if err != nil {
@@ -845,6 +857,15 @@ func (h *BackendHandler) handleSub2APIConsoleSync(w http.ResponseWriter, r *http
 			return
 		}
 		backend.ConsolePricingJSON = string(pricingJSON)
+	}
+	if recordSyncCompletionAsCheckin && lastCheckinAt.IsZero() {
+		lastCheckinAt = time.Now().UTC()
+		accountJSON, err = sub2APIConsoleAccountSummaryJSON(accountResult.Payload, backend.ConsoleAccountJSON, lastCheckinAt)
+		if err != nil {
+			writeConsoleSyncError(w, http.StatusBadGateway, err.Error(), recorder, stream)
+			return
+		}
+		backend.ConsoleAccountJSON = accountJSON
 	}
 
 	updated, err := h.store.UpdateBackend(r.Context(), backend)
@@ -1855,6 +1876,15 @@ func (r newAPIConsoleResult) errorMessage(fallback string) string {
 		return message
 	}
 	return fallback
+}
+
+func newAPIStatusCheckinEnabled(statusPayload map[string]any) bool {
+	statusData, ok := statusPayload["data"].(map[string]any)
+	if !ok {
+		return false
+	}
+	enabled, ok := statusData["checkin_enabled"].(bool)
+	return ok && enabled
 }
 
 func (r sub2APIConsoleResult) success() bool {
