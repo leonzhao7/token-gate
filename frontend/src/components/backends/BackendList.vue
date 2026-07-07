@@ -16,10 +16,8 @@
       <!-- Table Header -->
       <div class="table-header">
         <div class="col col-name">Name</div>
-        <div class="col col-status">Status</div>
         <div class="col col-server-url">Server URL</div>
         <div class="col col-models">Models</div>
-        <div class="col col-checkin">Sync</div>
         <div class="col col-weight">Weight</div>
         <div class="col col-latency">Latency</div>
         <div class="col col-actions">Actions</div>
@@ -41,17 +39,8 @@
                 <span class="name-text">{{ backend.name }}</span>
               </div>
             </div>
-            <div class="col col-status" @click.stop>
-              <StatusBadge
-                :variant="getStatusVariant(backend.status)"
-                :label="backend.status"
-                class="clickable-badge"
-                :title="`Click to ${getNextStatus(backend.status) === 'disabled' ? 'disable' : 'enable'}`"
-                @click="$emit('toggle-status', backend)"
-              />
-            </div>
-            <div class="col col-server-url">
-              <span v-if="backend.console_url" class="server-url-text" :title="backend.console_url">{{ shortenUrl(backend.console_url) }}</span>
+            <div class="col col-server-url" @click.stop>
+              <a v-if="backend.console_url" class="server-url-link" :href="backend.console_url" target="_blank" rel="noopener noreferrer" :title="backend.console_url">{{ shortenUrl(backend.console_url) }}</a>
               <span v-else class="text-muted">—</span>
             </div>
             <div class="col col-models">
@@ -59,15 +48,6 @@
                 <span class="models-preview-names">{{ formatModelsPreview(backend.models) }}</span>
                 <span v-if="backend.models.length > 2" class="models-more">+{{ backend.models.length - 2 }}</span>
               </span>
-              <span v-else class="text-muted">—</span>
-            </div>
-            <div class="col col-checkin" @click.stop>
-              <button v-if="isCheckedInToday(backend)" class="checkin-badge checkin-done" title="已同步 — 点击重新同步" :disabled="isConsoleSyncDisabled(backend)" @click="$emit('sync-console', backend)">
-                <svg xmlns="http://www.w3.org/2000/svg" height="14px" viewBox="0 -960 960 960" width="14px" fill="currentColor"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/></svg>
-              </button>
-              <button v-else-if="hasCheckinInfo(backend)" class="checkin-badge checkin-missed" title="未同步 — 点击同步" :disabled="isConsoleSyncDisabled(backend)" @click="$emit('sync-console', backend)">
-                <svg xmlns="http://www.w3.org/2000/svg" height="14px" viewBox="0 -960 960 960" width="14px" fill="currentColor"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>
-              </button>
               <span v-else class="text-muted">—</span>
             </div>
             <div class="col col-weight">
@@ -79,6 +59,27 @@
               </span>
             </div>
             <div class="col col-actions" @click.stop>
+              <button
+                class="action-btn action-status-btn"
+                :class="`status-${backend.status}`"
+                :title="`Status: ${backend.status} — Click to ${getNextStatus(backend.status) === 'disabled' ? 'disable' : 'enable'}`"
+                @click="$emit('toggle-status', backend)"
+              >
+                <svg v-if="backend.status === 'normal'" xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424Z"/></svg>
+                <svg v-else-if="backend.status === 'abnormal'" xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M382-240 154-468l57-57 171 171 367-367 57 57-424 424ZM578.5-98Q520-156 520-240q0-83 58.5-141.5T720-440q83 0 141.5 58.5T920-240q0 84-58.5 142T720-40q-83 0-141.5-58ZM720-120q8 0 14-6t6-14q0-8-6-14t-14-6q-8 0-14 6t-6 14q0 8 6 14t14 6Zm-20-80h40v-160h-40v160Z"/></svg>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M324-111.5Q251-143 197-197t-85.5-127Q80-397 80-480t31.5-156Q143-709 197-763t127-85.5Q397-880 480-880t156 31.5Q709-817 763-763t85.5 127Q880-563 880-480t-31.5 156Q817-251 763-197t-127 85.5Q563-80 480-80t-156-31.5ZM480-160q54 0 104-17.5t92-50.5L228-676q-33 42-50.5 92T160-480q0 134 93 227t227 93Zm252-124q33-42 50.5-92T800-480q0-134-93-227t-227-93q-54 0-104 17.5T284-732l448 448ZM480-480Z"/></svg>
+              </button>
+              <button
+                class="action-btn action-sync-btn"
+                :class="{ 'is-running': isConsoleSyncRunning(backend.id) }"
+                :disabled="isConsoleSyncDisabled(backend)"
+                :title="canSyncConsole(backend) ? 'Sync' : '仅通用类型不支持同步'"
+                @click="$emit('sync-console', backend)"
+              >
+                <span v-if="isConsoleSyncRunning(backend.id)" class="action-spinner"></span>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M280-120 80-320l200-200 57 56-104 104h607v80H233l104 104-57 56Zm400-320-57-56 104-104H120v-80h607L623-784l57-56 200 200-200 200Z"/></svg>
+                <span v-if="hasCheckinInfo(backend) && !isCheckedInToday(backend)" class="sync-dot sync-dot-done"></span>
+              </button>
               <button
                 class="action-btn"
                 title="Edit"
@@ -275,7 +276,6 @@
 
 <script setup lang="ts">
 import { ref, watch, reactive } from 'vue'
-import StatusBadge from '@/components/ui/StatusBadge.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import Button from '@/components/ui/Button.vue'
 import type { Backend } from '@/api'
@@ -312,19 +312,6 @@ const isConsoleSyncDisabled = (backend: Backend) => !canSyncConsole(backend) || 
 
 const toggleExpand = (id: number) => {
   expandedId.value = expandedId.value === id ? null : id
-}
-
-const getStatusVariant = (status: string): 'success' | 'warning' | 'danger' | 'info' | 'default' => {
-  switch (status) {
-    case 'normal':
-      return 'success'
-    case 'abnormal':
-      return 'warning'
-    case 'disabled':
-      return 'default'
-    default:
-      return 'default'
-  }
 }
 
 const getNextStatus = (status: string): string => {
@@ -491,12 +478,8 @@ const hasCheckinInfo = (backend: Backend): boolean => {
 }
 
 .col-name {
-  flex: 1.5;
-  min-width: 150px;
-}
-
-.col-status {
-  flex: 0 0 100px;
+  flex: 1;
+  min-width: 120px;
 }
 
 .col-server-url {
@@ -506,14 +489,9 @@ const hasCheckinInfo = (backend: Backend): boolean => {
 }
 
 .col-models {
-  flex: 1.2;
-  min-width: 120px;
+  flex: 1.8;
+  min-width: 150px;
   overflow: hidden;
-}
-
-.col-checkin {
-  flex: 0 0 60px;
-  text-align: center;
 }
 
 .col-weight {
@@ -570,6 +548,7 @@ const hasCheckinInfo = (backend: Backend): boolean => {
   padding: var(--spacing-md) var(--spacing-lg);
   cursor: pointer;
   user-select: none;
+  font-size: 14px;
 }
 
 .name-cell {
@@ -585,18 +564,24 @@ const hasCheckinInfo = (backend: Backend): boolean => {
 }
 
 .name-text {
+  font-size: 17px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.server-url-text {
-  font-size: 13px;
-  color: var(--text-secondary);
+.server-url-link {
+  color: var(--accent-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   display: block;
+  text-decoration: none;
+}
+
+.server-url-link:hover {
+  text-decoration: underline;
+  color: var(--accent-hover);
 }
 
 .models-preview {
@@ -607,7 +592,6 @@ const hasCheckinInfo = (backend: Backend): boolean => {
 }
 
 .models-preview-names {
-  font-size: 13px;
   color: var(--text-secondary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: nowrap;
@@ -625,43 +609,9 @@ const hasCheckinInfo = (backend: Backend): boolean => {
   padding: 1px 4px;
 }
 
-.checkin-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-full);
-  font-size: 12px;
-  font-weight: 700;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  transition: transform 150ms ease;
-}
-
-.checkin-badge:hover:not(:disabled) {
-  transform: scale(1.15);
-}
-
-.checkin-badge:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.checkin-done {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-}
-
-.checkin-missed {
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
-}
 
 .text-muted {
   color: var(--text-tertiary);
-  font-size: 12px;
 }
 
 .weight-value {
@@ -679,18 +629,20 @@ const hasCheckinInfo = (backend: Backend): boolean => {
 }
 
 
-.clickable-badge {
-  cursor: pointer;
-  transition: opacity 150ms ease, transform 150ms ease;
+.action-status-btn {
+  color: var(--text-tertiary);
 }
 
-.clickable-badge:hover {
-  opacity: 0.8;
-  transform: scale(1.05);
+.action-status-btn.status-normal {
+  color: #059669;
 }
 
-.clickable-badge:active {
-  transform: scale(0.95);
+.action-status-btn.status-abnormal {
+  color: #f59e0b;
+}
+
+.action-status-btn.status-disabled {
+  color: var(--text-tertiary);
 }
 
 .action-btn {
@@ -717,6 +669,27 @@ const hasCheckinInfo = (backend: Backend): boolean => {
   cursor: not-allowed;
   opacity: 0.65;
   transform: none;
+}
+
+.action-sync-btn {
+  position: relative;
+}
+
+.sync-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.sync-dot-done {
+  background: #10b981;
+}
+
+.sync-dot-missed {
+  background: #f59e0b;
 }
 
 .text-action-btn {
@@ -821,7 +794,7 @@ const hasCheckinInfo = (backend: Backend): boolean => {
 }
 
 .card-title {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
 }
@@ -832,7 +805,7 @@ const hasCheckinInfo = (backend: Backend): boolean => {
   background: var(--bg-base);
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-tertiary);
 }
@@ -850,7 +823,7 @@ const hasCheckinInfo = (backend: Backend): boolean => {
 
 .card-sub-header {
   padding: 6px 12px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-tertiary);
   text-transform: uppercase;
@@ -876,7 +849,7 @@ const hasCheckinInfo = (backend: Backend): boolean => {
 .kv-label {
   color: var(--text-tertiary);
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .kv-value {
@@ -888,7 +861,7 @@ const hasCheckinInfo = (backend: Backend): boolean => {
 
 .kv-value.mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .kv-value.selectable {
@@ -905,7 +878,7 @@ const hasCheckinInfo = (backend: Backend): boolean => {
 .kv-link {
   color: var(--accent-primary);
   text-decoration: none;
-  font-size: 11px;
+  font-size: 12px;
   text-align: right;
   word-break: break-all;
 }
@@ -931,7 +904,7 @@ const hasCheckinInfo = (backend: Backend): boolean => {
   align-items: center;
   gap: 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .mapping-client { color: var(--text-primary); }
@@ -986,7 +959,7 @@ const hasCheckinInfo = (backend: Backend): boolean => {
 }
 
 .stat-value {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.2;
@@ -1075,12 +1048,6 @@ const hasCheckinInfo = (backend: Backend): boolean => {
 @media (max-width: 1400px) {
   .details-top {
     grid-template-columns: 1fr 1fr;
-  }
-}
-
-@media (max-width: 1200px) {
-  .col-checkin {
-    display: none;
   }
 }
 
