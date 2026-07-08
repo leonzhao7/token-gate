@@ -1,7 +1,9 @@
 package app
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httptrace"
@@ -188,6 +190,95 @@ func TestUsageLogRecordsUpstreamErrorBodyOnFailoverAttempt(t *testing.T) {
 	}
 	if !strings.Contains(failedAttempt.ResponseBodyPreview, "alpha rate limited") {
 		t.Fatalf("expected failed attempt to store upstream error body, got %#v", failedAttempt)
+	}
+}
+
+func TestProxyLogsDebugResponseWhenSuccessfulResponseHasZeroTokens(t *testing.T) {
+	const (
+		clientToken   = "zero-token-debug-client-secret"
+		requestBody   = `{"model":"gpt-4o","input":"hello"}`
+		zeroTokenBody = `{"id":"resp_1","object":"response","model":"gpt-4o","output":[]}`
+	)
+
+	var logs bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+	})
+
+	application := newTestApp(t)
+	client := createTestClient(t, application, clientToken)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "zero-token-alpha",
+		BaseURL:   "https://zero-token-alpha.local/root/v1",
+		APIKey:    "alpha-key",
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointResponses},
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.responseBodyByName[backend.Name] = zeroTokenBody
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected proxy request to succeed, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	output := logs.String()
+	if !strings.Contains(output, "backend_response_zero_tokens") {
+		t.Fatalf("expected zero-token debug log, got:\n%s", output)
+	}
+	if !strings.Contains(output, "response_body_preview") || !strings.Contains(output, "resp_1") {
+		t.Fatalf("expected zero-token debug log to include response preview, got:\n%s", output)
+	}
+}
+
+func TestProxyDoesNotLogDebugResponseWhenSuccessfulResponseHasTokens(t *testing.T) {
+	const (
+		clientToken  = "non-zero-token-debug-client-secret"
+		requestBody  = `{"model":"gpt-4o","input":"hello"}`
+		responseBody = `{"id":"resp_1","object":"response","model":"gpt-4o","output":[],"usage":{"input_tokens":5,"output_tokens":3}}`
+	)
+
+	var logs bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+	})
+
+	application := newTestApp(t)
+	client := createTestClient(t, application, clientToken)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "non-zero-token-alpha",
+		BaseURL:   "https://non-zero-token-alpha.local/root/v1",
+		APIKey:    "alpha-key",
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointResponses},
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.responseBodyByName[backend.Name] = responseBody
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected proxy request to succeed, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if strings.Contains(logs.String(), "backend_response_zero_tokens") {
+		t.Fatalf("did not expect zero-token debug log for response with usage, got:\n%s", logs.String())
 	}
 }
 

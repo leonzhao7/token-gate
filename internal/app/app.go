@@ -580,6 +580,20 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		}
 		resp = bufferedResp
 		handler.ApplyResponseLogFields(&usageLog, resp, responseBody, responseBytes, responsePreview, truncated)
+		if resp.StatusCode == http.StatusOK && usageLog.InputTokens+usageLog.OutputTokens+usageLog.InputCacheTokens == 0 {
+			a.logEvent(r.Context(), slog.LevelDebug, "backend_response_zero_tokens", append(append(clientAttrs(client),
+				backendAttemptAttrs(backend, attempt)...),
+				slog.String("endpoint", endpoint),
+				slog.String("model", model),
+				slog.Int("status", resp.StatusCode),
+				slog.String("content_type", resp.Header.Get("Content-Type")),
+				slog.Int64("response_bytes", usageLog.ResponseBytes),
+				slog.String("response_headers_json", usageLog.ResponseHeadersJSON),
+				slog.String("response_body_preview", usageLog.ResponseBodyPreview),
+				slog.Bool("preview_truncated", usageLog.PreviewTruncated),
+				slog.Bool("is_stream", usageLog.IsStream),
+			)...)
+		}
 
 		a.logEvent(r.Context(), slog.LevelInfo, "backend_response_selected", append(append(clientAttrs(client),
 			backendAttemptAttrs(backend, attempt)...),
