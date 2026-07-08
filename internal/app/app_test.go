@@ -4925,6 +4925,88 @@ func TestUsageLogPersistsAfterClientWriteFailure(t *testing.T) {
 	}
 }
 
+func TestProxyStopsFailoverWhenClientContextIsCanceled(t *testing.T) {
+	const requestBody = `{"model":"claude-opus-4-8","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}`
+
+	application := newTestApp(t)
+	client := createTestClient(t, application, "cancel-client")
+	backends := []domain.Backend{
+		createTestBackend(t, application, domain.Backend{
+			Name:      "alpha",
+			Protocol:  domain.BackendProtocolAnthropic,
+			BaseURL:   "https://alpha.local/v1",
+			APIKey:    "alpha-key",
+			Weight:    2,
+			Models:    []string{"claude-opus-4-8"},
+			Endpoints: []string{domain.EndpointMessages},
+		}),
+		createTestBackend(t, application, domain.Backend{
+			Name:      "beta",
+			Protocol:  domain.BackendProtocolAnthropic,
+			BaseURL:   "https://beta.local/v1",
+			APIKey:    "beta-key",
+			Weight:    1,
+			Models:    []string{"claude-opus-4-8"},
+			Endpoints: []string{domain.EndpointMessages},
+		}),
+	}
+
+	fixture := newFailoverFixture(t, backends)
+	fixture.responseBodyByName[backends[0].Name] = `{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-4-8","content":[{"type":"text","text":"hello from alpha"}],"usage":{"input_tokens":10,"output_tokens":2},"stop_reason":"end_turn"}`
+	fixture.cancelResponseReadByName[backends[0].Name] = true
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages?beta=true", strings.NewReader(requestBody))
+	req.Header.Set("X-Api-Key", client.Token)
+	req.Header.Set("Anthropic-Version", "2023-06-01")
+	ctx, cancel := context.WithCancel(req.Context())
+	ctx = context.WithValue(ctx, cancelRequestContextKey{}, cancel)
+	req = req.WithContext(ctx)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != 499 {
+		t.Fatalf("expected canceled request status 499, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	records := fixture.recordsSnapshot()
+	if len(records) != 1 {
+		t.Fatalf("expected only one upstream attempt after cancellation, got %d: %#v", len(records), records)
+	}
+	if records[0].backendName != backends[0].Name {
+		t.Fatalf("expected only backend %q to be attempted, got %#v", backends[0].Name, records)
+	}
+
+	logs, err := application.store.ListUsageLogsPage(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatalf("list usage logs: %v", err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("expected one final usage log after cancellation, got %d", len(logs))
+	}
+	if logs[0].StatusCode != 499 || logs[0].StatusFamily != "4xx" {
+		t.Fatalf("expected canceled usage log status 499/4xx, got %#v", logs[0])
+	}
+	if !strings.Contains(logs[0].ErrorMessage, context.Canceled.Error()) {
+		t.Fatalf("expected canceled usage log error, got %#v", logs[0])
+	}
+
+	alpha, err := application.store.GetBackend(context.Background(), backends[0].ID)
+	if err != nil {
+		t.Fatalf("get alpha backend: %v", err)
+	}
+	if alpha.ConsecutiveFailures != 0 || alpha.Status != domain.BackendStatusNormal {
+		t.Fatalf("expected cancellation to preserve alpha backend health, got %#v", alpha)
+	}
+	beta, err := application.store.GetBackend(context.Background(), backends[1].ID)
+	if err != nil {
+		t.Fatalf("get beta backend: %v", err)
+	}
+	if beta.ConsecutiveFailures != 0 || beta.Status != domain.BackendStatusNormal {
+		t.Fatalf("expected cancellation to preserve beta backend health, got %#v", beta)
+	}
+}
+
 func TestUsageLogsRejectInvalidStatusFilter(t *testing.T) {
 	application := newTestApp(t)
 	ctx := context.Background()
@@ -6394,27 +6476,31 @@ type upstreamRecord struct {
 	body             string
 }
 
+type cancelRequestContextKey struct{}
+
 type failoverFixture struct {
-	t                      *testing.T
-	mu                     sync.Mutex
-	hostToName             map[string]string
-	statusByName           map[string]int
-	compressResponseByName map[string]string
-	responseHeadersByName  map[string]http.Header
-	responseBodyByName     map[string]string
-	records                []upstreamRecord
+	t                        *testing.T
+	mu                       sync.Mutex
+	hostToName               map[string]string
+	statusByName             map[string]int
+	cancelResponseReadByName map[string]bool
+	compressResponseByName   map[string]string
+	responseHeadersByName    map[string]http.Header
+	responseBodyByName       map[string]string
+	records                  []upstreamRecord
 }
 
 func newFailoverFixture(t *testing.T, backends []domain.Backend) *failoverFixture {
 	t.Helper()
 
 	fixture := &failoverFixture{
-		t:                      t,
-		hostToName:             make(map[string]string),
-		statusByName:           make(map[string]int),
-		compressResponseByName: make(map[string]string),
-		responseHeadersByName:  make(map[string]http.Header),
-		responseBodyByName:     make(map[string]string),
+		t:                        t,
+		hostToName:               make(map[string]string),
+		statusByName:             make(map[string]int),
+		cancelResponseReadByName: make(map[string]bool),
+		compressResponseByName:   make(map[string]string),
+		responseHeadersByName:    make(map[string]http.Header),
+		responseBodyByName:       make(map[string]string),
 	}
 	for _, backend := range backends {
 		parsed, err := url.Parse(backend.BaseURL)
@@ -6476,11 +6562,16 @@ func (f *failoverFixture) RoundTrip(req *http.Request) (*http.Response, error) {
 		copy(cloned, values)
 		header[key] = cloned
 	}
+	respBody := io.NopCloser(bytes.NewReader(bodyBytes))
+	if f.cancelResponseReadByName[name] {
+		cancel, _ := req.Context().Value(cancelRequestContextKey{}).(context.CancelFunc)
+		respBody = &cancelOnReadBody{cancel: cancel}
+	}
 	return &http.Response{
 		StatusCode: status,
 		Status:     http.StatusText(status),
 		Header:     header,
-		Body:       io.NopCloser(bytes.NewReader(bodyBytes)),
+		Body:       respBody,
 		Request:    req,
 	}, nil
 }
@@ -6538,6 +6629,26 @@ func compressFixtureBody(t *testing.T, body []byte, encoding string) []byte {
 		t.Fatalf("unsupported test compression encoding %q", encoding)
 	}
 	return compressed.Bytes()
+}
+
+type cancelOnReadBody struct {
+	cancel context.CancelFunc
+	done   bool
+}
+
+func (b *cancelOnReadBody) Read(_ []byte) (int, error) {
+	if !b.done {
+		b.done = true
+		if b.cancel != nil {
+			b.cancel()
+		}
+		return 0, context.Canceled
+	}
+	return 0, io.EOF
+}
+
+func (b *cancelOnReadBody) Close() error {
+	return nil
 }
 
 func newTestApp(t *testing.T) *App {

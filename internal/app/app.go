@@ -352,6 +352,10 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 	selection, err := a.scheduler.SelectBackend(r.Context(), endpoint, model)
 	if err != nil {
+		if requestContextCanceled(r.Context(), err) {
+			a.finishCanceledProxyRequest(w, r, &usageLog, client, endpoint, model, nil, 0, err)
+			return
+		}
 		usageLog.StatusCode = http.StatusServiceUnavailable
 		usageLog.StatusFamily = handler.StatusFamily(http.StatusServiceUnavailable)
 		usageLog.ErrorMessage = err.Error()
@@ -376,6 +380,10 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 	for index, backend := range selection.Candidates {
 		attempt := index + 1
+		if err := r.Context().Err(); requestContextCanceled(r.Context(), err) {
+			a.finishCanceledProxyRequest(w, r, &usageLog, client, endpoint, model, &backend, attempt, err)
+			return
+		}
 		usageLog.Attempts = attempt
 		usageLog.BackendID = backend.ID
 		usageLog.BackendName = backend.Name
@@ -447,6 +455,10 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 
 		resp, err := a.proxy.DoWithPath(a.withBackendTrace(r.Context(), backend, attempt), r, backend, exchange.RequestBody, exchange.UpstreamPath)
 		if err != nil {
+			if requestContextCanceled(r.Context(), err) {
+				a.finishCanceledProxyRequest(w, r, &usageLog, client, endpoint, model, &backend, attempt, err)
+				return
+			}
 			_ = a.scheduler.MarkFailure(r.Context(), backend.ID, err)
 			lastErr = err
 			usageLog.StatusCode = http.StatusServiceUnavailable
@@ -477,6 +489,10 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		}
 		resp, err = decodeUpstreamResponse(resp)
 		if err != nil {
+			if requestContextCanceled(r.Context(), err) {
+				a.finishCanceledProxyRequest(w, r, &usageLog, client, endpoint, model, &backend, attempt, err)
+				return
+			}
 			_ = a.scheduler.MarkFailure(r.Context(), backend.ID, err)
 			lastErr = err
 			usageLog.StatusCode = http.StatusServiceUnavailable
@@ -590,6 +606,10 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := r.Context().Err(); requestContextCanceled(r.Context(), err) {
+		a.finishCanceledProxyRequest(w, r, &usageLog, client, endpoint, model, nil, 0, err)
+		return
+	}
 	if lastErr != nil {
 		if usageLog.StatusCode == 0 {
 			usageLog.StatusCode = http.StatusServiceUnavailable
@@ -615,6 +635,31 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		slog.String("error", "all candidate backends failed"),
 	)...)
 	writeError(w, http.StatusServiceUnavailable, "no backend available")
+}
+
+func requestContextCanceled(ctx context.Context, err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled)
+}
+
+func (a *App) finishCanceledProxyRequest(w http.ResponseWriter, r *http.Request, usageLog *domain.UsageLog, client domain.ClientKey, endpoint, model string, backend *domain.Backend, attempt int, err error) {
+	usageLog.StatusCode = 499
+	usageLog.StatusFamily = handler.StatusFamily(499)
+	if err != nil {
+		usageLog.ErrorMessage = err.Error()
+	} else {
+		usageLog.ErrorMessage = context.Canceled.Error()
+	}
+
+	attrs := append(clientAttrs(client),
+		slog.String("endpoint", endpoint),
+		slog.String("model", model),
+		slog.String("error", usageLog.ErrorMessage),
+	)
+	if backend != nil && attempt > 0 {
+		attrs = append(attrs, backendAttemptAttrs(*backend, attempt)...)
+	}
+	a.logEvent(r.Context(), slog.LevelInfo, "proxy_request_canceled", attrs...)
+	w.WriteHeader(499)
 }
 
 func (a *App) handleSearch(w http.ResponseWriter, r *http.Request) {
