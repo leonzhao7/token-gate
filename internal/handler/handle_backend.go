@@ -770,7 +770,7 @@ func (h *BackendHandler) handleNewAPIConsoleSync(w http.ResponseWriter, r *http.
 		writeConsoleSyncError(w, http.StatusBadGateway, err.Error(), recorder, stream)
 		return
 	}
-	if recordSyncCompletionAsCheckin && lastCheckinAt.IsZero() {
+	if recordSyncCompletionAsCheckin {
 		lastCheckinAt = time.Now().UTC()
 		accountJSON, err = consoleAccountSummaryJSON(selfResult.Payload, statusResult.Payload, lastCheckinAt)
 		if err != nil {
@@ -858,7 +858,7 @@ func (h *BackendHandler) handleSub2APIConsoleSync(w http.ResponseWriter, r *http
 		}
 		backend.ConsolePricingJSON = string(pricingJSON)
 	}
-	if recordSyncCompletionAsCheckin && lastCheckinAt.IsZero() {
+	if recordSyncCompletionAsCheckin {
 		lastCheckinAt = time.Now().UTC()
 		accountJSON, err = sub2APIConsoleAccountSummaryJSON(accountResult.Payload, backend.ConsoleAccountJSON, lastCheckinAt)
 		if err != nil {
