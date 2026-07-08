@@ -475,6 +475,26 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 			}
 			break
 		}
+		resp, err = decodeUpstreamResponse(resp)
+		if err != nil {
+			_ = a.scheduler.MarkFailure(r.Context(), backend.ID, err)
+			lastErr = err
+			usageLog.StatusCode = http.StatusServiceUnavailable
+			usageLog.StatusFamily = handler.StatusFamily(http.StatusServiceUnavailable)
+			usageLog.ErrorMessage = "decode response failed: " + err.Error()
+			a.logEvent(r.Context(), slog.LevelWarn, "backend_response_decode_failed", append(append(clientAttrs(client),
+				backendAttemptAttrs(backend, attempt)...),
+				slog.String("endpoint", endpoint),
+				slog.String("model", model),
+				slog.String("error", err.Error()),
+				slog.Bool("will_failover", index < len(selection.Candidates)-1),
+			)...)
+			if index < len(selection.Candidates)-1 {
+				a.usageLogHandler.AppendAttemptUsageLog(r.Context(), usageLog, startedAt)
+				continue
+			}
+			break
+		}
 
 		if resp.StatusCode/100 != 2 {
 			usageLog.StatusCode = resp.StatusCode

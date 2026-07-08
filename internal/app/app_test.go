@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"compress/gzip"
+	"compress/zlib"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/andybalholm/brotli"
+	"github.com/klauspost/compress/zstd"
 
 	"token-gate/internal/domain"
 	"token-gate/internal/proxy"
@@ -1330,60 +1334,77 @@ func TestUsageLogsRecordAnthropicResponseTokenUsage(t *testing.T) {
 	}
 }
 
-func TestProxyDoesNotForwardAcceptEncodingToUpstream(t *testing.T) {
+func TestProxyForwardsAcceptEncodingAndDecodesCompressedJSONResponses(t *testing.T) {
 	const requestBody = `{"model":"claude-opus-4-8","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}`
 
-	application := newTestApp(t)
-	client := createTestClient(t, application, "compressed-upstream-client")
-	backend := createTestBackend(t, application, domain.Backend{
-		Name:      "compressed-upstream-backend",
-		Protocol:  domain.BackendProtocolAnthropic,
-		BaseURL:   "https://anthropic.local/root/v1",
-		APIKey:    "backend-anthropic-key",
-		Weight:    1,
-		Models:    []string{"claude-opus-4-8"},
-		Endpoints: []string{domain.EndpointMessages},
-	})
-
-	fixture := newFailoverFixture(t, []domain.Backend{backend})
-	fixture.responseBodyByName[backend.Name] = `{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-4-8","content":[{"type":"text","text":"hello from anthropic"}],"usage":{"input_tokens":31581,"output_tokens":1382,"cache_read_input_tokens":87779},"stop_reason":"tool_use"}`
-	fixture.compressResponseByName[backend.Name] = "gzip"
-	fixture.responseHeadersByName[backend.Name] = http.Header{
-		"Content-Type": {"text/plain; charset=utf-8"},
-	}
-	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(requestBody))
-	req.Header.Set("X-Api-Key", client.Token)
-	req.Header.Set("Anthropic-Version", "2023-06-01")
-	req.Header.Set("Accept-Encoding", "gzip")
-	recorder := httptest.NewRecorder()
-	application.Handler().ServeHTTP(recorder, req)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d body=%q", recorder.Code, recorder.Body.Bytes())
+	tests := []struct {
+		name     string
+		encoding string
+	}{
+		{name: "gzip", encoding: "gzip"},
+		{name: "deflate", encoding: "deflate"},
+		{name: "brotli", encoding: "br"},
+		{name: "zstd", encoding: "zstd"},
 	}
 
-	records := fixture.recordsSnapshot()
-	if len(records) != 1 {
-		t.Fatalf("expected one upstream attempt, got %d: %#v", len(records), records)
-	}
-	if records[0].acceptEncoding != "" {
-		t.Fatalf("expected proxy to strip Accept-Encoding for upstream request, got %q", records[0].acceptEncoding)
-	}
-	if contentEncoding := recorder.Header().Get("Content-Encoding"); contentEncoding != "" {
-		t.Fatalf("expected plain downstream response without content-encoding, got %q", contentEncoding)
-	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			application := newTestApp(t)
+			client := createTestClient(t, application, "compressed-upstream-client-"+tc.encoding)
+			backend := createTestBackend(t, application, domain.Backend{
+				Name:      "compressed-upstream-backend-" + tc.encoding,
+				Protocol:  domain.BackendProtocolAnthropic,
+				BaseURL:   "https://anthropic.local/root/v1",
+				APIKey:    "backend-anthropic-key",
+				Weight:    1,
+				Models:    []string{"claude-opus-4-8"},
+				Endpoints: []string{domain.EndpointMessages},
+			})
 
-	logs, err := application.store.ListUsageLogsPage(context.Background(), 10, 0)
-	if err != nil {
-		t.Fatalf("list usage logs: %v", err)
-	}
-	if len(logs) != 1 {
-		t.Fatalf("expected one usage log, got %d", len(logs))
-	}
-	if logs[0].InputTokens != 119360 || logs[0].OutputTokens != 1382 || logs[0].InputCacheTokens != 87779 {
-		t.Fatalf("unexpected compressed-response token usage: %#v", logs[0])
+			fixture := newFailoverFixture(t, []domain.Backend{backend})
+			fixture.responseBodyByName[backend.Name] = `{"id":"msg_1","type":"message","role":"assistant","model":"claude-opus-4-8","content":[{"type":"text","text":"hello from anthropic"}],"usage":{"input_tokens":31581,"output_tokens":1382,"cache_read_input_tokens":87779},"stop_reason":"tool_use"}`
+			fixture.compressResponseByName[backend.Name] = tc.encoding
+			fixture.responseHeadersByName[backend.Name] = http.Header{
+				"Content-Type": {"application/json"},
+			}
+			application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+			req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(requestBody))
+			req.Header.Set("X-Api-Key", client.Token)
+			req.Header.Set("Anthropic-Version", "2023-06-01")
+			req.Header.Set("Accept-Encoding", tc.encoding)
+			recorder := httptest.NewRecorder()
+			application.Handler().ServeHTTP(recorder, req)
+
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("expected status 200, got %d body=%q", recorder.Code, recorder.Body.Bytes())
+			}
+
+			records := fixture.recordsSnapshot()
+			if len(records) != 1 {
+				t.Fatalf("expected one upstream attempt, got %d: %#v", len(records), records)
+			}
+			if records[0].acceptEncoding != tc.encoding {
+				t.Fatalf("expected upstream Accept-Encoding %q, got %q", tc.encoding, records[0].acceptEncoding)
+			}
+			if contentEncoding := recorder.Header().Get("Content-Encoding"); contentEncoding != "" {
+				t.Fatalf("expected decoded downstream response without content-encoding, got %q", contentEncoding)
+			}
+			if recorder.Body.String() != fixture.responseBodyByName[backend.Name] {
+				t.Fatalf("expected decoded downstream response body %q, got %q", fixture.responseBodyByName[backend.Name], recorder.Body.String())
+			}
+
+			logs, err := application.store.ListUsageLogsPage(context.Background(), 10, 0)
+			if err != nil {
+				t.Fatalf("list usage logs: %v", err)
+			}
+			if len(logs) != 1 {
+				t.Fatalf("expected one usage log, got %d", len(logs))
+			}
+			if logs[0].InputTokens != 119360 || logs[0].OutputTokens != 1382 || logs[0].InputCacheTokens != 87779 {
+				t.Fatalf("unexpected compressed-response token usage: %#v", logs[0])
+			}
+		})
 	}
 }
 
@@ -1482,6 +1503,106 @@ func TestUsageLogsRecordOpenAIStreamingResponseTokenUsage(t *testing.T) {
 	}
 	if logs[0].InputTokens != 18908 || logs[0].OutputTokens != 217 || logs[0].InputCacheTokens != 16256 {
 		t.Fatalf("unexpected openai streaming token usage: %#v", logs[0])
+	}
+}
+
+func TestProxyDecodesCompressedStreamingResponses(t *testing.T) {
+	const (
+		requestBody  = `{"model":"claude-opus-4-6","max_tokens":16,"stream":true,"messages":[{"role":"user","content":"hello"}]}`
+		responseBody = "" +
+			"event: response.created\n" +
+			"data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"model\":\"gpt-5.4\",\"status\":\"in_progress\",\"output\":[],\"usage\":{\"input_tokens\":18908,\"output_tokens\":0}}}\n\n" +
+			"event: response.output_item.added\n" +
+			"data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"msg_1\",\"status\":\"in_progress\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n" +
+			"event: response.content_part.added\n" +
+			"data: {\"type\":\"response.content_part.added\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[]}}\n\n" +
+			"event: response.output_text.delta\n" +
+			"data: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_1\",\"output_index\":0,\"content_index\":0,\"delta\":\"hello from openai\"}\n\n" +
+			"event: response.completed\n" +
+			"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"model\":\"gpt-5.4\",\"status\":\"completed\",\"output\":[{\"id\":\"msg_1\",\"status\":\"completed\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"hello from openai\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":18908,\"input_tokens_details\":{\"cached_tokens\":16256},\"output_tokens\":217,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":19125},\"stop_reason\":\"end_turn\"}}\n\n"
+		expectedBody = "" +
+			"event: message_start\n" +
+			"data: {\"message\":{\"content\":[],\"id\":\"resp_1\",\"model\":\"gpt-5.4\",\"role\":\"assistant\",\"stop_reason\":null,\"stop_sequence\":null,\"type\":\"message\",\"usage\":{\"input_tokens\":18908,\"output_tokens\":0}},\"type\":\"message_start\"}\n\n" +
+			"event: content_block_start\n" +
+			"data: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\n" +
+			"event: content_block_delta\n" +
+			"data: {\"delta\":{\"text\":\"hello from openai\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\n" +
+			"event: content_block_stop\n" +
+			"data: {\"index\":0,\"type\":\"content_block_stop\"}\n\n" +
+			"event: message_delta\n" +
+			"data: {\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"type\":\"message_delta\",\"usage\":{\"input_tokens\":18908,\"input_tokens_details\":{\"cached_tokens\":16256},\"output_tokens\":217,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":19125}}\n\n" +
+			"event: message_stop\n" +
+			"data: {\"type\":\"message_stop\"}\n\n"
+	)
+
+	tests := []struct {
+		name     string
+		encoding string
+	}{
+		{name: "gzip", encoding: "gzip"},
+		{name: "deflate", encoding: "deflate"},
+		{name: "brotli", encoding: "br"},
+		{name: "zstd", encoding: "zstd"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			application := newTestApp(t)
+			client := createTestClient(t, application, "openai-stream-usage-client-"+tc.encoding)
+			backend := createTestBackend(t, application, domain.Backend{
+				Name:      "openai-streaming-usage-backend-" + tc.encoding,
+				Protocol:  domain.BackendProtocolOpenAI,
+				BaseURL:   "https://openai.local/root/v1",
+				APIKey:    "backend-openai-key",
+				Weight:    1,
+				Models:    []string{"claude-opus-4-6"},
+				Endpoints: []string{domain.EndpointResponses},
+			})
+
+			fixture := newFailoverFixture(t, []domain.Backend{backend})
+			fixture.responseBodyByName[backend.Name] = responseBody
+			fixture.compressResponseByName[backend.Name] = tc.encoding
+			fixture.responseHeadersByName[backend.Name] = http.Header{
+				"Content-Type": {"text/event-stream"},
+			}
+			application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+			req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(requestBody))
+			req.Header.Set("X-Api-Key", client.Token)
+			req.Header.Set("Anthropic-Version", "2023-06-01")
+			req.Header.Set("Accept-Encoding", tc.encoding)
+			recorder := httptest.NewRecorder()
+			application.Handler().ServeHTTP(recorder, req)
+
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("expected status 200, got %d body=%q", recorder.Code, recorder.Body.Bytes())
+			}
+
+			records := fixture.recordsSnapshot()
+			if len(records) != 1 {
+				t.Fatalf("expected one upstream attempt, got %d: %#v", len(records), records)
+			}
+			if records[0].acceptEncoding != tc.encoding {
+				t.Fatalf("expected upstream Accept-Encoding %q, got %q", tc.encoding, records[0].acceptEncoding)
+			}
+			if contentEncoding := recorder.Header().Get("Content-Encoding"); contentEncoding != "" {
+				t.Fatalf("expected decoded downstream response without content-encoding, got %q", contentEncoding)
+			}
+			if recorder.Body.String() != expectedBody {
+				t.Fatalf("expected decoded downstream response body %q, got %q", expectedBody, recorder.Body.String())
+			}
+
+			logs, err := application.store.ListUsageLogsPage(context.Background(), 10, 0)
+			if err != nil {
+				t.Fatalf("list usage logs: %v", err)
+			}
+			if len(logs) != 1 {
+				t.Fatalf("expected one usage log, got %d", len(logs))
+			}
+			if logs[0].InputTokens != 18908 || logs[0].OutputTokens != 217 || logs[0].InputCacheTokens != 16256 {
+				t.Fatalf("unexpected compressed streaming token usage: %#v", logs[0])
+			}
+		})
 	}
 }
 
@@ -6345,17 +6466,9 @@ func (f *failoverFixture) RoundTrip(req *http.Request) (*http.Response, error) {
 		"Content-Type": {"application/json"},
 		"X-Upstream":   {name},
 	}
-	if encoding := f.compressResponseByName[name]; encoding == "gzip" && strings.Contains(req.Header.Get("Accept-Encoding"), "gzip") {
-		var compressed bytes.Buffer
-		zw := gzip.NewWriter(&compressed)
-		if _, err := zw.Write(bodyBytes); err != nil {
-			f.t.Fatalf("gzip response body: %v", err)
-		}
-		if err := zw.Close(); err != nil {
-			f.t.Fatalf("close gzip response body: %v", err)
-		}
-		bodyBytes = compressed.Bytes()
-		header.Set("Content-Encoding", "gzip")
+	if encoding := f.compressResponseByName[name]; encoding != "" && strings.Contains(req.Header.Get("Accept-Encoding"), encoding) {
+		bodyBytes = compressFixtureBody(f.t, bodyBytes, encoding)
+		header.Set("Content-Encoding", encoding)
 		header.Set("Vary", "Accept-Encoding")
 	}
 	for key, values := range f.responseHeadersByName[name] {
@@ -6379,6 +6492,52 @@ func (f *failoverFixture) recordsSnapshot() []upstreamRecord {
 	out := make([]upstreamRecord, len(f.records))
 	copy(out, f.records)
 	return out
+}
+
+func compressFixtureBody(t *testing.T, body []byte, encoding string) []byte {
+	t.Helper()
+
+	var compressed bytes.Buffer
+	switch encoding {
+	case "gzip":
+		zw := gzip.NewWriter(&compressed)
+		if _, err := zw.Write(body); err != nil {
+			t.Fatalf("gzip response body: %v", err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatalf("close gzip response body: %v", err)
+		}
+	case "deflate":
+		zw := zlib.NewWriter(&compressed)
+		if _, err := zw.Write(body); err != nil {
+			t.Fatalf("deflate response body: %v", err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatalf("close deflate response body: %v", err)
+		}
+	case "br":
+		zw := brotli.NewWriter(&compressed)
+		if _, err := zw.Write(body); err != nil {
+			t.Fatalf("brotli response body: %v", err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatalf("close brotli response body: %v", err)
+		}
+	case "zstd":
+		zw, err := zstd.NewWriter(&compressed)
+		if err != nil {
+			t.Fatalf("create zstd writer: %v", err)
+		}
+		if _, err := zw.Write(body); err != nil {
+			t.Fatalf("zstd response body: %v", err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatalf("close zstd response body: %v", err)
+		}
+	default:
+		t.Fatalf("unsupported test compression encoding %q", encoding)
+	}
+	return compressed.Bytes()
 }
 
 func newTestApp(t *testing.T) *App {
