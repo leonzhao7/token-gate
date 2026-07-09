@@ -175,7 +175,7 @@
             <table class="console-log-table">
               <thead>
                 <tr>
-                  <th>Time</th>
+                  <th>{{ batchSyncFailureMode ? 'Backend' : 'Time' }}</th>
                   <th>Path</th>
                   <th>HTTP Status</th>
                   <th>Response Body</th>
@@ -187,7 +187,7 @@
                 </tr>
                 <template v-for="row in consoleRequestLogRows" :key="row.id">
                   <tr class="console-log-row" @click="toggleConsoleLogRow(row.id)">
-                    <td class="console-log-time">{{ row.time }}</td>
+                    <td class="console-log-time">{{ batchSyncFailureMode ? row.backendName : row.time }}</td>
                     <td class="console-log-path">
                       <span v-if="row.method" class="console-log-method">{{ row.method }}</span>
                       <span>{{ row.path }}</span>
@@ -251,8 +251,8 @@ import {
 } from '@/components/backends/backendPayload'
 import {
   canSyncBackendConsole,
-  formatBackendConsoleSyncBatchSummary,
-  runBackendConsoleSyncBatch
+  runBackendConsoleSyncBatch,
+  type BackendConsoleSyncBatchResult,
 } from './backendsBatchSync'
 
 type BackendConsoleActionKind = 'sync'
@@ -301,6 +301,7 @@ const consoleActionLogTitle = ref('')
 const consoleRequestLogRows = ref<ConsoleRequestLogRow[]>([])
 const expandedConsoleLogRowIds = ref<Set<string>>(new Set())
 const nextConsoleRequestLogRowId = ref(0)
+const batchSyncFailureMode = ref(false)
 
 const filteredBackends = computed(() => {
   let result = backends.value
@@ -471,9 +472,45 @@ const consoleActionLabel = () => {
 }
 
 const openConsoleActionLog = (backend: Backend) => {
+  batchSyncFailureMode.value = false
   consoleActionLogTitle.value = `${backend.name} · ${consoleActionLabel()}`
   consoleRequestLogRows.value = []
   expandedConsoleLogRowIds.value = new Set()
+  showConsoleActionLogModal.value = true
+}
+
+const showBatchSyncFailures = (result: BackendConsoleSyncBatchResult) => {
+  batchSyncFailureMode.value = true
+  consoleActionLogTitle.value = `批量同步结果 — 失败 ${result.failureCount}/${result.total}`
+  expandedConsoleLogRowIds.value = new Set()
+
+  const rows: ConsoleRequestLogRow[] = result.failures.map((entry) => {
+    const err = entry.error as any
+    const requests: BackendConsoleRequestLog[] | undefined = err?.response?.data?.requests
+    const failedRequest = Array.isArray(requests) && requests.length > 0
+      ? requests[requests.length - 1]
+      : null
+
+    const method = failedRequest?.method || 'POST'
+    const path = failedRequest?.path || actionAdminPath(entry.backend)
+    const statusCode = failedRequest?.status_code ?? err?.response?.status ?? null
+    const body = failedRequest?.body || stringifyConsoleBody(normalizeConsoleActionError(err))
+
+    return {
+      id: `batch-fail-${entry.backend.id}-${nextConsoleRequestLogRowId.value++}`,
+      backendId: entry.backend.id,
+      backendName: entry.backend.name,
+      action: 'sync' as BackendConsoleActionKind,
+      actionLabel: consoleActionLabel(),
+      time: '',
+      method,
+      path,
+      statusCode: Number.isFinite(statusCode) ? statusCode : null,
+      body,
+    }
+  })
+
+  consoleRequestLogRows.value = rows
   showConsoleActionLogModal.value = true
 }
 
@@ -641,7 +678,9 @@ const handleSyncAllBackends = async () => {
       syncBackend: syncBackendConsole,
     })
     await refreshBackends()
-    alert(formatBackendConsoleSyncBatchSummary(result))
+    if (result.failureCount > 0) {
+      showBatchSyncFailures(result)
+    }
   } catch (err: any) {
     alert(err?.message || '批量同步失败')
   } finally {
