@@ -1,23 +1,6 @@
 <template>
   <DefaultLayout>
     <div class="settings-page">
-      <div class="page-header">
-        <div>
-          <h1>Settings</h1>
-          <p class="page-description">Configure system settings and behavior</p>
-        </div>
-        <div class="header-actions">
-          <Button
-            variant="secondary"
-            size="sm"
-            @click="handleReload"
-            :loading="reloading"
-          >
-            🔄 Reload Config
-          </Button>
-        </div>
-      </div>
-
       <!-- Loading State -->
       <LoadingSpinner v-if="loading && !config" message="Loading settings..." />
 
@@ -227,32 +210,6 @@ onMounted(() => {
 <style scoped>
 .settings-page {
   max-width: 900px;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--spacing-2xl);
-  gap: var(--spacing-lg);
-}
-
-.page-header h1 {
-  font-size: 28px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 var(--spacing-xs) 0;
-}
-
-.page-description {
-  font-size: 14px;
-  color: var(--text-secondary);
-  margin: 0;
-}
-
-.header-actions {
-  display: flex;
-  gap: var(--spacing-sm);
 }
 
 .settings-form {

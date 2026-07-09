@@ -67,11 +67,9 @@
         </EmptyState>
       </Card>
 
-      <!-- Events Timeline -->
+      <!-- Events Table -->
       <template v-else>
-        <Card class="timeline-card">
-          <EventsTimeline :events="events" />
-        </Card>
+        <EventsTimeline :events="events" />
 
         <Pagination
           v-if="totalPages > 1"
@@ -223,10 +221,6 @@ onMounted(() => {
   outline: none;
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.1);
-}
-
-.timeline-card {
-  margin-bottom: var(--spacing-lg);
 }
 
 .events-footer {

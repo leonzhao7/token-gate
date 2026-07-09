@@ -1,5 +1,5 @@
 <template>
-  <div class="events-timeline">
+  <div class="events-table">
     <div v-if="events.length === 0" class="empty-state">
       <EmptyState
         icon="📋"
@@ -8,63 +8,92 @@
       />
     </div>
 
-    <div v-else class="timeline">
-      <div
-        v-for="event in events"
-        :key="event.id"
-        class="timeline-item"
-      >
-        <div class="timeline-marker">
-          <div :class="['timeline-dot', `timeline-dot-${getSeverityType(event.severity || event.level)}`]"></div>
-          <div class="timeline-line"></div>
-        </div>
-
-        <div class="timeline-content">
-          <div class="event-header">
-            <div class="event-title">
-              <span class="event-icon">{{ getSeverityIcon(event.severity || event.level) }}</span>
-              <span class="event-action">{{ formatType(event.type) }}</span>
-              <span v-if="event.category" class="event-resource">{{ event.category }}</span>
-            </div>
-            <div class="event-time">{{ formatTime(event.created_at) }}</div>
-          </div>
-
-          <div class="event-message">
-            {{ event.message }}
-          </div>
-
-          <div v-if="hasEventDetails(event)" class="event-details">
-            <div class="details-grid">
-              <div v-if="event.client_name" class="detail-item">
-                <span class="detail-key">Client:</span>
-                <span class="detail-value">{{ event.client_name }}</span>
-              </div>
-              <div v-if="event.model" class="detail-item">
-                <span class="detail-key">Model:</span>
-                <span class="detail-value">{{ event.model }}</span>
-              </div>
-              <div v-if="event.endpoint" class="detail-item">
-                <span class="detail-key">Endpoint:</span>
-                <span class="detail-value">{{ event.endpoint }}</span>
-              </div>
-              <div v-if="event.backend_name" class="detail-item">
-                <span class="detail-key">Backend:</span>
-                <span class="detail-value">{{ event.backend_name }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="event-footer">
-            <span class="event-level">{{ event.level }}</span>
-            <span v-if="event.resource_type" class="event-type">{{ event.resource_type }}</span>
-          </div>
-        </div>
-      </div>
+    <div v-else class="table-container">
+      <table class="logs-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Time</th>
+            <th>Level</th>
+            <th>Type</th>
+            <th>Category</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template v-for="event in events" :key="event.id">
+            <tr class="log-row" @click="toggleExpand(event.id)">
+              <td class="expand-cell">
+                <button class="expand-button">
+                  {{ expandedRows.has(event.id) ? '▼' : '▶' }}
+                </button>
+              </td>
+              <td class="time-cell">
+                <div class="time-primary">{{ formatTime(event.created_at) }}</div>
+                <div class="time-secondary">{{ formatDate(event.created_at) }}</div>
+              </td>
+              <td>
+                <StatusBadge
+                  :variant="getLevelVariant(event.severity || event.level)"
+                  :label="event.level || event.severity || ''"
+                />
+              </td>
+              <td>
+                <span class="event-type">{{ formatType(event.type) }}</span>
+              </td>
+              <td>
+                <span v-if="event.category" class="category-badge">{{ event.category }}</span>
+              </td>
+              <td class="message-cell">
+                <span class="event-message">{{ event.message }}</span>
+              </td>
+            </tr>
+            <tr v-if="expandedRows.has(event.id)" class="expanded-row">
+              <td colspan="6">
+                <div class="expanded-content">
+                  <div class="detail-grid">
+                    <div v-if="event.resource_type" class="detail-item">
+                      <span class="detail-label">Resource:</span>
+                      <span class="detail-value">{{ event.resource_type }}<template v-if="event.resource_name"> / {{ event.resource_name }}</template></span>
+                    </div>
+                    <div v-if="event.client_name" class="detail-item">
+                      <span class="detail-label">Client:</span>
+                      <span class="detail-value">{{ event.client_name }}</span>
+                    </div>
+                    <div v-if="event.model" class="detail-item">
+                      <span class="detail-label">Model:</span>
+                      <span class="detail-value">{{ event.model }}</span>
+                    </div>
+                    <div v-if="event.endpoint" class="detail-item">
+                      <span class="detail-label">Endpoint:</span>
+                      <code class="detail-value detail-code">{{ event.endpoint }}</code>
+                    </div>
+                    <div v-if="event.backend_name" class="detail-item">
+                      <span class="detail-label">Backend:</span>
+                      <span class="detail-value">{{ event.backend_name }}</span>
+                    </div>
+                    <div v-if="event.ip_address" class="detail-item">
+                      <span class="detail-label">IP:</span>
+                      <span class="detail-value">{{ event.ip_address }}</span>
+                    </div>
+                    <div v-if="event.details" class="detail-item full-width">
+                      <span class="detail-label">Details:</span>
+                      <code class="detail-value detail-code">{{ event.details }}</code>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue'
+import StatusBadge from '@/components/ui/StatusBadge.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import type { AuditEvent } from '@/api'
 
@@ -74,22 +103,22 @@ interface Props {
 
 defineProps<Props>()
 
-const getSeverityType = (severity: string): 'warn' | 'error' | 'info' | 'default' => {
-  const s = severity?.toLowerCase()
-  if (s === 'warn' || s === 'warning') return 'warn'
-  if (s === 'error') return 'error'
-  if (s === 'info') return 'info'
-  return 'default'
+const expandedRows = ref<Set<number>>(new Set())
+
+const toggleExpand = (id: number) => {
+  if (expandedRows.value.has(id)) {
+    expandedRows.value.delete(id)
+  } else {
+    expandedRows.value.add(id)
+  }
 }
 
-const getSeverityIcon = (severity: string): string => {
-  const type = getSeverityType(severity)
-  switch (type) {
-    case 'error': return '❌'
-    case 'warn': return '⚠️'
-    case 'info': return 'ℹ️'
-    default: return '📝'
-  }
+const getLevelVariant = (level: string): 'success' | 'warning' | 'danger' | 'info' | 'default' => {
+  const l = level?.toLowerCase()
+  if (l === 'error') return 'danger'
+  if (l === 'warn' || l === 'warning') return 'warning'
+  if (l === 'info') return 'info'
+  return 'default'
 }
 
 const formatType = (type: string): string => {
@@ -99,28 +128,19 @@ const formatType = (type: string): string => {
     .join(' ')
 }
 
-const hasEventDetails = (event: AuditEvent): boolean => {
-  return !!(event.client_name || event.model || event.endpoint || event.backend_name)
-}
-
 const formatTime = (timestamp: string) => {
   const date = new Date(timestamp)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
+  return date.toLocaleTimeString()
+}
 
-  if (diffMins < 1) return 'Just now'
-  if (diffMins < 60) return `${diffMins}m ago`
-  const diffHours = Math.floor(diffMins / 60)
-  if (diffHours < 24) return `${diffHours}h ago`
-  const diffDays = Math.floor(diffHours / 24)
-  if (diffDays < 7) return `${diffDays}d ago`
+const formatDate = (timestamp: string) => {
+  const date = new Date(timestamp)
   return date.toLocaleDateString()
 }
 </script>
 
 <style scoped>
-.events-timeline {
+.events-table {
   width: 100%;
 }
 
@@ -128,157 +148,151 @@ const formatTime = (timestamp: string) => {
   padding: var(--spacing-2xl) 0;
 }
 
-.timeline {
-  display: flex;
-  flex-direction: column;
+.table-container {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
-.timeline-item {
-  display: flex;
-  gap: var(--spacing-lg);
-  position: relative;
+.logs-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-base);
 }
 
-.timeline-item:last-child .timeline-line {
-  display: none;
+.logs-table thead {
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
 }
 
-.timeline-marker {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: 4px;
-}
-
-.timeline-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid var(--bg-base);
-  box-shadow: 0 0 0 2px var(--border);
-  flex-shrink: 0;
-  z-index: 1;
-}
-
-.timeline-dot-error {
-  background: var(--danger);
-  box-shadow: 0 0 0 2px var(--danger);
-}
-
-.timeline-dot-warn {
-  background: var(--warning);
-  box-shadow: 0 0 0 2px var(--warning);
-}
-
-.timeline-dot-info {
-  background: var(--info);
-  box-shadow: 0 0 0 2px var(--info);
-}
-
-.timeline-dot-default {
-  background: var(--text-tertiary);
-  box-shadow: 0 0 0 2px var(--text-tertiary);
-}
-
-.timeline-line {
-  width: 2px;
-  flex: 1;
-  background: var(--border);
-  margin-top: 4px;
-}
-
-.timeline-content {
-  flex: 1;
-  padding-bottom: var(--spacing-2xl);
-  min-width: 0;
-}
-
-.event-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-sm);
-}
-
-.event-title {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  flex-wrap: wrap;
-}
-
-.event-icon {
-  font-size: 16px;
-}
-
-.event-action {
-  font-size: 15px;
+.logs-table th {
+  padding: var(--spacing-md);
+  text-align: left;
+  font-size: 13px;
   font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.log-row {
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.log-row:hover {
+  background: var(--bg-subtle);
+}
+
+.logs-table td {
+  padding: var(--spacing-md);
+  font-size: 14px;
   color: var(--text-primary);
 }
 
-.event-resource {
-  font-size: 14px;
+.expand-cell {
+  width: 40px;
+}
+
+.expand-button {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 150ms ease;
+}
+
+.expand-button:hover {
+  background: var(--bg-muted);
+}
+
+.time-cell {
+  min-width: 120px;
+}
+
+.time-primary {
+  font-weight: 500;
+}
+
+.time-secondary {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.event-type {
+  font-weight: 500;
+}
+
+.category-badge {
+  font-size: 13px;
   color: var(--text-secondary);
   padding: 2px 8px;
   background: var(--bg-muted);
   border-radius: var(--radius-sm);
 }
 
-.event-time {
-  font-size: 13px;
-  color: var(--text-tertiary);
-  white-space: nowrap;
+.message-cell {
+  max-width: 400px;
 }
 
 .event-message {
-  font-size: 14px;
-  color: var(--text-primary);
-  line-height: 1.5;
-  margin-bottom: var(--spacing-sm);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.4;
 }
 
-.event-details {
-  padding: var(--spacing-md);
+.expanded-row {
   background: var(--bg-subtle);
-  border-radius: var(--radius-md);
-  margin-bottom: var(--spacing-sm);
+  border-bottom: 1px solid var(--border);
 }
 
-.details-grid {
+.expanded-content {
+  padding: var(--spacing-lg);
+}
+
+.detail-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: var(--spacing-sm);
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--spacing-md);
 }
 
 .detail-item {
   display: flex;
-  gap: var(--spacing-xs);
-  font-size: 13px;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.detail-key {
+.detail-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.detail-label {
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-secondary);
-  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .detail-value {
+  font-size: 14px;
   color: var(--text-primary);
 }
 
-.event-footer {
-  display: flex;
-  gap: var(--spacing-md);
+.detail-code {
+  font-family: 'Monaco', 'Menlo', monospace;
   font-size: 13px;
-  color: var(--text-tertiary);
-}
-
-.event-level,
-.event-type {
-  text-transform: uppercase;
-  font-weight: 500;
-  font-size: 11px;
-  letter-spacing: 0.5px;
+  overflow-wrap: anywhere;
 }
 </style>
