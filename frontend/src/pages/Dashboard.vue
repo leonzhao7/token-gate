@@ -40,7 +40,7 @@
           <div class="summary-card">
             <div class="summary-icon summary-icon-requests">📊</div>
             <div class="summary-content">
-              <p class="summary-label">Requests / Success Latency ({{ selectedRangeLabel }})</p>
+              <p class="summary-label">Requests ({{ selectedRangeLabel }})</p>
               <div class="summary-metrics">
                 <div class="summary-metric">
                   <strong>{{ formatCompactNumber(statsSummary.successes) }}</strong>
@@ -841,6 +841,10 @@ onMounted(() => {
 
   .stats-time-summary {
     justify-content: flex-start;
+  }
+
+  .summary-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .trend-legend {

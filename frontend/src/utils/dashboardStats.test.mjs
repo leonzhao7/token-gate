@@ -87,7 +87,7 @@ test('aggregates backend hourly model stats into dashboard totals', async () => 
   assert.equal(stats.summary.inputTokens, 150)
   assert.equal(stats.summary.outputTokens, 50)
   assert.equal(stats.summary.inputCacheTokens, 20)
-  assert.equal(stats.summary.totalTokens, 220)
+  assert.equal(stats.summary.totalTokens, 200)
   assert.equal(stats.summary.requestBytes, 1300)
   assert.equal(stats.summary.responseBytes, 2700)
   assert.equal(stats.summary.totalBytes, 4000)
@@ -162,7 +162,7 @@ test('fills hourly trend gaps and aggregates repeated hours', async () => {
         hour: '2026-06-26T09:00:00.000Z',
         requests: 4,
         failures: 0,
-        totalTokens: 110,
+        totalTokens: 100,
         totalBytes: 1400,
       },
     ],

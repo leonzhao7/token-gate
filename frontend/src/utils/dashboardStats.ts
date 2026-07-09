@@ -143,7 +143,7 @@ const addItem = (totals: MutableTotals, item: BackendHourlyModelStatsItem) => {
 }
 
 const toSummary = (totals: MutableTotals): DashboardStatsSummary => {
-  const totalTokens = totals.inputTokens + totals.outputTokens + totals.inputCacheTokens
+  const totalTokens = totals.inputTokens + totals.outputTokens
   const totalBytes = totals.requestBytes + totals.responseBytes
 
   return {
