@@ -581,7 +581,7 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		resp = bufferedResp
 		handler.ApplyResponseLogFields(&usageLog, resp, responseBody, responseBytes, responsePreview, truncated)
 		if resp.StatusCode == http.StatusOK && usageLog.InputTokens+usageLog.OutputTokens+usageLog.InputCacheTokens == 0 {
-			a.logEvent(r.Context(), slog.LevelDebug, "backend_response_zero_tokens", append(append(clientAttrs(client),
+			a.logEvent(r.Context(), slog.LevelWarn, "backend_response_zero_tokens", append(append(clientAttrs(client),
 				backendAttemptAttrs(backend, attempt)...),
 				slog.String("endpoint", endpoint),
 				slog.String("model", model),
