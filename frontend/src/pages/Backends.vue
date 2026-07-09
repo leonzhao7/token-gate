@@ -32,21 +32,13 @@
           </select>
           <div class="filter-group">
             <label class="filter-label">Per Page </label>
-            <select v-model.number="pageSize" class="filter-select" @change="handlePageSizeChange">
+            <select v-model.number="pageSize" class="filter-select page-size-select" @change="handlePageSizeChange">
               <option :value="10">10</option>
               <option :value="25">25</option>
               <option :value="50">50</option>
               <option :value="100">100</option>
             </select>
           </div>
-          <Button variant="secondary" size="sm" :loading="exporting" @click="exportBackends">
-            <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M480-480ZM202-65l-56-57 118-118h-90v-80h226v226h-80v-89L202-65Zm278-15v-80h240v-440H520v-200H240v400h-80v-400q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H480Z"/></svg>
-            Export
-          </Button>
-          <Button variant="secondary" size="sm" :loading="importing" @click="openImportPicker">
-            <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v240h-80v-200H520v-200H240v640h360v80H240Zm638 15L760-183v89h-80v-226h226v80h-90l118 118-56 57Zm-638-95v-640 640Z"/></svg>
-            Import
-          </Button>
           <Button variant="secondary" size="sm"  @click="showCreateModal = true">
             <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/></svg>
             Add
@@ -65,6 +57,24 @@
             <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z"/></svg>
             Refresh
           </Button>
+          <div class="more-menu-wrap">
+            <Button variant="ghost" size="sm" @click="showMoreMenu = !showMoreMenu">
+              <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px" fill="currentColor"><path d="M480-160q-33 0-56.5-23.5T400-240q0-33 23.5-56.5T480-320q33 0 56.5 23.5T560-240q0 33-23.5 56.5T480-160Zm0-240q-33 0-56.5-23.5T400-480q0-33 23.5-56.5T480-560q33 0 56.5 23.5T560-480q0 33-23.5 56.5T480-400Zm0-240q-33 0-56.5-23.5T400-720q0-33 23.5-56.5T480-800q33 0 56.5 23.5T560-720q0 33-23.5 56.5T480-640Z"/></svg>
+            </Button>
+            <template v-if="showMoreMenu">
+              <div class="more-menu-backdrop" @click="showMoreMenu = false"></div>
+              <div class="more-menu-dropdown">
+                <button class="more-menu-item" :disabled="exporting" @click="exportBackends(); showMoreMenu = false">
+                  <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M480-480ZM202-65l-56-57 118-118h-90v-80h226v226h-80v-89L202-65Zm278-15v-80h240v-440H520v-200H240v400h-80v-400q0-33 23.5-56.5T240-880h320l240 240v480q0 33-23.5 56.5T720-80H480Z"/></svg>
+                  Export
+                </button>
+                <button class="more-menu-item" :disabled="importing" @click="openImportPicker(); showMoreMenu = false">
+                  <svg xmlns="http://www.w3.org/2000/svg" height="16px" viewBox="0 -960 960 960" width="16px" fill="currentColor"><path d="M240-80q-33 0-56.5-23.5T160-160v-640q0-33 23.5-56.5T240-880h320l240 240v240h-80v-200H520v-200H240v640h360v80H240Zm638 15L760-183v89h-80v-226h226v80h-90l118 118-56 57Zm-638-95v-640 640Z"/></svg>
+                  Import
+                </button>
+              </div>
+            </template>
+          </div>
           <input
             ref="importFileInput"
             class="file-input"
@@ -294,6 +304,7 @@ const submitting = ref(false)
 const exporting = ref(false)
 const importing = ref(false)
 const syncingAllBackends = ref(false)
+const showMoreMenu = ref(false)
 const importFileInput = ref<HTMLInputElement | null>(null)
 const runningConsoleSyncIds = ref<Set<number>>(new Set())
 const showConsoleActionLogModal = ref(false)
@@ -742,6 +753,7 @@ onMounted(() => {
 
 .filters-card {
   margin-bottom: var(--spacing-xl);
+  overflow: visible !important;
 }
 
 .console-log-modal {
@@ -1014,6 +1026,57 @@ onMounted(() => {
   font-size: 13px;
   color: var(--text-secondary);
   white-space: nowrap;
+}
+
+.page-size-select {
+  width: 75px;
+}
+
+.more-menu-wrap {
+  position: relative;
+}
+
+.more-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+}
+
+.more-menu-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 10;
+  min-width: 140px;
+  margin-top: 4px;
+  padding: 4px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.more-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.more-menu-item:hover {
+  background: var(--bg-muted);
+}
+
+.more-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .backends-footer {
