@@ -294,7 +294,11 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		RequestHeadersJSON: handler.MarshalHeaders(handler.RedactedHeaders(r.Header)),
 		CreatedAt:          startedAt.UTC(),
 	}
+	skipUsageLog := false
 	defer func() {
+		if skipUsageLog {
+			return
+		}
 		usageLog.DurationMS = time.Since(startedAt).Milliseconds()
 		logCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
 		defer cancel()
@@ -355,6 +359,9 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 		if requestContextCanceled(r.Context(), err) {
 			a.finishCanceledProxyRequest(w, r, &usageLog, client, endpoint, model, nil, 0, err)
 			return
+		}
+		if errors.Is(err, scheduler.ErrNoBackendAvailable) {
+			skipUsageLog = true
 		}
 		usageLog.StatusCode = http.StatusServiceUnavailable
 		usageLog.StatusFamily = handler.StatusFamily(http.StatusServiceUnavailable)

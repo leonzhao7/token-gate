@@ -218,6 +218,30 @@ func TestProxyReturns503WhenAllCandidatesFail(t *testing.T) {
 	}
 }
 
+func TestProxyDoesNotPersistUsageLogWhenNoBackendAvailable(t *testing.T) {
+	const requestBody = `{"model":"gpt-4o","messages":[{"role":"user","content":"hello"}]}`
+
+	application := newTestApp(t)
+	client := createTestClient(t, application, "client-secret")
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when no backend is available, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	total, err := application.store.CountUsageLogs(context.Background())
+	if err != nil {
+		t.Fatalf("count usage logs: %v", err)
+	}
+	if total != 0 {
+		t.Fatalf("expected no usage log when no backend is available, got %d", total)
+	}
+}
+
 func TestProxyFinalFailureUsageLogKeepsLastUpstreamResponse(t *testing.T) {
 	const requestBody = `{"model":"gpt-4o","messages":[{"role":"user","content":"hello"}]}`
 
