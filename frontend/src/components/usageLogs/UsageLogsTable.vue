@@ -93,6 +93,10 @@
                       <span class="detail-label">Error:</span>
                       <span class="detail-value error-message">{{ log.error_message }}</span>
                     </div>
+                    <div v-if="log.response_body_preview && isErrorStatus(log.status_code)" class="detail-item full-width">
+                      <span class="detail-label">Response Body Preview:</span>
+                      <pre class="detail-value response-body-preview">{{ log.response_body_preview }}</pre>
+                    </div>
                   </div>
                 </div>
               </td>
@@ -133,6 +137,8 @@ const getStatusVariant = (statusCode: number): 'success' | 'warning' | 'danger' 
   if (statusCode >= 500) return 'danger'
   return 'default'
 }
+
+const isErrorStatus = (statusCode: number): boolean => statusCode < 200 || statusCode >= 300
 
 const formatLogLatency = (log: UsageLog) => {
   const latencyMs = log.duration_ms > 0 ? log.duration_ms : log.latency_ms
@@ -337,5 +343,20 @@ const formatTokenCount = (value?: number): string => {
 .detail-value.error-message {
   color: var(--danger);
   font-weight: 500;
+}
+
+.response-body-preview {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
 }
 </style>

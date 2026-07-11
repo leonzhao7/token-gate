@@ -193,6 +193,57 @@ func TestUsageLogRecordsUpstreamErrorBodyOnFailoverAttempt(t *testing.T) {
 	}
 }
 
+func TestProxyWarnLogIncludesUpstreamErrorBodyOnNon2xxResponse(t *testing.T) {
+	const (
+		clientToken  = "upstream-error-log-client-secret"
+		requestBody  = `{"model":"gpt-4o","input":"hello failure"}`
+		responseBody = `{"error":{"message":"quota exhausted by upstream"}}`
+	)
+
+	var logs bytes.Buffer
+	previousLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() {
+		slog.SetDefault(previousLogger)
+	})
+
+	application := newTestApp(t)
+	client := createTestClient(t, application, clientToken)
+	backend := createTestBackend(t, application, domain.Backend{
+		Name:      "quota-alpha",
+		BaseURL:   "https://quota-alpha.local/root/v1",
+		APIKey:    "alpha-key",
+		Weight:    1,
+		Models:    []string{"gpt-4o"},
+		Endpoints: []string{domain.EndpointResponses},
+	})
+
+	fixture := newFailoverFixture(t, []domain.Backend{backend})
+	fixture.statusByName[backend.Name] = http.StatusTooManyRequests
+	fixture.responseBodyByName[backend.Name] = responseBody
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: fixture})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(requestBody))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected proxy request to fail with 503, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	output := logs.String()
+	if !strings.Contains(output, "backend_response_failed") {
+		t.Fatalf("expected backend response failure warn log, got:\n%s", output)
+	}
+	if !strings.Contains(output, "response_body_preview") || !strings.Contains(output, "quota exhausted by upstream") {
+		t.Fatalf("expected backend response failure warn log to include upstream response body, got:\n%s", output)
+	}
+	if strings.Contains(output, "response_headers_json") {
+		t.Fatalf("did not expect backend response failure warn log to include response headers, got:\n%s", output)
+	}
+}
+
 func TestProxyLogsDebugResponseWhenSuccessfulResponseHasZeroTokens(t *testing.T) {
 	const (
 		clientToken   = "zero-token-debug-client-secret"

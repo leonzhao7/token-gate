@@ -19,4 +19,7 @@ test('usage logs expanded details do not render token counts', () => {
   assert.match(table, /<span class="detail-label">Path:<\/span>/)
   assert.match(table, /<span class="detail-label">IP Address:<\/span>/)
   assert.match(table, /<span class="detail-label">User Agent:<\/span>/)
+  assert.match(table, /<span class="detail-label">Response Body Preview:<\/span>/)
+  assert.match(table, /log\.response_body_preview/)
+  assert.match(table, /isErrorStatus\(log\.status_code\)/)
 })

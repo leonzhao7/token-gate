@@ -529,15 +529,23 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 				_ = bufferedResp.Body.Close()
 			}
 			_ = a.scheduler.MarkFailure(r.Context(), backend.ID, errors.New(resp.Status))
-			a.logEvent(r.Context(), slog.LevelWarn, "backend_response_failed", append(append(clientAttrs(client),
-				backendAttemptAttrs(backend, attempt)...),
+			attrs := append(append(clientAttrs(client), backendAttemptAttrs(backend, attempt)...),
 				slog.String("endpoint", endpoint),
 				slog.String("model", model),
 				slog.Int("status", resp.StatusCode),
 				slog.String("status_text", resp.Status),
+				slog.String("content_type", resp.Header.Get("Content-Type")),
 				slog.Duration("duration", time.Since(attemptStartedAt)),
+				slog.Int64("response_bytes", usageLog.ResponseBytes),
+				slog.String("response_body_preview", usageLog.ResponseBodyPreview),
+				slog.Bool("preview_truncated", usageLog.PreviewTruncated),
+				slog.Bool("is_stream", usageLog.IsStream),
 				slog.Bool("will_failover", index < len(selection.Candidates)-1),
-			)...)
+			)
+			if bufferErr != nil {
+				attrs = append(attrs, slog.String("response_log_error", bufferErr.Error()))
+			}
+			a.logEvent(r.Context(), slog.LevelWarn, "backend_response_failed", attrs...)
 			_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
 				Level:       "warn",
 				Type:        "backend_failover",
