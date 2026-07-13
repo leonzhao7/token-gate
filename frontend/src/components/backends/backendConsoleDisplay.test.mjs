@@ -82,11 +82,13 @@ test('formats pricing rows with model price and group columns', async () => {
       model: 'gpt-5.4',
       price: 'Input: 20 硬币 / 1M; Output: 60 硬币 / 1M',
       group: 'default, vip',
+      lowestGroups: new Set(['vip']),
     },
     {
       model: 'image-fast',
       price: '2.5 硬币 每次',
       group: 'default',
+      lowestGroups: new Set(['default']),
     },
   ])
 })
@@ -120,6 +122,7 @@ test('formats billing expression standard tier prices before model ratio fallbac
       model: 'gpt-billing',
       price: 'Input: 0.25 硬币 / 1M; Output: 1.5 硬币 / 1M',
       group: 'default, vip',
+      lowestGroups: new Set(['vip']),
     },
   ])
 })
@@ -184,11 +187,13 @@ test('formats sub2api channel payload rows using minimum group multiplier', asyn
       model: 'claude-sonnet-5',
       price: 'Input: 0.4 / 1M; Output: 2 / 1M',
       group: 'CC-MAX, Claude-逆向高缓存',
+      lowestGroups: new Set(['Claude-逆向高缓存']),
     },
     {
       model: 'gpt-5.4',
       price: 'Input: 0.175 / 1M; Output: 1.05 / 1M',
       group: 'GPT-Plus, GPT-Pro',
+      lowestGroups: new Set(['GPT-Plus']),
     },
   ])
 })
@@ -250,11 +255,13 @@ test('keeps duplicate sub2api channel models when groups differ across channels'
       model: 'gpt-5.4',
       price: 'Input: 0.5 / 1M; Output: 3 / 1M',
       group: 'DC 渠道',
+      lowestGroups: new Set(['DC 渠道']),
     },
     {
       model: 'gpt-5.4',
       price: 'Input: 0.75 / 1M; Output: 4.5 / 1M',
       group: 'gpt pro 福利分组, 赞助组',
+      lowestGroups: new Set(['gpt pro 福利分组']),
     },
   ])
 })

@@ -253,12 +253,13 @@
                           <td>{{ row.model }}</td>
                           <td>{{ row.price }}</td>
                           <td>
-                            <span
-                              v-for="group in row.group.split(', ')"
-                              :key="group"
-                              class="group-tag"
-                              :class="{ 'group-tag-lowest': group === lowestGroupRatioName(backend.console_pricing_json, backend.console_account_json) }"
-                            >{{ group }}</span>
+                            <template v-for="(group, idx) in row.group.split(', ')" :key="group">
+                              <span class="group-separator" v-if="idx > 0">/</span>
+                              <span
+                                class="group-tag"
+                                :class="{ 'group-tag-lowest': row.lowestGroups.has(group) }"
+                              >{{ group }}</span>
+                            </template>
                           </td>
                         </tr>
                       </tbody>
@@ -282,7 +283,7 @@ import type { Backend } from '@/api'
 import { dashboardApi } from '@/api'
 import { formatLatencySeconds } from '@/utils/latency'
 import { formatModelMappingForInput, parseModelMappingInput } from './backendPayload'
-import { consoleAccountRows, consoleAccountSummary, pricingModelRows, lowestGroupRatioName } from './backendConsoleDisplay'
+import { consoleAccountRows, consoleAccountSummary, pricingModelRows } from './backendConsoleDisplay'
 import { buildDashboardStats, buildStatsRange, type DashboardStatsSummary } from '@/utils/dashboardStats'
 
 interface Props {
@@ -1034,14 +1035,23 @@ const hasCheckinInfo = (backend: Backend): boolean => {
   border-bottom: none;
 }
 
-.group-highlight {
+.group-tag {
   display: inline-block;
   padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85em;
+}
+
+.group-tag-lowest {
   background: rgba(16, 185, 129, 0.12);
   border: 1px solid rgba(16, 185, 129, 0.3);
-  border-radius: var(--radius-sm);
   font-weight: 600;
   color: var(--success, #10b981);
+}
+
+.group-separator {
+  margin: 0 2px;
+  color: var(--text-tertiary, #6b7280);
 }
 
 /* Responsive */

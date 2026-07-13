@@ -19,6 +19,7 @@ export interface PricingModelRow {
   model: string
   price: string
   group: string
+  lowestGroups: Set<string>
 }
 
 export interface DetailRow {
@@ -337,6 +338,17 @@ const minGroupRatio = (groups: string[], groupRatio: Record<string, number>): nu
   return ratios.length > 0 ? Math.min(...ratios) : 1
 }
 
+const lowestRatioGroups = (groups: string[], groupRatio: Record<string, number>): Set<string> => {
+  if (groups.length <= 1) return new Set(groups)
+  const min = minGroupRatio(groups, groupRatio)
+  const result = new Set<string>()
+  for (const group of groups) {
+    const ratio = groupRatio[group]
+    if (ratio === min) result.add(group)
+  }
+  return result
+}
+
 const formatUnitPrice = (value: number, currencySymbol: string): string => {
   const amount = formatConsoleNumber(value)
   return `${formatConsoleAmountWithSymbol(amount, currencySymbol)} / 1M`
@@ -491,7 +503,8 @@ const pricingRowFromRecord = (model: string, record: Record<string, unknown>, co
   return {
     model: rowModel,
     price: formatPricingPrice(record, groups, context),
-    group: groups.length > 0 ? groups.join(', ') : '-'
+    group: groups.length > 0 ? groups.join(', ') : '-',
+    lowestGroups: lowestRatioGroups(groups, context.groupRatio),
   }
 }
 
@@ -506,7 +519,7 @@ const pricingRowsFromModelsField = (models: unknown, context: PricingContext): P
       return row ? [row] : []
     }
     const modelName = formatConsoleValue(model, '')
-    return modelName ? [{ model: modelName, price: '-', group: '-' }] : []
+    return modelName ? [{ model: modelName, price: '-', group: '-', lowestGroups: [] }] : []
   })
 }
 
@@ -532,6 +545,7 @@ const pricingRowsFromSupportedModels = (
       model: modelName,
       price: pricing ? formatChannelPricingPrice(pricing, groups, context) : '-',
       group: groups.length > 0 ? groups.join(', ') : '-',
+      lowestGroups: lowestRatioGroups(groups, context.groupRatio),
     }]
   })
 }
@@ -579,7 +593,7 @@ const pricingRowsFromValue = (value: unknown, context: PricingContext): PricingM
         return row ? [row] : []
       }
       const modelName = formatConsoleValue(item, '')
-      return modelName ? [{ model: modelName, price: '-', group: '-' }] : []
+      return modelName ? [{ model: modelName, price: '-', group: '-', lowestGroups: [] }] : []
     })
   }
 
@@ -628,20 +642,6 @@ export const pricingGroupRatioMap = (raw?: string, accountRaw?: string): Record<
   const source = root && root.data !== undefined ? root.data : parsed
   const context = pricingContextFromPayload(root, source, accountRaw)
   return context.groupRatio
-}
-
-export const lowestGroupRatioName = (raw?: string, accountRaw?: string): string | null => {
-  const parsed = parseConsoleJSON(raw)
-  const root = asRecord(parsed)
-  const source = root && root.data !== undefined ? root.data : parsed
-  const context = pricingContextFromPayload(root, source, accountRaw)
-  const entries = Object.entries(context.groupRatio)
-  if (entries.length === 0) return null
-  let minEntry = entries[0]
-  for (const entry of entries) {
-    if (entry[1] < minEntry[1]) minEntry = entry
-  }
-  return minEntry[0]
 }
 
 export const pricingModelRows = (raw?: string, focusPatterns?: string, accountRaw?: string): PricingModelRow[] => {
