@@ -336,6 +336,7 @@ func (h *BackendHandler) HandleCreateBackend(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	_ = h.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
+		Level:        "warn",
 		Type:         "admin_backend_create",
 		Actor:        "admin",
 		ResourceType: "backend",
@@ -708,13 +709,11 @@ func (h *BackendHandler) HandleBackendConsoleSyncSummary(w http.ResponseWriter, 
 	}
 
 	event := domain.AuditEvent{
+		Level:        "info",
 		Type:         "admin_backends_sync",
 		Actor:        "admin",
 		ResourceType: "backend",
 		Message:      fmt.Sprintf("global backend sync completed: %d/%d succeeded, %d failed", summary.SuccessCount, summary.Total, summary.FailureCount),
-	}
-	if summary.FailureCount > 0 {
-		event.Level = "warn"
 	}
 	if err := h.store.AppendAuditEvent(r.Context(), event); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -1035,6 +1034,7 @@ func (h *BackendHandler) HandleDeleteBackend(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	_ = h.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
+		Level:        "warn",
 		Type:         "admin_backend_delete",
 		Actor:        "admin",
 		ResourceType: "backend",
@@ -1050,6 +1050,7 @@ func (h *BackendHandler) appendBackendConsoleSyncAudit(r *http.Request, backend 
 		return
 	}
 	_ = h.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
+		Level:        "info",
 		Type:         "admin_backend_sync",
 		Actor:        "admin",
 		ResourceType: "backend",

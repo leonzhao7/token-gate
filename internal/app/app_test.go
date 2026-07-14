@@ -3173,7 +3173,7 @@ func TestAdminBackendSub2APIConsoleSyncCheckinAndAccountSummary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list audit events: %v", err)
 	}
-	if len(events) != 1 || events[0].Type != "admin_backend_sync" || events[0].ResourceID != backend.ID || events[0].BackendName != backend.Name {
+	if len(events) != 1 || events[0].Type != "admin_backend_sync" || events[0].Level != "info" || events[0].ResourceID != backend.ID || events[0].BackendName != backend.Name {
 		t.Fatalf("expected one single-backend sync audit event, got %#v", events)
 	}
 
@@ -6733,6 +6733,11 @@ func TestAdminAuditEventsTrackOnlyRequestedManagementActions(t *testing.T) {
 		if event.Actor != "admin" {
 			t.Fatalf("management audit event should identify admin actor, got %#v", event)
 		}
+		if strings.HasSuffix(event.Type, "_create") || strings.HasSuffix(event.Type, "_delete") {
+			if event.Level != "warn" {
+				t.Fatalf("create/delete audit event should use warn level, got %#v", event)
+			}
+		}
 	}
 	if !reflect.DeepEqual(gotTypes, wantTypes) {
 		t.Fatalf("unexpected audit event types: got %#v want %#v", gotTypes, wantTypes)
@@ -6811,7 +6816,7 @@ func TestAdminBackendGlobalSyncSummaryCreatesOneAuditEvent(t *testing.T) {
 		t.Fatalf("expected one global sync audit event, got %#v", events)
 	}
 	event := events[0]
-	if event.Type != "admin_backends_sync" || event.Level != "warn" || event.ResourceType != "backend" || !strings.Contains(event.Message, "2/3 succeeded") {
+	if event.Type != "admin_backends_sync" || event.Level != "info" || event.ResourceType != "backend" || !strings.Contains(event.Message, "2/3 succeeded") {
 		t.Fatalf("unexpected global sync audit event: %#v", event)
 	}
 }

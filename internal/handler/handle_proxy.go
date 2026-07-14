@@ -98,6 +98,7 @@ func (a *ProxyHandler) HandleCreateSocksProxy(w http.ResponseWriter, r *http.Req
 		return
 	}
 	_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
+		Level:        "warn",
 		Type:         "admin_socks_proxy_create",
 		Actor:        "admin",
 		ResourceType: "socks_proxy",
@@ -166,6 +167,7 @@ func (a *ProxyHandler) HandleDeleteSocksProxy(w http.ResponseWriter, r *http.Req
 		return
 	}
 	_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
+		Level:        "warn",
 		Type:         "admin_socks_proxy_delete",
 		Actor:        "admin",
 		ResourceType: "socks_proxy",

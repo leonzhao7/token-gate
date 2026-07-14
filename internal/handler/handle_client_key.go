@@ -92,6 +92,7 @@ func (a *ClientKeyHandler) HandleCreateClientKey(w http.ResponseWriter, r *http.
 		return
 	}
 	_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
+		Level:        "warn",
 		Type:         "admin_client_create",
 		Actor:        "admin",
 		ResourceType: "client_key",
@@ -160,6 +161,7 @@ func (a *ClientKeyHandler) HandleDeleteClientKey(w http.ResponseWriter, r *http.
 		return
 	}
 	_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
+		Level:        "warn",
 		Type:         "admin_client_delete",
 		Actor:        "admin",
 		ResourceType: "client_key",
