@@ -93,7 +93,7 @@
                       <span class="detail-label">Error:</span>
                       <span class="detail-value error-message">{{ log.error_message }}</span>
                     </div>
-                    <div v-if="log.response_body_preview && isErrorStatus(log.status_code)" class="detail-item full-width">
+                    <div v-if="shouldShowResponseBody(log)" class="detail-item full-width">
                       <span class="detail-label">Response Body Preview:</span>
                       <pre class="detail-value response-body-preview">{{ log.response_body_preview }}</pre>
                     </div>
@@ -139,6 +139,17 @@ const getStatusVariant = (statusCode: number): 'success' | 'warning' | 'danger' 
 }
 
 const isErrorStatus = (statusCode: number): boolean => statusCode < 200 || statusCode >= 300
+
+const isZeroTokenSuccess = (log: UsageLog): boolean => {
+  return log.status_code === 200 &&
+    Number(log.input_tokens || 0) === 0 &&
+    Number(log.output_tokens || 0) === 0 &&
+    Number(log.input_cache_tokens || 0) === 0
+}
+
+const shouldShowResponseBody = (log: UsageLog): boolean => {
+  return Boolean(log.response_body_preview) && (isErrorStatus(log.status_code) || isZeroTokenSuccess(log))
+}
 
 const formatLogLatency = (log: UsageLog) => {
   const latencyMs = log.duration_ms > 0 ? log.duration_ms : log.latency_ms

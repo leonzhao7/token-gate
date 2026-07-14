@@ -289,6 +289,21 @@ func TestProxyLogsDebugResponseWhenSuccessfulResponseHasZeroTokens(t *testing.T)
 	if !strings.Contains(output, "response_body_preview") || !strings.Contains(output, "resp_1") {
 		t.Fatalf("expected zero-token debug log to include response preview, got:\n%s", output)
 	}
+
+	usageLogs, err := application.store.ListUsageLogsPage(context.Background(), 10, 0)
+	if err != nil {
+		t.Fatalf("list usage logs: %v", err)
+	}
+	if len(usageLogs) != 1 {
+		t.Fatalf("expected one usage log, got %d", len(usageLogs))
+	}
+	usageLog := usageLogs[0]
+	if usageLog.StatusCode != http.StatusOK || usageLog.InputTokens != 0 || usageLog.OutputTokens != 0 || usageLog.InputCacheTokens != 0 {
+		t.Fatalf("expected a successful zero-token usage log, got %#v", usageLog)
+	}
+	if !strings.Contains(usageLog.ResponseBodyPreview, "resp_1") {
+		t.Fatalf("expected zero-token usage log to store response body preview, got %#v", usageLog)
+	}
 }
 
 func TestProxyDoesNotLogDebugResponseWhenSuccessfulResponseHasTokens(t *testing.T) {
