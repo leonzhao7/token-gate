@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -191,6 +190,7 @@ func (a *App) routes() {
 	a.mux.Handle("GET /admin/api/backends/export", http.HandlerFunc(a.backendHandler.HandleExportBackends))
 	a.mux.Handle("GET /admin/api/backends/{id}/detail", http.HandlerFunc(a.backendHandler.HandleBackendDetail))
 	a.mux.Handle("POST /admin/api/backends", http.HandlerFunc(a.backendHandler.HandleCreateBackend))
+	a.mux.Handle("POST /admin/api/backends/console/sync-summary", http.HandlerFunc(a.backendHandler.HandleBackendConsoleSyncSummary))
 	a.mux.Handle("POST /admin/api/backends/{id}/console/sync", http.HandlerFunc(a.backendHandler.HandleBackendConsoleSync))
 	a.mux.Handle("POST /admin/api/backends/{id}/console/checkin", http.HandlerFunc(a.backendHandler.HandleBackendConsoleCheckin))
 	a.mux.Handle("POST /admin/api/backends/{id}/console/pricing", http.HandlerFunc(a.backendHandler.HandleBackendConsolePricing))
@@ -479,15 +479,6 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 				slog.String("error", err.Error()),
 				slog.Bool("will_failover", index < len(selection.Candidates)-1),
 			)...)
-			_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
-				Level:       "warn",
-				Type:        "proxy_retry",
-				Message:     fmt.Sprintf("backend request failed: %v", err),
-				ClientName:  client.Name,
-				Model:       model,
-				Endpoint:    endpoint,
-				BackendName: backend.Name,
-			})
 			if index < len(selection.Candidates)-1 {
 				a.usageLogHandler.AppendAttemptUsageLog(r.Context(), usageLog, startedAt)
 				continue
@@ -546,15 +537,6 @@ func (a *App) handleProxy(w http.ResponseWriter, r *http.Request) {
 				attrs = append(attrs, slog.String("response_log_error", bufferErr.Error()))
 			}
 			a.logEvent(r.Context(), slog.LevelWarn, "backend_response_failed", attrs...)
-			_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
-				Level:       "warn",
-				Type:        "backend_failover",
-				Message:     fmt.Sprintf("upstream status %d triggered failover", resp.StatusCode),
-				ClientName:  client.Name,
-				Model:       model,
-				Endpoint:    endpoint,
-				BackendName: backend.Name,
-			})
 			lastErr = errors.New(resp.Status)
 			if index < len(selection.Candidates)-1 {
 				a.usageLogHandler.AppendAttemptUsageLog(r.Context(), usageLog, startedAt)

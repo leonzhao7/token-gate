@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"token-gate/internal/config"
+	"token-gate/internal/domain"
 	"token-gate/internal/store"
 )
 
@@ -131,6 +133,15 @@ func (a *SettingHandler) HandleUpdateConfig(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
+	if keys := sortedSettingKeys(payload); len(keys) > 0 {
+		_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
+			Type:         "admin_config_update",
+			Actor:        "admin",
+			ResourceType: "config",
+			Message:      "configuration updated: " + strings.Join(keys, ", "),
+		})
+	}
+
 	a.HandleGetConfig(w, r)
 }
 
@@ -181,6 +192,15 @@ func getSettingOrDefault(settings map[string]string, key, defaultValue string) s
 		return value
 	}
 	return defaultValue
+}
+
+func sortedSettingKeys(settings map[string]string) []string {
+	keys := make([]string, 0, len(settings))
+	for key := range settings {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func isValidLogLevel(level string) bool {

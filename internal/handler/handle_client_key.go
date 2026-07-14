@@ -92,9 +92,12 @@ func (a *ClientKeyHandler) HandleCreateClientKey(w http.ResponseWriter, r *http.
 		return
 	}
 	_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
-		Type:       "admin_client_create",
-		Message:    "client key created",
-		ClientName: client.Name,
+		Type:         "admin_client_create",
+		Actor:        "admin",
+		ResourceType: "client_key",
+		ResourceID:   client.ID,
+		Message:      "client key created: " + client.Name,
+		ClientName:   client.Name,
 	})
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"client":       client,
@@ -147,10 +150,23 @@ func (a *ClientKeyHandler) HandleDeleteClientKey(w http.ResponseWriter, r *http.
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	client, err := a.store.GetClientKey(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "client key not found")
+		return
+	}
 	if err := a.store.DeleteClientKey(r.Context(), id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
+		Type:         "admin_client_delete",
+		Actor:        "admin",
+		ResourceType: "client_key",
+		ResourceID:   client.ID,
+		Message:      "client key deleted: " + client.Name,
+		ClientName:   client.Name,
+	})
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
 }
 

@@ -123,7 +123,7 @@ export interface UsageLog {
 export interface AuditEvent {
   id: number
   level: string  // warn, info, error
-  type: string  // backend_failover, proxy_retry, etc.
+  type: string  // admin_backend_create, admin_backend_sync, etc.
   category: string
   severity: string
   actor?: string

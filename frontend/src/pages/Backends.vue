@@ -648,17 +648,18 @@ const clearConsoleRequestLogRows = () => {
   expandedConsoleLogRowIds.value = new Set()
 }
 
-const syncBackendConsole = async (backend: Backend) => {
+const syncBackendConsole = async (backend: Backend, audit = true) => {
   setConsoleSyncRunning(backend.id, true)
   openConsoleActionLog(backend)
   try {
     const response = await backendsApi.syncConsoleStream(backend.id, (request) => {
       appendConsoleRequestLogRows(extractConsoleRequestLogs([request], backend))
-    })
+    }, { audit })
     if (consoleRequestLogRows.value.length === 0) {
       setConsoleRequestLogRows(extractConsoleRequestLogs(response.requests, backend))
     }
     await refreshBackends()
+    return response
   } catch (err: any) {
     const errorPayload = normalizeConsoleActionError(err)
     const fallback = fallbackConsoleRequestLog(backend, err?.response?.status ?? null, errorPayload)
@@ -686,8 +687,17 @@ const handleSyncAllBackends = async () => {
   try {
     const result = await runBackendConsoleSyncBatch({
       backends: backends.value,
-      syncBackend: syncBackendConsole,
+      syncBackend: (backend) => syncBackendConsole(backend, false),
     })
+    try {
+      await backendsApi.recordConsoleSyncSummary({
+        total: result.total,
+        success_count: result.successCount,
+        failure_count: result.failureCount,
+      })
+    } catch (auditError) {
+      console.error('Failed to record global backend sync audit event:', auditError)
+    }
     await refreshBackends()
     if (result.failureCount > 0) {
       showBatchSyncFailures(result)

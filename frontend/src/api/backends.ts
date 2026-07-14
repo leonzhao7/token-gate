@@ -33,6 +33,12 @@ const parseConsoleStreamLine = (line: string): BackendConsoleStreamEvent | null 
   return JSON.parse(trimmed) as BackendConsoleStreamEvent
 }
 
+export interface BackendConsoleSyncSummary {
+  total: number
+  success_count: number
+  failure_count: number
+}
+
 export const backendsApi = {
   // List backends
   async list(filters?: BackendFilters): Promise<ListResponse<Backend>> {
@@ -84,8 +90,14 @@ export const backendsApi = {
     return data
   },
 
-  async syncConsoleStream(id: number, onRequest: (request: BackendConsoleRequestLog) => void): Promise<BackendConsoleSyncResponse> {
-    const response = await fetch(`/admin/api/backends/${id}/console/sync?stream=1`, {
+  async syncConsoleStream(
+    id: number,
+    onRequest: (request: BackendConsoleRequestLog) => void,
+    options: { audit?: boolean } = {}
+  ): Promise<BackendConsoleSyncResponse> {
+    const params = new URLSearchParams({ stream: '1' })
+    if (options.audit === false) params.set('audit', '0')
+    const response = await fetch(`/admin/api/backends/${id}/console/sync?${params.toString()}`, {
       method: 'POST',
       headers: {
         Accept: 'application/x-ndjson'
@@ -145,5 +157,10 @@ export const backendsApi = {
       throw consoleStreamError('Console sync stream ended before completion', response.status || 0)
     }
     return finalResponse
+  },
+
+  async recordConsoleSyncSummary(summary: BackendConsoleSyncSummary): Promise<BackendConsoleSyncSummary> {
+    const { data } = await apiClient.post<BackendConsoleSyncSummary>('/backends/console/sync-summary', summary)
+    return data
   }
 }

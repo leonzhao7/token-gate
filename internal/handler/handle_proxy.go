@@ -98,8 +98,11 @@ func (a *ProxyHandler) HandleCreateSocksProxy(w http.ResponseWriter, r *http.Req
 		return
 	}
 	_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
-		Type:    "admin_socks_proxy_create",
-		Message: "socks proxy created: " + proxy.Name,
+		Type:         "admin_socks_proxy_create",
+		Actor:        "admin",
+		ResourceType: "socks_proxy",
+		ResourceID:   proxy.ID,
+		Message:      "socks proxy created: " + proxy.Name,
 	})
 	writeJSON(w, http.StatusCreated, proxy)
 }
@@ -144,10 +147,6 @@ func (a *ProxyHandler) HandleUpdateSocksProxy(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
-		Type:    "admin_socks_proxy_update",
-		Message: "socks proxy updated: " + proxy.Name,
-	})
 	writeJSON(w, http.StatusOK, proxy)
 }
 
@@ -157,10 +156,22 @@ func (a *ProxyHandler) HandleDeleteSocksProxy(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	proxy, err := a.store.GetSocksProxy(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "socks proxy not found")
+		return
+	}
 	if err := a.store.DeleteSocksProxy(r.Context(), id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	_ = a.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
+		Type:         "admin_socks_proxy_delete",
+		Actor:        "admin",
+		ResourceType: "socks_proxy",
+		ResourceID:   proxy.ID,
+		Message:      "socks proxy deleted: " + proxy.Name,
+	})
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
 }
 

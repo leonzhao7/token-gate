@@ -126,6 +126,14 @@ func TestProxyRetriesOnAnyNon2xxAndReturnsSuccessFromLaterBackend(t *testing.T) 
 			t.Fatalf("hop-by-hop header should be stripped for %s: %q", record.backendName, record.connection)
 		}
 	}
+
+	events, err := application.store.ListAuditEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("backend failover should not create audit events, got %#v", events)
+	}
 }
 
 func TestProxyFailsOverOnUnauthorizedBackendResponse(t *testing.T) {
@@ -2247,6 +2255,12 @@ func TestAdminDashboardApisReturnAggregatedData(t *testing.T) {
 	if updateRecorder.Code != http.StatusOK {
 		t.Fatalf("expected backend update status 200, got %d body=%s", updateRecorder.Code, updateRecorder.Body.String())
 	}
+	configReq := httptest.NewRequest(http.MethodPut, "/admin/api/config", strings.NewReader(`{"focus_models":"gpt-4o"}`))
+	configRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(configRecorder, configReq)
+	if configRecorder.Code != http.StatusOK {
+		t.Fatalf("expected config update status 200, got %d body=%s", configRecorder.Code, configRecorder.Body.String())
+	}
 
 	summaryReq := httptest.NewRequest(http.MethodGet, "/admin/api/dashboard/summary", nil)
 	summaryReq.Header.Set("Authorization", "Bearer test-admin")
@@ -2395,6 +2409,16 @@ func TestAdminSearchReturnsGroupedResults(t *testing.T) {
 	application.Handler().ServeHTTP(updateRecorder, updateReq)
 	if updateRecorder.Code != http.StatusOK {
 		t.Fatalf("expected backend update status 200, got %d body=%s", updateRecorder.Code, updateRecorder.Body.String())
+	}
+	if err := application.store.AppendAuditEvent(context.Background(), domain.AuditEvent{
+		Type:         "admin_backend_create",
+		Actor:        "admin",
+		ResourceType: "backend",
+		ResourceID:   backend.ID,
+		Message:      "backend created: " + backend.Name,
+		BackendName:  backend.Name,
+	}); err != nil {
+		t.Fatalf("append backend create audit event: %v", err)
 	}
 
 	searchReq := httptest.NewRequest(http.MethodGet, "/admin/api/search?q=alpha", nil)
@@ -3143,6 +3167,28 @@ func TestAdminBackendSub2APIConsoleSyncCheckinAndAccountSummary(t *testing.T) {
 	}
 	if len(response.Requests) != 3 {
 		t.Fatalf("expected sync request logs, got %#v", response.Requests)
+	}
+
+	events, err := application.store.ListAuditEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if len(events) != 1 || events[0].Type != "admin_backend_sync" || events[0].ResourceID != backend.ID || events[0].BackendName != backend.Name {
+		t.Fatalf("expected one single-backend sync audit event, got %#v", events)
+	}
+
+	batchReq := httptest.NewRequest(http.MethodPost, "/admin/api/backends/"+strconv.FormatInt(backend.ID, 10)+"/console/sync?audit=0", nil)
+	batchRecorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(batchRecorder, batchReq)
+	if batchRecorder.Code != http.StatusOK {
+		t.Fatalf("expected batch member sync status 200, got %d body=%s", batchRecorder.Code, batchRecorder.Body.String())
+	}
+	events, err = application.store.ListAuditEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("list audit events after batch member sync: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("batch member sync should suppress the single-backend audit event, got %#v", events)
 	}
 }
 
@@ -6587,6 +6633,186 @@ func TestProxyDetailReturnsDrawerData(t *testing.T) {
 		return entry.ProxyID == proxyItem.ID
 	}) {
 		t.Fatalf("expected proxy usage activity, got %#v", payload.Activity.Usage)
+	}
+}
+
+func TestAdminAuditEventsTrackOnlyRequestedManagementActions(t *testing.T) {
+	application := newTestApp(t)
+
+	serve := func(method, path, body string, wantStatus int) []byte {
+		t.Helper()
+		var reader io.Reader
+		if body != "" {
+			reader = strings.NewReader(body)
+		}
+		req := httptest.NewRequest(method, path, reader)
+		if body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		recorder := httptest.NewRecorder()
+		application.Handler().ServeHTTP(recorder, req)
+		if recorder.Code != wantStatus {
+			t.Fatalf("%s %s: got status %d body=%s, want %d", method, path, recorder.Code, recorder.Body.String(), wantStatus)
+		}
+		return recorder.Body.Bytes()
+	}
+
+	var createdProxy domain.SocksProxy
+	if err := json.Unmarshal(serve(http.MethodPost, "/admin/api/socks-proxies", `{
+		"name":"audit-proxy",
+		"address":"127.0.0.1:1080",
+		"enabled":true
+	}`, http.StatusCreated), &createdProxy); err != nil {
+		t.Fatalf("unmarshal created proxy: %v", err)
+	}
+	serve(http.MethodPut, "/admin/api/socks-proxies/"+strconv.FormatInt(createdProxy.ID, 10), `{
+		"name":"audit-proxy-renamed",
+		"address":"127.0.0.1:1081",
+		"enabled":true
+	}`, http.StatusOK)
+
+	var createdClient struct {
+		Client domain.ClientKey `json:"client"`
+	}
+	if err := json.Unmarshal(serve(http.MethodPost, "/admin/api/client-keys", `{
+		"name":"audit-client",
+		"token":"audit-client-token",
+		"enabled":true
+	}`, http.StatusCreated), &createdClient); err != nil {
+		t.Fatalf("unmarshal created client key: %v", err)
+	}
+	serve(http.MethodPut, "/admin/api/client-keys/"+strconv.FormatInt(createdClient.Client.ID, 10), `{
+		"name":"audit-client-renamed",
+		"enabled":true
+	}`, http.StatusOK)
+
+	var createdBackend domain.Backend
+	if err := json.Unmarshal(serve(http.MethodPost, "/admin/api/backends", `{
+		"name":"audit-backend",
+		"protocol":"openai",
+		"base_url":"https://audit-backend.local/v1",
+		"api_key":"backend-key",
+		"weight":1,
+		"models":["gpt-4o"],
+		"model_mapping":{}
+	}`, http.StatusCreated), &createdBackend); err != nil {
+		t.Fatalf("unmarshal created backend: %v", err)
+	}
+	serve(http.MethodPut, "/admin/api/backends/"+strconv.FormatInt(createdBackend.ID, 10), `{
+		"name":"audit-backend-renamed",
+		"protocol":"openai",
+		"base_url":"https://audit-backend.local/v1",
+		"api_key":"backend-key",
+		"status":"normal",
+		"weight":2,
+		"models":["gpt-4o"],
+		"model_mapping":{}
+	}`, http.StatusOK)
+
+	serve(http.MethodPut, "/admin/api/config", `{"focus_models":"gpt-4o,claude-*"}`, http.StatusOK)
+	serve(http.MethodDelete, "/admin/api/backends/"+strconv.FormatInt(createdBackend.ID, 10), "", http.StatusOK)
+	serve(http.MethodDelete, "/admin/api/client-keys/"+strconv.FormatInt(createdClient.Client.ID, 10), "", http.StatusOK)
+	serve(http.MethodDelete, "/admin/api/socks-proxies/"+strconv.FormatInt(createdProxy.ID, 10), "", http.StatusOK)
+
+	events, err := application.store.ListAuditEvents(context.Background(), 20)
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	wantTypes := map[string]int{
+		"admin_backend_create":     1,
+		"admin_backend_delete":     1,
+		"admin_client_create":      1,
+		"admin_client_delete":      1,
+		"admin_socks_proxy_create": 1,
+		"admin_socks_proxy_delete": 1,
+		"admin_config_update":      1,
+	}
+	gotTypes := make(map[string]int, len(events))
+	for _, event := range events {
+		gotTypes[event.Type]++
+		if event.Actor != "admin" {
+			t.Fatalf("management audit event should identify admin actor, got %#v", event)
+		}
+	}
+	if !reflect.DeepEqual(gotTypes, wantTypes) {
+		t.Fatalf("unexpected audit event types: got %#v want %#v", gotTypes, wantTypes)
+	}
+	if !containsAuditEvent(events, func(event domain.AuditEvent) bool {
+		return event.Type == "admin_backend_create" && event.ResourceType == "backend" && event.ResourceID == createdBackend.ID && event.BackendName == "audit-backend"
+	}) {
+		t.Fatalf("expected backend create resource metadata, got %#v", events)
+	}
+	if !containsAuditEvent(events, func(event domain.AuditEvent) bool {
+		return event.Type == "admin_config_update" && event.ResourceType == "config" && strings.Contains(event.Message, "focus_models")
+	}) {
+		t.Fatalf("expected config update audit event, got %#v", events)
+	}
+}
+
+func TestProxyNetworkFailoverDoesNotCreateAuditEvent(t *testing.T) {
+	application := newTestApp(t)
+	client := createTestClient(t, application, "network-failover-client")
+	createTestBackend(t, application, domain.Backend{
+		Name: "network-primary", BaseURL: "https://network-primary.local/v1", APIKey: "primary-key", Weight: 2,
+		Models: []string{"gpt-4o"},
+	})
+	createTestBackend(t, application, domain.Backend{
+		Name: "network-backup", BaseURL: "https://network-backup.local/v1", APIKey: "backup-key", Weight: 1,
+		Models: []string{"gpt-4o"},
+	})
+	application.proxy = proxy.NewWithHTTPClient(&http.Client{Transport: consoleRoundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host == "network-primary.local" {
+			return nil, errors.New("upstream network unavailable")
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"ok":true}`)),
+			Request:    r,
+		}, nil
+	})})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-4o","input":"hello"}`))
+	req.Header.Set("Authorization", "Bearer "+client.Token)
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected successful network failover, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	events, err := application.store.ListAuditEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("network failover should not create audit events, got %#v", events)
+	}
+}
+
+func TestAdminBackendGlobalSyncSummaryCreatesOneAuditEvent(t *testing.T) {
+	application := newTestApp(t)
+	req := httptest.NewRequest(http.MethodPost, "/admin/api/backends/console/sync-summary", strings.NewReader(`{
+		"total":3,
+		"success_count":2,
+		"failure_count":1
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	application.Handler().ServeHTTP(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected global sync summary status 200, got %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	events, err := application.store.ListAuditEvents(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected one global sync audit event, got %#v", events)
+	}
+	event := events[0]
+	if event.Type != "admin_backends_sync" || event.Level != "warn" || event.ResourceType != "backend" || !strings.Contains(event.Message, "2/3 succeeded") {
+		t.Fatalf("unexpected global sync audit event: %#v", event)
 	}
 }
 

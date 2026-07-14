@@ -72,6 +72,12 @@ type backendImportExportPayload struct {
 	Backends []backendImportExportItem `json:"backends"`
 }
 
+type backendConsoleSyncSummary struct {
+	Total        int `json:"total"`
+	SuccessCount int `json:"success_count"`
+	FailureCount int `json:"failure_count"`
+}
+
 type backendImportExportItem struct {
 	Name                 string            `json:"name"`
 	Protocol             string            `json:"protocol"`
@@ -330,9 +336,12 @@ func (h *BackendHandler) HandleCreateBackend(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	_ = h.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
-		Type:        "admin_backend_create",
-		Message:     "backend created",
-		BackendName: backend.Name,
+		Type:         "admin_backend_create",
+		Actor:        "admin",
+		ResourceType: "backend",
+		ResourceID:   backend.ID,
+		Message:      "backend created: " + backend.Name,
+		BackendName:  backend.Name,
 	})
 	writeJSON(w, http.StatusCreated, backend)
 }
@@ -449,11 +458,6 @@ func (h *BackendHandler) HandleUpdateBackend(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	_ = h.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
-		Type:        "admin_backend_update",
-		Message:     "backend updated",
-		BackendName: backend.Name,
-	})
 	writeJSON(w, http.StatusOK, backend)
 }
 
@@ -692,6 +696,33 @@ func (h *BackendHandler) HandleBackendConsoleSync(w http.ResponseWriter, r *http
 	}
 }
 
+func (h *BackendHandler) HandleBackendConsoleSyncSummary(w http.ResponseWriter, r *http.Request) {
+	var summary backendConsoleSyncSummary
+	if err := decodeJSON(r, &summary); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if summary.Total <= 0 || summary.SuccessCount < 0 || summary.FailureCount < 0 || summary.SuccessCount+summary.FailureCount != summary.Total {
+		writeError(w, http.StatusBadRequest, "invalid backend sync summary")
+		return
+	}
+
+	event := domain.AuditEvent{
+		Type:         "admin_backends_sync",
+		Actor:        "admin",
+		ResourceType: "backend",
+		Message:      fmt.Sprintf("global backend sync completed: %d/%d succeeded, %d failed", summary.SuccessCount, summary.Total, summary.FailureCount),
+	}
+	if summary.FailureCount > 0 {
+		event.Level = "warn"
+	}
+	if err := h.store.AppendAuditEvent(r.Context(), event); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, summary)
+}
+
 func (h *BackendHandler) handleNewAPIConsoleSync(w http.ResponseWriter, r *http.Request, backend domain.Backend, recorder *newAPIConsoleRequestRecorder, stream *consoleSyncStream) {
 	statusResult, err := h.doNewAPIConsoleJSON(r.Context(), backend, http.MethodGet, "/api/status", nil, backend.ConsoleCookie, "", recorder)
 	if err != nil {
@@ -786,6 +817,7 @@ func (h *BackendHandler) handleNewAPIConsoleSync(w http.ResponseWriter, r *http.
 		writeConsoleSyncError(w, http.StatusInternalServerError, err.Error(), recorder, stream)
 		return
 	}
+	h.appendBackendConsoleSyncAudit(r, updated)
 
 	writeConsoleSyncSuccess(w, map[string]any{
 		"backend":  updated,
@@ -873,6 +905,7 @@ func (h *BackendHandler) handleSub2APIConsoleSync(w http.ResponseWriter, r *http
 		writeConsoleSyncError(w, http.StatusInternalServerError, err.Error(), recorder, stream)
 		return
 	}
+	h.appendBackendConsoleSyncAudit(r, updated)
 
 	writeConsoleSyncSuccess(w, map[string]any{
 		"backend":  updated,
@@ -992,11 +1025,38 @@ func (h *BackendHandler) HandleDeleteBackend(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	backend, err := h.store.GetBackend(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "backend not found")
+		return
+	}
 	if err := h.store.DeleteBackend(r.Context(), id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	_ = h.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
+		Type:         "admin_backend_delete",
+		Actor:        "admin",
+		ResourceType: "backend",
+		ResourceID:   backend.ID,
+		Message:      "backend deleted: " + backend.Name,
+		BackendName:  backend.Name,
+	})
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": id})
+}
+
+func (h *BackendHandler) appendBackendConsoleSyncAudit(r *http.Request, backend domain.Backend) {
+	if r.URL.Query().Get("audit") == "0" {
+		return
+	}
+	_ = h.store.AppendAuditEvent(r.Context(), domain.AuditEvent{
+		Type:         "admin_backend_sync",
+		Actor:        "admin",
+		ResourceType: "backend",
+		ResourceID:   backend.ID,
+		Message:      "backend console synced: " + backend.Name,
+		BackendName:  backend.Name,
+	})
 }
 
 func (h *BackendHandler) HandleBackendDetail(w http.ResponseWriter, r *http.Request) {
